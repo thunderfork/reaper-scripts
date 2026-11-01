@@ -1,0 +1,8 @@
+# Local Claude preferences
+CLAUDE.local.md
+
+# OS / editor clutter
+Thumbs.db
+desktop.ini
+*.tmp
+~$*
