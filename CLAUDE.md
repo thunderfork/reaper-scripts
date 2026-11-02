@@ -3,11 +3,11 @@
 Chart Cue is a Windows-only REAPER Lua/ReaImGui script for displaying and
 scrolling PDF charts during playback.
 
-Main file: Chart-Cue.lua
+Main file: Chart Cue.lua
 
 ## Editing rules
 
-- Never output or rewrite the entire Chart-Cue.lua file.
+- Never output or rewrite the entire Chart Cue.lua file.
 - Make the smallest focused change possible.
 - Show a diff before applying non-trivial changes.
 - Preserve the existing architecture and naming style.
@@ -28,7 +28,7 @@ Main file: Chart-Cue.lua
 
 ## Deployment
 
-- The development copy is `Chart-Cue.lua` in this repository.
+- The development copy is `Chart Cue.lua` in this repository.
 - Deploy with:
 
 ```powershell
@@ -36,7 +36,7 @@ Main file: Chart-Cue.lua
 ```
 
 - The deployed copy belongs in:
-  `C:\Users\ngkog\AppData\Roaming\REAPER\Scripts\Chart-Cue.lua`
+  `C:\Users\ngkog\AppData\Roaming\REAPER\Scripts\Chart Cue.lua`
 - Never move or rename:
   `C:\Users\ngkog\AppData\Roaming\REAPER\Scripts\Chart Cue`
 - That folder contains settings.ini, cache, tmp and autostart.lua.
