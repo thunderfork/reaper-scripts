@@ -5,7 +5,7 @@
 - Modules: CFG, S (settings.ini), R (runtime), COL, P (project config in the .rpp ExtState "ChartCue"/"cfg"), Util, PDF, Project, Nav, Midi, UI, Cues, Msg, Dock, Autostart.
 - Layout system: UI.form / UI.field / UI.button_pair / UI.full_button, CFG.SP + UI.sp, one control height UI.h, one text rule CFG.TEXT_LIFT. Compact layout is the default.
 - Constraints:
-  - Do not change the .rpp ExtState format, the settings.ini keys, the cache folder layout or the __startup.lua markers. Only add new keys, with defaults.
+  - Do not change the .rpp ExtState format, the settings.ini keys, the cache folder layout or the __startup.lua markers. Only add new keys, with defaults. A settings.ini key that nothing reads may be removed (done for prerender and autoscroll_start, with the user's approval).
   - Keep every disk or long operation non-blocking.
   - Every Push needs a Pop. Call End only when Begin returned true.
 - Working rules from the user:

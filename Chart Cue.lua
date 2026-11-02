@@ -252,8 +252,7 @@ local S = {
   midi_add_cue = false, cc_add_cue = 5, cc_add_scroll = 6,   -- "Add cues with MIDI"
   scroll_mode = "off",         -- "off" | "fixed" | "marker" | "cues"; default for projects without P.scroll_mode
   keep_last_page = true,       -- during playback, keep the last page when a region has no PDF
-  autoscroll_pps = 40.0, autoscroll_start = 0.0, auto_page_turn = false, -- autoscroll_start: unused since 4.8 (P.fixed_start)
-  prerender = true,
+  autoscroll_pps = 40.0, auto_page_turn = false, -- the Fixed speed start time is per project (P.fixed_start)
   include_subfolders = false,
   hide_controls_playing = true,
   comfortable = false,         -- "Comfortable layout": more empty space (compact is the default)
@@ -900,7 +899,7 @@ function PDF.pick_next_batch()
   if nb == 0 then return nil end
   local cur = PDF.batch_of(S.page)
   local order = { cur, cur + 1 }
-  -- all pages are always prepared in the background (S.prerender is no longer used)
+  -- all pages are always prepared in the background, the pages near the current page first
   order[#order + 1] = cur - 1
   for b = cur + 2, nb do order[#order + 1] = b end
   for b = cur - 2, 1, -1 do order[#order + 1] = b end
