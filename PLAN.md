@@ -38,7 +38,10 @@
 
 - Second review, passes A and B: kept page can be turned (Nav.page_blocked); status bar ignores sticky; questions close on tab / song change; banner "Autoscroll paused."; "Default for new projects" row (S.scroll_mode); "Not now" on the mode hint (P.hint_off, written only when set); Record button hidden / toggle disabled outside Cue list; MIDI debug back in MIDI > Advanced; "Open and close" labelled "This computer"; Settings sections remembered (S.settings_open).
 
+- UI cleanup round: BUG FIX Project.parse_cfg ignored keys with "_" (scroll_mode, cue_unit, active_pdf, auto_switch, continue_after_end, hint_off, fixed_start) since 4.7; PDF list and region list in columns; Regions search + "Show" menu (UI.search_row); "Region settings", "Region list (n)", "Cue settings", "Cue list (n)", "Marker settings", MIDI "Troubleshooting"; Display -> "Display and view" (View, Page quality, Layout, Troubleshooting); Fixed speed start per project (P.fixed_start); scope moved into the "?" text, labels only on 3 exception rows; red round X (UI.remove_x_button) for cues and PDFs; foldable first sections (UI.heading fold, S.folded); Settings sections in the heading style, one open at a time.
+
 ## Future consideration (not planned)
+- Cue list columns: centred layout was rejected; look again later.
 - Confirmation (or undo) for the single-row cue "Remove".
 - One shared confirmation pattern: port R.confirm (page cache) and R.confirm_remove (Library) to UI.ask.
 - Settings: inner headings look like the section headers.
