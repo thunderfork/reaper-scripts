@@ -89,9 +89,9 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 .\deploy.ps1
 ```
 
-- Deployed copy: `C:\Users\ngkog\AppData\Roaming\REAPER\Scripts\` (the main script and the action scripts).
+- Deployed copy: `%APPDATA%\REAPER\Scripts\` (the main script and the action scripts).
 - Never move, rename, or edit by hand (Claude must not touch it):
-  `C:\Users\ngkog\AppData\Roaming\REAPER\Scripts\Chart Cue`
+  `%APPDATA%\REAPER\Scripts\Chart Cue`
 
 That folder contains `settings.ini`, cache, `tmp`, and `autostart.lua`; the script itself writes them.
 
