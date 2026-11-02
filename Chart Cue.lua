@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 4.7
+-- @version 4.8
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -85,7 +85,7 @@ CFG.DEFAULT_WIN = { 100, 100, 760, 900 }
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "4.7"       -- keep equal to @version in the header
+CFG.VERSION = "4.8"       -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.RES = r.GetResourcePath()
 CFG.BASE_DIR = CFG.RES .. SEP .. "Scripts" .. SEP .. "Chart Cue"
@@ -763,7 +763,8 @@ function PDF.info_tick()
       R.info_job = nil
       local engine = (job.kind == "ps") and "Windows PDF engine" or "pdfinfo"
       if err == "timeout" then
-        Msg.set_error(engine .. " did not answer. Try again, or select the other PDF engine in Settings > Display.")
+        Msg.set_error(engine .. " did not answer. Try again, or select the other PDF engine in Settings > Display."
+          .. (job.kind == "ps" and " Antivirus or a company policy can block PowerShell." or ""))
       else
         local n, msg = PDF.parse_info(out, err)
         if n then
@@ -842,7 +843,8 @@ function PDF.start_batch(b)
       mode = "render", pdf = S.pdf_path, first = first, last = last, digits = #tostring(R.total),
       prefix = R.prefix, dpi = S.dpi, maxdim = R.scale_to or 0, done = done_f, err = err_f })
     if not ok then
-      Msg.set_error("Could not start the Windows PDF engine (PowerShell). Select Poppler in Settings > Display.")
+      Msg.set_error("Could not start the Windows PDF engine (PowerShell). Antivirus or a company policy can block it. "
+        .. "Select Poppler in Settings > Display.")
       R.bstate[b] = "failed"; return
     end
     R.job = { batch = b, started = Util.now(), done_f = done_f, err_f = err_f }
@@ -1117,13 +1119,14 @@ end
 function Project.scan_project()
   R.regions, R.scroll_pts, R.page_pts, R.marker_warns = {}, {}, {}, {}
   local total = r.CountProjectMarkers(0) or 0
+  local no_guid = 0
   for i = 0, total - 1 do
     local retval, isrgn, pos, rend, name = r.EnumProjectMarkers3(0, i)
     if retval and retval > 0 then
       name = name or ""
       if isrgn then
         local okg, guid = r.GetSetProjectInfo_String(0, "MARKER_GUID:" .. i, "", false)
-        if not okg then guid = nil end
+        if not okg or guid == "" then guid = nil; no_guid = no_guid + 1 end
         R.regions[#R.regions + 1] = {
           key = Project.region_key(guid, name, pos), name = name, norm = Util.norm_name(name),
           start = pos, stop = rend,
@@ -1147,6 +1150,11 @@ function Project.scan_project()
         end
       end
     end
+  end
+  -- one log line per change (the scan runs after every project change)
+  if no_guid ~= (R.no_guid_logged or 0) then
+    if no_guid > 0 then Msg.diag(string.format("%d region(s) have no GUID; they use name and position as their key.", no_guid)) end
+    R.no_guid_logged = no_guid
   end
   local function by_time(a, b) if a.t ~= b.t then return a.t < b.t end return a.ord < b.ord end
   table.sort(R.scroll_pts, by_time)
@@ -2189,7 +2197,7 @@ function Project.start_folder_pick()
   local res = r.ExecProcess('powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -WindowStyle Hidden -File "' .. ps1 .. '"',
     CFG.EXEC_NOWAIT)
   if res == nil then
-    Msg.notify("Could not start PowerShell. Is powershell.exe available on this PC?", true, "library")
+    Msg.notify("Could not start PowerShell. Antivirus or a company policy can block it.", true, "library")
     return
   end
   R.picker = { started = Util.now(), out_f = out_f, done_f = done_f }
@@ -2652,6 +2660,10 @@ function Autostart.write_script()
 end
 
 function Autostart.install()
+  -- the block is already in __startup.lua: never add a second one
+  if Autostart.installed(true) then
+    Msg.notify("Automatic open is already ON.", false, "project"); return
+  end
   local ans = r.ShowMessageBox(
     "Chart Cue will add these 3 lines at the END of your REAPER startup script:\n\n"
     .. CFG.STARTUP_FILE .. "\n\n" .. CFG.AS_BLOCK .. "\n"
@@ -2664,7 +2676,10 @@ function Autostart.install()
     Msg.notify("Cannot write " .. CFG.AUTOSTART_FILE, true, "project"); return
   end
   local old = Util.read_all(CFG.STARTUP_FILE)
-  if old then Util.copy_file(CFG.STARTUP_FILE, CFG.STARTUP_FILE .. ".chartcue-backup") end
+  local backup = CFG.STARTUP_FILE .. ".chartcue-backup"
+  if old and not (Util.copy_file(CFG.STARTUP_FILE, backup) and Util.read_all(backup) == old) then
+    Msg.notify("Cannot write the backup " .. backup .. ". __startup.lua was not changed.", true, "project"); return
+  end
   local f = io.open(CFG.STARTUP_FILE, "ab")
   if not f then Msg.notify("Cannot write " .. CFG.STARTUP_FILE, true, "project"); return end
   if old and old ~= "" and old:sub(-1) ~= "\n" then f:write("\n") end
@@ -5470,6 +5485,7 @@ end
 
 function UI.init()
   Util.ensure_dir(CFG.CACHE_ROOT); Util.ensure_dir(CFG.TMP_DIR)
+  r.SetExtState(CFG.EXT, "quit", "", false) -- a flag left by an instance that stopped before reading it
   Util.load_settings()
   S.dpi = Util.clamp(math.floor(S.dpi), 50, 600)
   if S.tab_ver < 3 then
