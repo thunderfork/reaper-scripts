@@ -29,7 +29,11 @@
   8. "Remove all PDF markers..." renamed to "Remove PDF markers...". No controls removed.
 - Cleanup pass (approved): long labels move the control to the next row (UI.form label arg); MIDI rows by mode and direct input; MIDI debug in Display > Advanced; "Pre-render all pages" removed (always on, S.prerender unused); "Dim page" + "Brightness" -> "Page brightness"; Library external-PDF count cached 0.5 s; one Settings tab with 4 collapsible sections (UI.draw_settings_tab); SWS startup method removed (only "Remove the SWS startup action..." stays); Poppler kept.
 
-## Pass 2 (items 9–11), decisions agreed
+- 4.8 robustness fixes (commit 84fb3ae): __startup.lua duplicate block / backup check, stale "quit" flag, GUID diag, PowerShell block hints.
+- Items 10–11: cue fields keep a wrong value with a red border and a reason (UI.mark_invalid, R.cue_err), Esc restores; scroll % no longer deleted by a wrong value. Msg.notify sticky flag with an "x" (7 messages).
+- Cue undo: postponed. Open question: does REAPER undo restore SetProjExtState data? Test script in the chat of 2 November 2026. "before" -> REAPER undo blocks; "after" -> own multi-level snapshot stack.
+
+## Pass 2 (item 9), decisions agreed
 9. Inline confirmation (yellow note + red "Yes, ..." + "Cancel") instead of ShowMessageBox for: remove all cues, remove PDF markers, reset all settings. "Undo last cue change" button in the Cues tab (one-level snapshot of P.cues). Decide: own snapshot or REAPER undo (Undo_BeginBlock). Fix the "cannot be undone" texts.
 10. Cue table validation: keep the typed text, red border, reason as the tooltip. No silent revert.
 11. Msg.notify sticky flag with a small "x". One sticky message at a time; a new one replaces it. Use it for SWS steps, "Restart REAPER once" and copy-complete messages.

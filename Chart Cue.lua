@@ -362,7 +362,8 @@ local R = {
   as_installed = nil,          -- cached: autostart block present in __startup.lua
   -- cue list editor
   cue_edit_key = nil,          -- nil = song under the play cursor, "_all", "_project" or a region key
-  cue_text = {},               -- text being typed in cue fields
+  cue_text = {},               -- text being typed in cue fields (kept while the value is invalid)
+  cue_err = {},                -- cue field -> reason the typed value is not accepted (red border)
   help_open = nil,             -- help topic to open once
   -- live-use features
   perf = false, perf_t = 0,    -- performance mode (F): only the page is shown
@@ -1435,7 +1436,7 @@ function Project.finish_copy(job, final)
     R.cur_region_key = nil
   end
   if Project.copy_pending() == 0 and not o.region_key then
-    Msg.notify("PDF copy into the project folder is complete.", false, "library")
+    Msg.notify("PDF copy into the project folder is complete.", false, "library", true)
   end
 end
 
@@ -1480,7 +1481,7 @@ function Project.start_copy(job)
   job.fout = job.fin and io.open(job.part, "wb")
   if not (job.fin and job.fout) then
     Project.close_copy(job, true)
-    Msg.notify("Cannot copy into the project folder; the original PDF is used: " .. job.src, true, "library")
+    Msg.notify("Cannot copy into the project folder; the original PDF is used: " .. job.src, true, "library", true)
     Project.finish_copy(job, job.src)
     return false
   end
@@ -2174,13 +2175,15 @@ try {
 
 -- One message system: a message shows for CFG.MSG_SECONDS in the status bar and, when it has a
 -- source ("library", "project", "help"), also in that place of the UI.
-function Msg.notify(msg, is_err, source)
-  R.msg = { text = msg, err = is_err and true or false, t = Util.now(), src = source }
+-- sticky: the message stays until its "x" is clicked or another message replaces it
+-- (use it for messages that ask the user to do something).
+function Msg.notify(msg, is_err, source, sticky)
+  R.msg = { text = msg, err = is_err and true or false, t = Util.now(), src = source, sticky = sticky or nil }
 end
 
 function Msg.recent(source)
   local m = R.msg
-  if m and (source == nil or m.src == source) and Util.now() - m.t < CFG.MSG_SECONDS then return m end
+  if m and (source == nil or m.src == source) and (m.sticky or Util.now() - m.t < CFG.MSG_SECONDS) then return m end
   return nil
 end
 
@@ -2685,7 +2688,7 @@ function Autostart.install()
   if old and old ~= "" and old:sub(-1) ~= "\n" then f:write("\n") end
   f:write("\n", CFG.AS_BLOCK); f:close()
   Autostart.installed(true)
-  Msg.notify("Automatic open is ON. Restart REAPER once to start it.", false, "project")
+  Msg.notify("Automatic open is ON. Restart REAPER once to start it.", false, "project", true)
 end
 
 function Autostart.uninstall()
@@ -2702,7 +2705,7 @@ function Autostart.uninstall()
   if not f then Msg.notify("Cannot write " .. CFG.STARTUP_FILE, true, "project"); return end
   f:write(d:sub(1, start - 1), d:sub(stop)); f:close()
   Autostart.installed(true)
-  Msg.notify("Automatic open is OFF. It stops after the next REAPER restart.", false, "project")
+  Msg.notify("Automatic open is OFF. It stops after the next REAPER restart.", false, "project", true)
 end
 
 -- SWS: find the action that clears the project startup action (only in some SWS versions)
@@ -3207,7 +3210,14 @@ end
 -- The message area of a section: the latest message of `source`, always under its buttons.
 function UI.section_msg(ctx, source)
   local m = Msg.recent(source)
-  if m then UI.note(ctx, m.text, m.err and COL.RED or COL.GREEN) end
+  if not m then return end
+  UI.note(ctx, m.text, m.err and COL.RED or COL.GREEN)
+  if m.sticky then
+    -- small "x" to close it, at the end of the note
+    ImGui.SameLine(ctx, 0, 6)
+    if UI.button(ctx, "x##closemsg", UI.h(ctx), UI.h(ctx)) then R.msg = nil end
+    UI.tip(ctx, "Close this message")
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -3797,6 +3807,14 @@ function UI.draw_regions_tab(ctx)
   UI.pop_row_style(ctx)
 end
 -- Rows of one cue list (shared by the single-song view and the "(all songs)" view).
+-- Red border around the last item, with the reason as its tooltip.
+function UI.mark_invalid(ctx, reason)
+  local x0, y0 = ImGui.GetItemRectMin(ctx)
+  local x1, y1 = ImGui.GetItemRectMax(ctx)
+  ImGui.DrawList_AddRect(ImGui.GetWindowDrawList(ctx), x0, y0, x1, y1, COL.RED, 4, 0, 1.5)
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, reason .. "\nType a correct value, or press Esc to keep the old one.") end
+end
+
 function UI.draw_cue_rows(ctx, reg, list)
   local POS_W, NUM_W = 120, 70
   local key = Cues.key(reg)
@@ -3808,7 +3826,21 @@ function UI.draw_cue_rows(ctx, reg, list)
   end
   UI.list_header(ctx, { { P.cue_unit == "seconds" and "Time from song start" or "Bar.Beat", 0 },
     { "Page", POS_W + 16 }, { "Scroll %", POS_W + NUM_W + 24 } })
-  local remove_i
+  local remove_i, moved
+  -- One cue field. `apply(raw)` saves a valid value and returns nil, or returns the reason it is
+  -- not accepted: then the typed text stays, with a red border (no silent revert). Esc keeps the old value.
+  local function cue_field(k, label, w, shown, apply)
+    ImGui.SetNextItemWidth(ctx, w)
+    local ch, txt = ImGui.InputText(ctx, label, R.cue_err[k] and R.cue_text[k] or shown)
+    if ch then R.cue_text[k] = txt end
+    if ImGui.IsItemDeactivated(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape(), false) then
+      R.cue_err[k], R.cue_text[k] = nil, nil
+    elseif ImGui.IsItemDeactivatedAfterEdit(ctx) then
+      local e = apply(Util.trim(R.cue_text[k] or ""))
+      if e then R.cue_err[k] = e else R.cue_err[k], R.cue_text[k] = nil, nil end
+    end
+    if R.cue_err[k] then UI.mark_invalid(ctx, R.cue_err[k]) end
+  end
   UI.push_row_style(ctx)
   for i, c in ipairs(list) do
     ImGui.PushID(ctx, "cue" .. key .. i)
@@ -3816,46 +3848,29 @@ function UI.draw_cue_rows(ctx, reg, list)
     if i == now_i then UI.row_highlight(ctx, aw) end
     local id = key .. ":" .. i
     -- position
-    ImGui.SetNextItemWidth(ctx, POS_W)
-    local cht, txt = ImGui.InputText(ctx, "##pos", Cues.label(reg, c.pos))
-    if cht then R.cue_text[id .. "p"] = txt end
-    if ImGui.IsItemDeactivatedAfterEdit(ctx) then
-      local v = Cues.parse_label(reg, R.cue_text[id .. "p"])
-      if v then c.pos = v; Cues.sort(list); Util.mark_pdirty()
-      else Msg.notify("Position not understood. Use bar.beat (e.g. 9.1.00) or m:ss (e.g. 0:24.5).", true, "cues") end
-      R.cue_text[id .. "p"] = nil
-    end
+    cue_field(id .. "p", "##pos", POS_W, Cues.label(reg, c.pos), function(raw)
+      local v = Cues.parse_label(reg, raw)
+      if not v then return "Position not understood. Use bar.beat (e.g. 9.1.00) or m:ss (e.g. 0:24.5)." end
+      c.pos = v; Cues.sort(list); Util.mark_pdirty(); moved = true
+    end)
     -- page (checked against the page count of this song's PDF)
     ImGui.SameLine(ctx, POS_W + 16)
-    ImGui.SetNextItemWidth(ctx, NUM_W)
-    local chp, ptxt = ImGui.InputText(ctx, "##page", c.page and tostring(c.page) or "")
-    if chp then R.cue_text[id .. "g"] = ptxt end
-    if ImGui.IsItemDeactivatedAfterEdit(ctx) then
-      local raw = Util.trim(R.cue_text[id .. "g"] or "")
-      local v = tonumber(raw)
-      local maxp = Cues.max_page(reg)
-      if raw == "" then
-        c.page = nil; Util.mark_pdirty()
-      elseif not v or v < 1 then
-        Msg.notify("The page must be a number from 1.", true, "cues")
-      elseif maxp and v > maxp then
-        Msg.notify(string.format("This PDF has only %d page(s).", maxp), true, "cues")
-      else
-        c.page = math.floor(v); Util.mark_pdirty()
-      end
-      R.cue_text[id .. "g"] = nil
-    end
+    cue_field(id .. "g", "##page", NUM_W, c.page and tostring(c.page) or "", function(raw)
+      if raw == "" then c.page = nil; Util.mark_pdirty(); return end
+      local v, maxp = tonumber(raw), Cues.max_page(reg)
+      if not v or v < 1 then return "The page must be a number from 1." end
+      if maxp and v > maxp then return string.format("This PDF has only %d page(s).", maxp) end
+      c.page = math.floor(v); Util.mark_pdirty()
+    end)
     UI.tip(ctx, "Page to show from this cue. Empty = keep the page.")
-    -- scroll
+    -- scroll (an empty field removes the scroll point; a wrong value never does)
     ImGui.SameLine(ctx, POS_W + NUM_W + 24)
-    ImGui.SetNextItemWidth(ctx, NUM_W)
-    local chs, stxt = ImGui.InputText(ctx, "##scroll", c.scroll and string.format("%g", c.scroll) or "")
-    if chs then R.cue_text[id .. "s"] = stxt end
-    if ImGui.IsItemDeactivatedAfterEdit(ctx) then
-      local v = tonumber(R.cue_text[id .. "s"] or "")
-      c.scroll = v and Util.clamp(v, 0, 100) or nil
-      Util.mark_pdirty(); R.cue_text[id .. "s"] = nil
-    end
+    cue_field(id .. "s", "##scroll", NUM_W, c.scroll and string.format("%g", c.scroll) or "", function(raw)
+      if raw == "" then c.scroll = nil; Util.mark_pdirty(); return end
+      local v = tonumber((raw:gsub("%%$", "")))
+      if not v or v < 0 or v > 100 then return "Scroll must be a number from 0 to 100." end
+      c.scroll = v; Util.mark_pdirty()
+    end)
     UI.tip(ctx, "Scroll position at this cue: 0 = top, 100 = bottom. Empty = no scroll point.\n"
       .. "Between two scroll points the page moves smoothly.")
     -- remove
@@ -3865,6 +3880,8 @@ function UI.draw_cue_rows(ctx, reg, list)
   end
   UI.pop_row_style(ctx)
   if remove_i then Cues.remove(reg, remove_i) end
+  -- rows changed place: field states are stored by row number, so they would point to other cues
+  if remove_i or moved then R.cue_err, R.cue_text = {}, {} end
 end
 
 -- Cue list editor (Autoscroll tab, shown when the mode is "Cue list")
@@ -4352,12 +4369,12 @@ function UI.draw_project_tab(ctx)
       local clr, set = Autostart.sws_clear_action_id(), Autostart.sws_startup_action_id()
       if clr then
         r.Main_OnCommand(clr, 0)
-        Msg.notify("SWS startup action cleared. Save the project (Ctrl+S) to keep the change.", false, "project")
+        Msg.notify("SWS startup action cleared. Save the project (Ctrl+S) to keep the change.", false, "project", true)
       elseif set then
         r.Main_OnCommand(set, 0)
-        Msg.notify("In the SWS dialog delete the command ID (leave it empty) and press OK, then save the project.", false, "project")
+        Msg.notify("In the SWS dialog delete the command ID (leave it empty) and press OK, then save the project.", false, "project", true)
       else
-        Msg.notify("Run 'SWS/S&M: Set project startup action', leave the command ID empty, press OK and save the project.", false, "project")
+        Msg.notify("Run 'SWS/S&M: Set project startup action', leave the command ID empty, press OK and save the project.", false, "project", true)
       end
     end
     UI.tip(ctx, "Two open methods can start Chart Cue twice. 'Open automatically' is enough.")
@@ -4445,7 +4462,7 @@ How to make a cue list (Cues tab):
 2. Play the song.
 3. At each page turn, click "Add page turn" or press the C key. Chart Cue chooses the next page by itself.
 4. Where the page must move down, scroll it by hand and click "Add scroll point" or press the S key.
-5. To change a cue, type a new position, page or scroll value in the list. To delete it, click "Remove".
+5. To change a cue, type a new position, page or scroll value in the list. To delete it, click "Remove". A red border means the value is not accepted: move the mouse over it to see why, then correct it or press Esc.
 
 If you scroll by hand during playback, autoscroll waits a moment and then continues.]==],
     more = [==[
