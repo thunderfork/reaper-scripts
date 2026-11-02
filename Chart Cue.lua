@@ -6,9 +6,9 @@
 --   Chart Cue - PDF Viewer for REAPER. Shows PDF charts and scrolls them with markers,
 --   cue lists, MIDI CC, mouse wheel or dragging. Windows only.
 -- @changelog
---   Record cues (R, red dot button): C, S and the MIDI cue buttons add cues only while it is on.
---   The autoscroll mode is saved per project. A region without a PDF keeps the last page during playback.
---   New Cues tab. Autoscroll, MIDI, Display and Project are now one Settings tab with fewer, clearer options.
+--   Fixed: the autoscroll mode, the cue time unit and the open PDF are now restored when a project opens.
+--   New Cues tab, one Settings tab, list search, Record cues (R) and an option to turn pages early.
+--   Removed: Fixed speed mode and "Continue after region end".
 
 -- MIT License
 --
@@ -290,6 +290,31 @@ function Util.load_settings()
     end
   end
   f:close()
+  Util.validate_settings()
+end
+
+-- After settings.ini is read: numbers back into their range, unknown values back to the default
+-- (protects against a damaged or hand-edited file). Only values that are out of range change.
+function Util.validate_settings()
+  local D = CFG.S_DEFAULTS
+  local function int(k, lo, hi) S[k] = Util.clamp(math.floor(S[k] + 0.5), lo, hi) end
+  local function num(k, lo, hi) if S[k] ~= S[k] then S[k] = D[k] end; S[k] = Util.clamp(S[k], lo, hi) end -- NaN -> default
+  local function one_of(k, ...)
+    for _, v in ipairs({ ... }) do if S[k] == v then return end end
+    S[k] = D[k]
+  end
+  int("dpi", 50, 600); int("page", 1, 100000); int("tab", 1, 99); int("tab_ver", 1, 99)
+  for _, k in ipairs({ "cc_abs", "cc_rel", "cc_page_next", "cc_page_prev", "cc_add_cue", "cc_add_scroll" }) do int(k, 0, 127) end
+  int("rel_encoding", 1, 4)
+  num("sensitivity", 1, 200); num("dim_level", 0.3, 1); num("zoom", CFG.MIN_ZOOM, CFG.MAX_ZOOM)
+  num("scroll_y", 0, math.huge); num("scroll_x", 0, math.huge); num("panel_h", 0, 10000)
+  num("win_w", 200, 20000); num("win_h", 150, 20000)
+  one_of("engine", "windows", "poppler")
+  one_of("mode", "absolute", "relative")
+  one_of("scroll_mode", "off", "marker", "cues", "fixed") -- "fixed" (older settings) means off
+  one_of("fit_mode", "width", "height", "page", "100", "manual")
+  if not S.settings_open:match("^[01]+$") then S.settings_open = D.settings_open end
+  if S.folded:sub(1, 1) ~= "," then S.folded = "," .. S.folded end
 end
 
 function Util.save_settings()
@@ -396,6 +421,7 @@ function Project.default_project()
     cue_unit = "beats",   -- "beats" (quarter notes from the region start) or "seconds"
     scroll_mode = "",     -- autoscroll mode of this project; "" = use the default (S.scroll_mode)
     hint_off = false,     -- "Not now" clicked on the mode hint (status line 2); written only when true
+    turn_early = 0,       -- turn pages this many beats before their marker / cue (0 = on time); written only when not 0
     fixed_start = 0,      -- not used since 4.8 (Fixed speed removed); still read and written, so the saved text stays the same
     view = {},            -- pdf path -> { fit = fit mode, zoom = manual zoom } (per-PDF zoom)
   }
@@ -956,6 +982,7 @@ function Project.parse_cfg(lines_iter)
     elseif k == "scroll_mode" then
       p.scroll_mode = (v == "off" or v == "fixed" or v == "marker" or v == "cues") and v or ""
     elseif k == "hint_off" then p.hint_off = (v == "1")
+    elseif k == "turn_early" then p.turn_early = Util.clamp(tonumber(v) or 0, 0, 4)
     elseif k == "fixed_start" then p.fixed_start = tonumber(v) or 0
     elseif k == "view" then
       local path, fit, zoom = v:match("^(.-)\t(.-)\t(.*)$")
@@ -1004,6 +1031,7 @@ function Project.serialize_cfg()
   -- only written when set, so projects that never changed the mode keep the same text
   if P.scroll_mode ~= "" then w("scroll_mode", P.scroll_mode) end
   if P.hint_off then w("hint_off", 1) end -- only when set, so older projects keep the same text
+  if P.turn_early ~= 0 then w("turn_early", string.format("%g", P.turn_early)) end -- the same
   if P.fixed_start ~= 0 then w("fixed_start", string.format("%.6f", P.fixed_start)) end
   for _, path in ipairs(sorted(P.view)) do
     w("view", string.format("%s\t%s\t%.3f", path, P.view[path].fit, P.view[path].zoom))
@@ -1505,11 +1533,25 @@ function Project.copy_tick()
     if not d then
       Project.close_copy(job, false)
       R.copy = nil
-      if job.replace then os.remove(job.dst) end
+      -- replace safely: the old file becomes a backup first, and is deleted only after the new file
+      -- is in place; if that fails, the backup is put back (the old file is never lost)
+      local bak = job.replace and (job.dst .. ".chartcue-old") or nil
+      if bak then
+        os.remove(bak) -- a backup left by an earlier, interrupted replacement
+        if not os.rename(job.dst, bak) then
+          os.remove(job.part)
+          Msg.notify("Could not replace the PDF in the project folder (is it open in another program?); "
+            .. "the original PDF is used: " .. job.src, true, "library")
+          Project.finish_copy(job, job.src)
+          return
+        end
+      end
       local ok = os.rename(job.part, job.dst)
       if ok then
+        if bak then os.remove(bak) end
         Project.finish_copy(job, job.dst)
       else
+        if bak then os.rename(bak, job.dst) end -- put the old file back
         os.remove(job.part)
         Msg.notify("Could not finish the copy (is the file in use?); the original PDF is used: "
           .. job.src, true, "library")
@@ -1794,9 +1836,13 @@ function Nav.timeline_tick(is_play, overriding, page_pts, scroll_pts)
 
   -- find the page segment containing pos
   local seg_lo, seg_hi, page = lo, hi, nil
+  -- "Turn pages early" (P.turn_early beats): a page turn counts as reached that many beats before
+  -- its time, so you can read ahead. The new page starts at the top until its scroll points come.
+  local pos_page = pos
+  if P.turn_early > 0 then pos_page = r.TimeMap2_QNToTime(0, r.TimeMap2_timeToQN(0, pos) + P.turn_early) end
   for _, pp in ipairs(page_pts) do
     if pp.t >= lo and pp.t < hi then
-      if pp.t <= pos then page = pp.page; seg_lo = pp.t
+      if pp.t <= pos_page then page = pp.page; seg_lo = pp.t
       else seg_hi = math.min(seg_hi, pp.t); break end
     end
   end
@@ -4204,8 +4250,10 @@ function UI.draw_cue_list(ctx)
 end
 function UI.draw_autoscroll_tab(ctx)
   local ch
-  UI.heading(ctx, "Mode", "Autoscroll mode: saved in this project.\n"
-    .. "Default for new projects: saved on this computer (the mode of a project where you have not chosen one).")
+  UI.heading(ctx, "Mode", "Autoscroll mode and Turn pages: saved in this project.\n"
+    .. "Default for new projects: saved on this computer (the mode of a project where you have not chosen one).\n\n"
+    .. "Turn pages: show the next page a little before its page turn (PDFPAGE marker or page-turn cue), "
+    .. "so you can read ahead.")
   local mi = 0
   for i, m in ipairs(SCROLL_MODES) do if m == Nav.scroll_mode() then mi = i - 1 end end
   UI.field(ctx, "Autoscroll mode")
@@ -4223,6 +4271,18 @@ function UI.draw_autoscroll_tab(ctx)
   if mode == "off" then
     UI.note(ctx, "Autoscroll is off. The page moves only when you scroll it.", COL.GREY)
     return
+  end
+  -- turn pages early (Markers and Cue list), saved in this project like the mode
+  do
+    local EARLY = { 0, 0.5, 1, 2 }
+    local ei = 0
+    for i, v in ipairs(EARLY) do if math.abs(P.turn_early - v) < 1e-6 then ei = i - 1 end end
+    UI.field(ctx, "Turn pages")
+    local ech
+    ech, ei = ImGui.Combo(ctx, "##turnearly", ei, "On time\0Half a beat early\0One beat early\0Two beats early\0")
+    if ech then P.turn_early = EARLY[ei + 1]; Util.mark_pdirty() end
+    UI.tip(ctx, "Shows the next page a little before its page turn, so you can read ahead.\n"
+      .. "The new page starts at the top. Saved in this project.")
   end
 
   -- only the settings of the chosen mode are shown
@@ -4647,6 +4707,7 @@ If you scroll by hand during playback, autoscroll waits a moment and then contin
 - Example for a 2-page song: PDFPAGE 1 at the start, PDFSCROLL 0 at bar 1, PDFSCROLL 100 at bar 16, PDFPAGE 2 at bar 17, PDFSCROLL 0 at bar 17, PDFSCROLL 100 at bar 32.
 - Marker names are not case-sensitive ("pdfpage 2" works). Markers with a wrong number are ignored and listed as a warning.
 - A PDFPAGE marker always starts the page at the top. If a PDFSCROLL marker is at exactly the same time, the PDFSCROLL marker wins.
+- "Turn pages" (Settings > Autoscroll): "One beat early" shows the next page one beat before its PDFPAGE marker or page-turn cue, so you can read ahead. It is saved in the project.
 - The smooth movement never continues past a PDFPAGE marker.
 - With regions, the markers inside a region control the PDF of that region. They work from the region start to the region end.
 - Manual scrolling (wheel, drag, MIDI) pauses autoscroll for 1.5 seconds.
