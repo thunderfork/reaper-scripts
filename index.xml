@@ -1,2 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="thunderfork"/>
+<index version="1" name="thunderfork" commit="ab96a3162af128d3f1f07acc5503640fab38d53c">
+  <category name="Chart Cue">
+    <reapack name="Chart Cue.lua" type="script" desc="Chart Cue: Open PDF Viewer">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Chart Cue - PDF Viewer for REAPER. Shows PDF charts and scrolls them with markers, cue lists, MIDI CC, mouse wheel or dragging. Windows only. Needs the ReaImGui extension (ReaPack: ReaTeam Extensions).\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0" author="Nick Gkogkomitros" time="2026-11-02T15:58:10Z">
+        <changelog><![CDATA[First public version.]]></changelog>
+        <source main="main">https://github.com/thunderfork/chart-cue/raw/45ea4bb7f0936c4bd443f08c2cd2f3dd1de36f27/Chart%20Cue/Chart%20Cue.lua</source>
+        <source main="main" file="Chart Cue - Next page.lua">https://github.com/thunderfork/chart-cue/raw/45ea4bb7f0936c4bd443f08c2cd2f3dd1de36f27/Chart%20Cue/Chart%20Cue%20-%20Next%20page.lua</source>
+        <source main="main" file="Chart Cue - Previous page.lua">https://github.com/thunderfork/chart-cue/raw/45ea4bb7f0936c4bd443f08c2cd2f3dd1de36f27/Chart%20Cue/Chart%20Cue%20-%20Previous%20page.lua</source>
+        <source main="main" file="Chart Cue - Toggle performance mode.lua">https://github.com/thunderfork/chart-cue/raw/45ea4bb7f0936c4bd443f08c2cd2f3dd1de36f27/Chart%20Cue/Chart%20Cue%20-%20Toggle%20performance%20mode.lua</source>
+      </version>
+    </reapack>
+  </category>
+</index>
