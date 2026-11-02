@@ -1092,15 +1092,10 @@ function Project.script_markers(lo, hi)
 end
 
 -- Asks, then removes the Chart Cue markers in [lo, hi) as ONE undo step (Ctrl+Z brings them back).
+-- Removes the Chart Cue markers between lo and hi (asked first by UI.ask_remove_markers).
 function Project.remove_script_markers(lo, hi, where)
   local idx = Project.script_markers(lo, hi)
-  if #idx == 0 then
-    Msg.notify("There are no PDFPAGE / PDFSCROLL markers in " .. where .. ".", false, "cues"); return
-  end
-  local ans = r.ShowMessageBox(string.format(
-    "Remove %d PDFPAGE / PDFSCROLL marker(s) in %s?\n\nOnly Chart Cue markers are removed. Regions and other markers are not changed.\n"
-    .. "You can undo this with Edit > Undo (Ctrl+Z).", #idx, where), CFG.TITLE, 1)
-  if ans ~= 1 then return end
+  if #idx == 0 then return end
   r.Undo_BeginBlock()
   for _, i in ipairs(idx) do r.DeleteProjectMarkerByIndex(0, i) end
   r.Undo_EndBlock("Chart Cue: remove PDFPAGE / PDFSCROLL markers", -1)
@@ -3208,6 +3203,37 @@ function UI.note(ctx, text, col)
 end
 
 -- The message area of a section: the latest message of `source`, always under its buttons.
+-- Inline confirmation (in place of a message box): UI.ask() arms it, UI.draw_ask() shows the
+-- question with a red "Yes, ..." and a "Cancel" button at the place where it was asked.
+function UI.ask(id, text, yes_label, run)
+  R.ask = { id = id, text = text, yes = yes_label, run = run }
+end
+
+function UI.draw_ask(ctx, id)
+  local a = R.ask
+  if not a or a.id ~= id then return end
+  UI.note(ctx, a.text, COL.YELLOW)
+  ImGui.PushID(ctx, "ask_" .. id)
+  local _, cw = UI.row_start(ctx)
+  local hw = math.floor((cw - 8) / 2)
+  local yes = UI.row_button(ctx, a.yes, hw, true)
+  ImGui.SameLine(ctx, 0, 8)
+  local no = UI.button(ctx, "Cancel", cw - hw - 8, UI.h(ctx))
+  ImGui.PopID(ctx) -- always paired with PushID above
+  if yes then R.ask = nil; a.run() elseif no then R.ask = nil end
+end
+
+-- "Remove PDF markers...": asks first, with the number of markers and where they are.
+function UI.ask_remove_markers(id, lo, hi, where)
+  local n = #Project.script_markers(lo, hi)
+  if n == 0 then
+    Msg.notify("There are no PDFPAGE / PDFSCROLL markers in " .. where .. ".", false, "cues"); return
+  end
+  UI.ask(id, string.format("Remove %d PDFPAGE / PDFSCROLL marker(s) in %s? Only Chart Cue markers are removed. "
+    .. "Regions and other markers are not changed. Edit > Undo (Ctrl+Z) brings them back.", n, where),
+    "Yes, remove", function() Project.remove_script_markers(lo, hi, where) end)
+end
+
 function UI.section_msg(ctx, source)
   local m = Msg.recent(source)
   if not m then return end
@@ -3975,22 +4001,23 @@ function UI.draw_cue_list(ctx)
       Msg.notify("There are no cues to remove.", false, "cues")
     else
       local what = all and "all songs" or (reg and ('"' .. reg.name .. '"') or "the whole project")
-      local ans = r.ShowMessageBox(string.format("Remove all %d cue(s) of %s?\n\nThis cannot be undone.", count, what),
-        CFG.TITLE, 1)
-      if ans == 1 then
-        Cues.remove_all(key)
-        Msg.notify(string.format("%d cue(s) removed.", count), false, "cues")
-      end
+      UI.ask("cues_all", string.format("Remove all %d cue(s) of %s? This cannot be undone.", count, what),
+        "Yes, remove", function()
+          Cues.remove_all(key)
+          Msg.notify(string.format("%d cue(s) removed.", count), false, "cues")
+        end)
     end
   end
   -- remove the Chart Cue markers of this song (or of all songs) - e.g. after copying them into cues
   if c3 then
-    if all or not reg then Project.remove_script_markers(-math.huge, math.huge, "the whole project")
-    else Project.remove_script_markers(reg.start, reg.stop, '"' .. reg.name .. '"') end
+    if all or not reg then UI.ask_remove_markers("cue_markers", -math.huge, math.huge, "the whole project")
+    else UI.ask_remove_markers("cue_markers", reg.start, reg.stop, '"' .. reg.name .. '"') end
   end
   UI.tip(ctx, (all and "All songs: " or "This song: ")
     .. "removes only markers named PDFPAGE ... or PDFSCROLL ... (one undo step).\n"
     .. "Use it after 'Copy markers into cues', so a setlist program sees no extra markers.")
+  UI.draw_ask(ctx, "cues_all")
+  UI.draw_ask(ctx, "cue_markers")
   UI.section_msg(ctx, "cues")
 
   -- lists
@@ -4050,10 +4077,11 @@ function UI.draw_autoscroll_tab(ctx)
   if UI.full_button(ctx, "Rescan project##markers", "primary") then Project.rescan("cues") end
   UI.tip(ctx, "Markers and regions are rescanned automatically after each project change.\nUse this only if something looks wrong.")
   if UI.danger_button(ctx, "Remove PDF markers...##markers") then
-    Project.remove_script_markers(-math.huge, math.huge, "the whole project")
+    UI.ask_remove_markers("markers_all", -math.huge, math.huge, "the whole project")
   end
   UI.tip(ctx, "Removes only Chart Cue markers (names starting with PDFPAGE or PDFSCROLL).\n"
     .. "Regions and other markers are not changed. One undo step (Ctrl+Z).")
+  UI.draw_ask(ctx, "markers_all")
   UI.section_msg(ctx, "cues")
   local nwarn = #R.marker_warns
   UI.note(ctx, string.format("%d PDFSCROLL markers, %d PDFPAGE markers, %d invalid.", #R.scroll_pts, #R.page_pts, nwarn),
@@ -4185,12 +4213,8 @@ function UI.draw_poppler_settings(ctx)
   else UI.note(ctx, "OK - pdftoppm.exe and pdfinfo.exe found.", COL.GREEN) end
 end
 
--- "Reset all settings": back to the defaults copied before settings.ini was read.
+-- "Reset all settings": back to the defaults copied before settings.ini was read (asked first, inline).
 function UI.reset_all_settings()
-  local ans = r.ShowMessageBox("Reset all Chart Cue settings on this computer to the defaults?\n\n"
-    .. "This resets the PDF engine, page sharpness, window, MIDI and autoscroll settings.\n"
-    .. "Your projects (library, regions) are not changed.", CFG.TITLE, 1)
-  if ans ~= 1 then return end
   for k, v in pairs(CFG.S_DEFAULTS) do
     if not CFG.KEEP_ON_RESET[k] then S[k] = v end
   end
@@ -4314,7 +4338,12 @@ function UI.draw_display_tab(ctx)
     R.reset_layout = true
     Msg.notify("Window layout reset.", false, "display")
   end
-  if UI.danger_button(ctx, "Reset all settings...") then UI.reset_all_settings() end
+  if UI.danger_button(ctx, "Reset all settings...") then
+    UI.ask("reset_all", "Reset all Chart Cue settings on this computer to the defaults? This resets the PDF engine, "
+      .. "page sharpness, window, MIDI and autoscroll settings. Your projects (library, regions, cues) are not changed.",
+      "Yes, reset", UI.reset_all_settings)
+  end
+  UI.draw_ask(ctx, "reset_all")
   UI.section_msg(ctx, "display")
 end
 
