@@ -38,7 +38,8 @@
   Requirements: REAPER 7 or newer on Windows 10 / 11, and ReaImGui 0.9.3 or newer (ReaPack).
   Optional: Poppler (pdftoppm.exe, pdfinfo.exe) as an alternative PDF engine, and the
   "Chart Cue - Next page / Previous page / Toggle performance mode" action scripts.
-  Install: Actions > Show action list > New action... > Load ReaScript... > pick this file.
+  Install: with ReaPack (https://github.com/thunderfork/chart-cue/raw/main/index.xml), or
+  Actions > Show action list > New action... > Load ReaScript... > pick this file.
   Settings are saved in the .rpp (project) and in settings.ini (global).
   See the in-app Help ("?" at the end of the tab strip) for all features.
 ]]
