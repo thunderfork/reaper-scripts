@@ -1091,14 +1091,13 @@ function Project.script_markers(lo, hi)
   return idx
 end
 
--- Asks, then removes the Chart Cue markers in [lo, hi) as ONE undo step (Ctrl+Z brings them back).
 -- Removes the Chart Cue markers between lo and hi (asked first by UI.ask_remove_markers).
 function Project.remove_script_markers(lo, hi, where)
   local idx = Project.script_markers(lo, hi)
   if #idx == 0 then return end
   r.Undo_BeginBlock()
   for _, i in ipairs(idx) do r.DeleteProjectMarkerByIndex(0, i) end
-  r.Undo_EndBlock("Chart Cue: remove PDFPAGE / PDFSCROLL markers", -1)
+  r.Undo_EndBlock("Chart Cue: remove PDF markers", -1)
   r.UpdateTimeline()
   Project.scan_project()
   Msg.notify(string.format("%d marker(s) removed from %s.", #idx, where), false, "cues")
@@ -2742,7 +2741,8 @@ function UI.autoscroll_state_text()
   local mode = Nav.scroll_mode()
   if mode == "off" then return "Off" end
   local names = { marker = "Markers", fixed = "Fixed speed", cues = "Cue list" }
-  return names[mode] .. (R.autoscroll_active and " (active)" or " (armed)")
+  -- words, not colour only: "moving" while the page is moved, "ready" while REAPER does not play
+  return names[mode] .. (R.autoscroll_active and " (moving)" or " (ready)")
 end
 
 function UI.midi_in_use() return S.direct_midi or R.last_cc ~= nil end
@@ -3227,9 +3227,9 @@ end
 function UI.ask_remove_markers(id, lo, hi, where)
   local n = #Project.script_markers(lo, hi)
   if n == 0 then
-    Msg.notify("There are no PDFPAGE / PDFSCROLL markers in " .. where .. ".", false, "cues"); return
+    Msg.notify("There are no PDF markers in " .. where .. ".", false, "cues"); return
   end
-  UI.ask(id, string.format("Remove %d PDFPAGE / PDFSCROLL marker(s) in %s? Only Chart Cue markers are removed. "
+  UI.ask(id, string.format("Remove %d PDF marker(s) in %s? Only PDF markers (PDFPAGE / PDFSCROLL) are removed. "
     .. "Regions and other markers are not changed. Edit > Undo (Ctrl+Z) brings them back.", n, where),
     "Yes, remove", function() Project.remove_script_markers(lo, hi, where) end)
 end
@@ -3478,7 +3478,9 @@ function UI.filter_row(ctx, labels, sel)
     ImGui.PushStyleColor(ctx, ImGui.Col_Button(), on and COL.ACCENT or COL.BTN)
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered(), on and COL.ACCENT_HOVER or COL.BTN_HOVER)
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive(), COL.ACCENT_ACTIVE)
+    if on then UI.push_bold_font(ctx) end -- the selected filter is bold too, not only coloured
     if UI.button(ctx, l .. "##flt" .. i, bw, UI.h(ctx)) then new = i - 1 end
+    if on then UI.pop_font(ctx) end -- always paired with push_bold_font above
     ImGui.PopStyleColor(ctx, 3)
   end
   return new
@@ -3913,7 +3915,7 @@ end
 -- Cue list editor (Autoscroll tab, shown when the mode is "Cue list")
 function UI.draw_cue_list(ctx)
   local ch
-  UI.heading(ctx, "Cue list", "A cue list does the same as PDFPAGE / PDFSCROLL markers, but it is stored in the project "
+  UI.heading(ctx, "Cue list", "A cue list does the same as PDF markers (PDFPAGE / PDFSCROLL), but it is stored in the project "
     .. "data, not as markers. Use it when another program (for example a setlist program) must not see extra markers.\n\n"
     .. "Easiest way: turn on 'Record cues' (R), play the song and press 'Add page turn' (C key) at each page turn, and 'Add scroll point' "
     .. "(S key) where the page must move. A MIDI button can do the same (Settings > MIDI).\n\n"
@@ -3985,13 +3987,13 @@ function UI.draw_cue_list(ctx)
       n = Cues.convert_markers(reg)
     end
     if n > 0 then
-      Msg.notify(string.format("%d cue(s) made from markers. You can now delete the PDFPAGE / PDFSCROLL markers in REAPER.", n), false, "cues")
+      Msg.notify(string.format("%d cue(s) made from markers. You can now remove the PDF markers.", n), false, "cues")
     else
       Msg.notify("No PDFPAGE or PDFSCROLL markers found.", false, "cues")
     end
   end
-  UI.tip(ctx, all and "Copies the PDFPAGE / PDFSCROLL markers of every song into its cue list."
-    or "Copies the PDFPAGE / PDFSCROLL markers of this song into its cue list.")
+  UI.tip(ctx, all and "Copies the PDF markers of every song into its cue list."
+    or "Copies the PDF markers of this song into its cue list.")
   local c2, c3 = UI.button_pair(ctx, "Remove all cues...", "Remove PDF markers...", true)
   if c2 then
     local key = all and "_all" or Cues.key(reg)
@@ -4079,7 +4081,7 @@ function UI.draw_autoscroll_tab(ctx)
   if UI.danger_button(ctx, "Remove PDF markers...##markers") then
     UI.ask_remove_markers("markers_all", -math.huge, math.huge, "the whole project")
   end
-  UI.tip(ctx, "Removes only Chart Cue markers (names starting with PDFPAGE or PDFSCROLL).\n"
+  UI.tip(ctx, "Removes only PDF markers (names starting with PDFPAGE or PDFSCROLL).\n"
     .. "Regions and other markers are not changed. One undo step (Ctrl+Z).")
   UI.draw_ask(ctx, "markers_all")
   UI.section_msg(ctx, "cues")
@@ -4295,7 +4297,7 @@ function UI.draw_display_tab(ctx)
   UI.heading(ctx, "Advanced", "Write diagnostic log: writes technical events (visibility, docking, recovered errors) "
     .. "to the REAPER console. Use it only to report a problem.\n\n"
     .. "Show MIDI debug: shows the last CC number and value that Chart Cue received.\n\n"
-    .. "Render cache: prepared page images are stored on disk so a PDF opens fast the next time. "
+    .. "Page cache: the pages are stored on disk so a PDF opens fast the next time. "
     .. "Clearing it never deletes the page on screen; pages are prepared again when needed.\n\n"
     .. "Reset all settings: sets the settings of this computer back to the defaults. "
     .. "Your projects (library, regions) are not changed.", "computer")
@@ -4307,21 +4309,21 @@ function UI.draw_display_tab(ctx)
   local clearing = R.cache_clear_t and Util.now() - R.cache_clear_t < 2 -- wait for the delete to run
   local size_label = (R.size_job or clearing) and "Calculating..."
     or (R.cache_size and (Util.fmt_bytes(R.cache_size) .. "  -  calculate again") or "Calculate")
-  if UI.full_button(ctx, size_label .. "##cachesize", "primary", "Render cache size") and not R.size_job and not clearing then
+  if UI.full_button(ctx, size_label .. "##cachesize", "primary", "Page cache size") and not R.size_job and not clearing then
     Util.start_dir_size(CFG.CACHE_ROOT, 3)
   end
-  UI.tip(ctx, "Total size of the prepared page images of all PDFs.\nFolder: " .. (R.cache_dir or CFG.CACHE_ROOT))
+  UI.tip(ctx, "Total size of the page cache of all PDFs.\nFolder: " .. (R.cache_dir or CFG.CACHE_ROOT))
   if not R.confirm then
-    local a, b = UI.button_pair(ctx, "Current PDF", "All PDFs", true, "Clear render cache")
+    local a, b = UI.button_pair(ctx, "Current PDF", "All PDFs", true, "Clear page cache")
     if a then R.confirm = "current" end
     if b then R.confirm = "all" end
   else
     UI.note(ctx, R.confirm == "all"
-      and "Delete ALL prepared page images? (The page on screen is kept.)"
-      or "Delete the prepared page images of the current PDF? (The page on screen is kept.)", COL.YELLOW)
+      and "Delete the whole page cache? (The page on screen is kept.)"
+      or "Delete the page cache of the current PDF? (The page on screen is kept.)", COL.YELLOW)
     local yes, no
     do -- "Yes, delete" red, "Cancel" normal, in the same row
-      local cx, cw = UI.row_start(ctx, "Clear render cache")
+      local cx, cw = UI.row_start(ctx, "Clear page cache")
       local hw = math.floor((cw - 8) / 2)
       yes = UI.row_button(ctx, "Yes, delete", hw, true)
       ImGui.SameLine(ctx, 0, 8)
@@ -4330,7 +4332,7 @@ function UI.draw_display_tab(ctx)
     if yes then
       if R.confirm == "all" then PDF.clear_all_cache() else PDF.clear_current_cache() end
       R.confirm = nil; R.cache_size = nil
-      Msg.notify("Render cache cleared.", false, "display")
+      Msg.notify("Page cache cleared.", false, "display")
     end
     if no then R.confirm = nil end
   end
@@ -4431,7 +4433,7 @@ Click a tab to open it. Click the same tab again to hide it and get more space f
     more = [==[
 - You can dock the Chart Cue window like any other REAPER window. Chart Cue remembers where it was.
 - The first time a PDF opens, Chart Cue prepares the pages in the background ("Loading PDF" and "Preparing page"). After that, the PDF opens at once.
-- The status bar at the bottom shows the scroll position, the current region and the autoscroll mode. Its second line shows the most important message, for example an error or a hint.
+- The status bar at the bottom shows the scroll position, the current region and the autoscroll mode. Its second line shows the most important message, for example an error or a hint. When there is no message, it shows the page ("Page 2 / 5") and, in the Cue list and Markers modes, the next page turn ("Next: page 3 at 17.1.00"). Without a PDF, it shows the keyboard shortcuts.
 - Most settings have a round "?" icon. Move the mouse over it for a short explanation.]==] },
 
   { title = "Library: your PDFs", text = [==[
@@ -4510,8 +4512,8 @@ If you scroll by hand during playback, autoscroll waits a moment and then contin
 - A page number higher than the last page of the song's PDF is not accepted.
 - "(all songs)" in the Song menu shows the cues of every song, with the song name above each list. "Remove all cues..." asks before it deletes.
 - "(whole project, no region)" is only for projects without regions. Its times count from the project start.
-- "Copy markers into cues" copies the PDFPAGE / PDFSCROLL markers of the song into its cue list. The markers stay.
-- "Remove PDF markers..." then removes them (for this song, for all songs, or in the Markers section for the whole project). Only Chart Cue markers are removed; regions and other markers are not changed. It is one undo step, so Edit > Undo (Ctrl+Z) brings them back.
+- "Copy markers into cues" copies the PDF markers (PDFPAGE / PDFSCROLL) of the song into its cue list. The markers stay.
+- "Remove PDF markers..." then removes them (for this song, for all songs, or in the Markers section for the whole project). Only PDF markers are removed; regions and other markers are not changed. It is one undo step, so Edit > Undo (Ctrl+Z) brings them back.
 - The cue list is saved in the project, like the library. Save the project after changes.]==] },
 
   { title = "MIDI controller", text = [==[
@@ -4540,7 +4542,7 @@ You can scroll the page with a knob, fader or endless encoder on a MIDI controll
 - Page brightness (Page section): lower than 100% makes the white paper darker for dark stages. 100% = not dimmed.
 - Page-turn flash (Page section): a short blue frame when the page turns during playback.
 - Comfortable layout (Window section): more empty space between rows and sections; buttons, fields and tabs keep their size.
-- Render cache (Advanced): Chart Cue keeps the prepared pages on your disk, so PDFs open fast. You can clear it at any time. It is filled again when needed.]==],
+- Page cache (Advanced): Chart Cue keeps the pages on your disk, so PDFs open fast. You can clear it at any time. It is filled again when needed.]==],
     more = [==[
 - "Match DPI to current view" sets the DPI that fits your current zoom.
 - Chart Cue prepares all pages of a PDF in the background. The pages near the current page come first.
@@ -4885,6 +4887,32 @@ end
 
 -- The project has cues or PDF markers that the current mode does not use:
 -- returns message, mode to switch to, button label (or nil).
+-- Status line 2 with a PDF open: "Page 2 / 5", plus "Next: page 3 at <time>" in the Cue list
+-- (time in the project's cue unit) and Markers modes. Rebuilt at most every 0.1 s.
+function UI.page_status_text()
+  local now = Util.now()
+  if R.page_status and now - R.page_status_t < 0.1 then return R.page_status end
+  local txt = string.format("Page %d / %d", S.page, R.total)
+  local mode, t = Nav.scroll_mode(), Project.time_pos()
+  if mode == "cues" then
+    local reg = Cues.playing_region()
+    local p = Cues.from_time(reg, t)
+    for _, c in ipairs(Cues.list(reg)) do
+      if c.page and c.pos > p + 1e-6 then
+        txt = txt .. string.format("  |  Next: page %d at %s", c.page, Cues.label(reg, c.pos)); break
+      end
+    end
+  elseif mode == "marker" then
+    for _, m in ipairs(R.page_pts) do
+      if m.t > t + 1e-6 then
+        txt = txt .. string.format("  |  Next: page %d at %s", m.page, r.format_timestr_pos(m.t, "", 2)); break
+      end
+    end
+  end
+  R.page_status, R.page_status_t = txt, now
+  return txt
+end
+
 function UI.mode_hint()
   local mode = Nav.scroll_mode()
   local ncues = 0
@@ -4951,6 +4979,8 @@ function UI.draw_status(ctx)
     ImGui.TextColored(ctx, COL.YELLOW, "Cue list is on, but this song has no cues yet (Cues tab).")
   elseif Nav.scroll_mode() == "marker" and #R.scroll_pts == 0 and #R.page_pts == 0 then
     ImGui.TextColored(ctx, COL.YELLOW, "Marker autoscroll is on but no PDFSCROLL or PDFPAGE markers were found.")
+  elseif R.total > 0 then
+    ImGui.Text(ctx, UI.trunc_text(ctx, UI.page_status_text(), aw - 6))
   else
     ImGui.TextDisabled(ctx, UI.trunc_text(ctx, "Arrows/PgUp/PgDn page | Home top | Ctrl +/-/0 zoom | F performance | L lock | R record cues | C page turn | S scroll point", aw - 6))
   end

@@ -33,7 +33,14 @@
 - Items 10–11: cue fields keep a wrong value with a red border and a reason (UI.mark_invalid, R.cue_err), Esc restores; scroll % no longer deleted by a wrong value. Msg.notify sticky flag with an "x" (7 messages).
 - Cue undo: postponed. Open question: does REAPER undo restore SetProjExtState data? Test script in the chat of 2 November 2026. "before" -> REAPER undo blocks; "after" -> own multi-level snapshot stack.
 
-## Pass 2 (item 9), decisions agreed
+- Item 9 (commit d9adc5c): inline confirmations (UI.ask / UI.draw_ask) for remove all cues, remove PDF markers, reset all settings. Message boxes kept on purpose: ReaImGui missing, same-name file in project folder (3 choices), Open automatically (shows the __startup.lua lines).
+- Pass 3, items 13–15: bold selected filter; autoscroll "(ready)" / "(moving)"; status line 2 "Page 2 / 5  |  Next: page 3 at ..." (UI.page_status_text, cached 0.1 s); one term each: "page cache", "PDF markers".
+
+## Future consideration (not planned)
+- Cue undo: see the open question above.
+- UI scale 100 / 125 / 150 % (item 12): high risk, fonts must be rebuilt between frames and all pixel constants in CFG must scale.
+
+## Old plan text (done, kept for reference)
 9. Inline confirmation (yellow note + red "Yes, ..." + "Cancel") instead of ShowMessageBox for: remove all cues, remove PDF markers, reset all settings. "Undo last cue change" button in the Cues tab (one-level snapshot of P.cues). Decide: own snapshot or REAPER undo (Undo_BeginBlock). Fix the "cannot be undone" texts.
 10. Cue table validation: keep the typed text, red border, reason as the tooltip. No silent revert.
 11. Msg.notify sticky flag with a small "x". One sticky message at a time; a new one replaces it. Use it for SWS steps, "Restart REAPER once" and copy-complete messages.
