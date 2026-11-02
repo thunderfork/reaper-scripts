@@ -42,7 +42,25 @@
 
 - Removed (approved): Fixed speed mode (S.autoscroll_pps, S.auto_page_turn removed; P.fixed_start and scroll_mode=fixed still read/written so the saved text and "Save as" detection stay the same; "fixed" means "off"); "Continue after region end" (always off; P.continue_after_end still read/written). Page cache in one row with "Clear..." (UI.ask); DPI shown as text with "Change". Cue list: "#" column numbered across all songs, "Position" title.
 
+- REAPER actions: "Chart Cue - Next page / Previous page / Toggle performance mode.lua" write to ExtState "cmd_q" (next, prev, perf); Chart Cue reads it in Midi.poll_forwarded_midi, also in lock mode; cleared at start and close. deploy.ps1 copies them next to Chart Cue.lua. README.md added.
+
+## Release checklist (do before sharing a new version)
+1. Version: @version and CFG.VERSION are equal; @changelog has 1–3 user-facing lines.
+2. Start: Chart Cue starts without errors; the last tab and the open Settings section come back.
+3. Project data: set a mode, Seconds, "Turn pages", a PDF; close and open Chart Cue, then save, close and reopen the project: all values come back.
+4. Save as: "Save as" keeps Chart Cue open with the same data; File > Open of another project in the same tab loads that project's data (or closes Chart Cue with "Close with project").
+5. Project tabs: switch between 2 open projects; each shows its own library and cues.
+6. PDFs: add a PDF and a folder; copy into the project; replace a PDF with a different file of the same name; relocate a missing PDF. Use a Greek folder and file name with spaces and an apostrophe.
+7. Engines: open a PDF with the Windows engine and with Poppler; clear the page cache while a PDF is open.
+8. Regions: rename, move, undo, save and reopen: the PDF assignment stays. "Keep last page" during playback in a region without a PDF; the page can be turned.
+9. Cues: record page turns and scroll points (Record on and off, Lock on); insert a cue between 2 cues; switch Beats / Seconds; a wrong value shows a red border.
+10. Markers: PDFPAGE / PDFSCROLL markers scroll the page; "Remove PDF markers..." asks first and Ctrl+Z brings them back.
+11. Control: keys (window active); the 3 actions (window not active, also in lock mode); MIDI absolute and relative; MIDI page turns and cue buttons.
+12. Stage: performance mode on / off; lock; hide controls when playing; page brightness.
+13. Large set: a 300-page PDF and a project with 30 regions: start time, page cache size, smooth playback.
+
 ## Future consideration (not planned)
+- Half-page turn (top half shows the next page while the bottom of the current page is still read).
 - Cue list columns: centred layout was rejected; look again later.
 - Confirmation (or undo) for the single-row cue "Remove".
 - One shared confirmation pattern: port R.confirm (page cache) and R.confirm_remove (Library) to UI.ask.
