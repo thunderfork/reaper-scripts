@@ -35,7 +35,7 @@ Windows only.
 1. Copy `Chart Cue.lua` into your REAPER `Scripts` folder. Options > Show REAPER resource path opens the folder that contains it.
 2. Optional: copy the 3 files `Chart Cue - Next page.lua`, `Chart Cue - Previous page.lua` and `Chart Cue - Toggle performance mode.lua` into the same folder.
 3. In REAPER, open Actions > Show action list > New action > Load ReaScript..., and load `Chart Cue.lua` and the optional files.
-4. Run the action "Chart Cue". To open Chart Cue automatically with your projects, use Settings > Project > Open automatically.
+4. Run the action "Chart Cue". To open Chart Cue automatically with your projects, use Settings > General > Open automatically.
 
 ## First steps
 

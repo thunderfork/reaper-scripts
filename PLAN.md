@@ -63,7 +63,7 @@
 - Half-page turn (top half shows the next page while the bottom of the current page is still read).
 - Cue list columns: centred layout was rejected; look again later.
 - Confirmation (or undo) for the single-row cue "Remove".
-- One shared confirmation pattern: port R.confirm (page cache) and R.confirm_remove (Library) to UI.ask.
+- One shared confirmation pattern: done (the Library remove question uses UI.ask, 2026-11-02).
 - Settings: inner headings look like the section headers.
 - No way to show the mode hint again after "Not now".
 - Cue undo: see the open question above.

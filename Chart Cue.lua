@@ -267,7 +267,7 @@ local S = {
   panel_h = 0,                 -- 0 = automatic (~40% of free height); otherwise the user's dragged height
   win_x = CFG.DEFAULT_WIN[1], win_y = CFG.DEFAULT_WIN[2], win_w = CFG.DEFAULT_WIN[3], win_h = CFG.DEFAULT_WIN[4],
   dock_id = 0,
-  log_diag = false,            -- "Write diagnostic log" (Settings > Display and view > Troubleshooting)
+  log_diag = false,            -- "Write diagnostic log" (Settings > General > Troubleshooting)
 }
 CFG.S_DEFAULTS = {}   -- copy of the defaults (before settings.ini is read), for "Reset all settings"
 for k, v in pairs(S) do CFG.S_DEFAULTS[k] = v end
@@ -362,14 +362,14 @@ local R = {
   cleared_key = nil,           -- key of the region we cleared the display for
   empty_sel = 0, empty_sel_key = nil, choose_existing = false,
   -- UI state
-  lib_filter = "", lib_sort = 0, confirm_remove = nil, region_filter = 0, region_search = "",
+  lib_filter = "", lib_sort = 0, region_filter = 0, region_search = "",
   picker = nil, import = nil, msg = nil,
   ask = nil,                   -- the open inline question (UI.ask / UI.draw_ask)
   dpi_manual = false,          -- "Change" was clicked: the DPI number field is shown
   ext_count = 0, ext_count_t = nil, -- Library: PDFs outside the project folder (counted every 0.5 s)
   lib_name_w = nil, region_name_w = nil, -- widest name in the PDF / region list (column widths)
   region_show = nil,           -- the Regions "Show" menu text (rebuilt when a count changes)
-  page_status = nil, page_status_t = 0, -- status line 2 page text (rebuilt every 0.1 s)
+  page_status = nil, page_status_t = 0, -- status line 1 "Next: page ..." text, false = none (rebuilt every 0.1 s)
   no_guid_logged = 0,          -- regions without a GUID in the last diagnostic message
   tab_font = nil, tab_font_big = nil, big_font = nil,
   -- window / docking state
@@ -2099,7 +2099,7 @@ function Project.check_project(force)
   R.plast_txt = (src == "rpp") and Project.serialize_cfg() or nil
   Project.resolve_paths() -- find PDFs relative to the (possibly moved) project folder
   R.cur_region_key = nil; R.active_region = nil
-  R.mpage_last = nil; R.warn = nil; R.import = nil; R.confirm_remove = nil
+  R.mpage_last = nil; R.warn = nil; R.import = nil; R.ask = nil
   R.empty_region = nil; R.stash_pdf = nil; R.cleared_key = nil; R.choose_existing = false
   Project.cancel_copies() -- pending copies belong to the project we left
   Project.scan_project()
@@ -2267,7 +2267,7 @@ try {
 ]=]
 
 -- One message system: a message shows for CFG.MSG_SECONDS in the status bar and, when it has a
--- source ("library", "regions", "cues", "display", "project", "help"), also in that section of the UI.
+-- source ("library", "regions", "cues", "display", "layout", "project", "general", "help"), also in that section of the UI.
 -- sticky: the message stays until its "x" is clicked or another message replaces it
 -- (use it for messages that ask the user to do something).
 function Msg.notify(msg, is_err, source, sticky)
@@ -2624,7 +2624,7 @@ local SORT_ITEMS = "Sort: Name\0Sort: Page count\0Sort: Recently added\0"
 local TAB_NAMES = { "Library", "Regions", "Cues", "Settings" }
 local TAB_REGIONS = 2
 local TAB_CUES = 3
-local TAB_FIRST_SETTING = 4      -- the Settings tab (Autoscroll, MIDI, Display, Project sections)
+local TAB_FIRST_SETTING = 4      -- the Settings tab (Autoscroll, MIDI, Display, General sections)
 local TAB_HELP = #TAB_NAMES + 1   -- the "?" button at the end of the tab strip
 
 function Nav.effective_scale(iw, ih, view_w, view_h)
@@ -2768,7 +2768,7 @@ function Autostart.install()
     .. "Your own code in that file is not changed. A backup is saved as __startup.lua.chartcue-backup.\n"
     .. "Restart REAPER once after this change.\n\n"
     .. "If some projects have an SWS startup action for Chart Cue, remove it there with the button "
-    .. "'Remove the SWS startup action' (Settings > Project) and save the project.\n\nContinue?", CFG.TITLE, 1)
+    .. "'Remove the SWS startup action' (Settings > General) and save the project.\n\nContinue?", CFG.TITLE, 1)
   if ans ~= 1 then return end
   if not Autostart.write_script() then
     Msg.notify("Cannot write " .. CFG.AUTOSTART_FILE, true, "project"); return
@@ -3804,7 +3804,13 @@ function UI.draw_library_tab(ctx)
     if UI.row_button(ctx, "Show in Explorer", EXP_W, "ghost") then Util.show_in_explorer(path) end
     UI.tip(ctx, "Opens the folder of this PDF in Windows Explorer.")
     ImGui.SameLine(ctx)
-    if UI.remove_x_button(ctx, "##remove", BTN_W) then R.confirm_remove = path end
+    if UI.remove_x_button(ctx, "##remove", BTN_W) then
+      local n = 0
+      for _, p in pairs(P.assign) do if Util.same_path(p, path) then n = n + 1 end end
+      UI.ask("lib_remove", n > 0 and string.format("Remove this PDF from the library? %d region assignment(s) will be cleared. "
+        .. "The file is not deleted.", n) or "Remove this PDF from the library? The file is not deleted.",
+        "Yes, remove", function() remove_path = path end, path)
+    end
     UI.tip(ctx, "Remove this PDF from the library (asks first). The file is not deleted.")
     if missing then
       local dir, rel = Project.dir(), P.rel[path]
@@ -3815,14 +3821,7 @@ function UI.draw_library_tab(ctx)
       UI.wrapped(ctx, string.format("Used by %d region(s).", Project.region_use_count(path)), COL.YELLOW)
       if UI.button(ctx, "Relocate...", CFG.MEDIUM_BTN_W, 0) then relocate_path = path end
     end
-    if R.confirm_remove == path then
-      local n = 0
-      for _, p in pairs(P.assign) do if Util.same_path(p, path) then n = n + 1 end end
-      UI.wrapped(ctx, string.format("Remove this PDF? %d region assignment(s) will be cleared.", n), COL.YELLOW)
-      if UI.row_button(ctx, "Yes, remove", CFG.MEDIUM_BTN_W, true) then remove_path = path; R.confirm_remove = nil end
-      ImGui.SameLine(ctx)
-      if UI.button(ctx, "Cancel", CFG.SMALL_BTN_W, 0) then R.confirm_remove = nil end
-    end
+    if R.ask and R.ask.key == path then UI.draw_ask(ctx, "lib_remove", path) end
     ImGui.PopID(ctx)
   end
   UI.pop_row_style(ctx)
@@ -3960,23 +3959,17 @@ function UI.draw_regions_tab(ctx)
     if ch then Util.mark_dirty() end
     UI.tip(ctx, "During playback, a region without a PDF keeps the last page on screen, with a yellow note at the top.\n"
       .. "When playback stops, the region's buttons (add a PDF, choose, ignore) are shown.")
-    if UI.full_button(ctx, "Rescan project##regions", "primary") then Project.rescan("regions") end
+    if UI.full_button(ctx, "Rescan project##regions") then Project.rescan("regions") end
     UI.tip(ctx, "Markers and regions are rescanned automatically after each project change.\nUse this only if something looks wrong.")
     UI.section_msg(ctx, "regions")
   end -- "Region settings" open
 
   UI.group_sep(ctx)
-  UI.heading(ctx, string.format("Region list (%d)", #R.regions), "A region is matched to a PDF when its name matches the PDF filename.\n"
-    .. "Case and \".pdf\" are ignored; hyphens, underscores and repeated spaces count as one space.\n"
-    .. "Also ignored: a track number at the start (01), text in brackets (Bb), versions (v2) and part words "
-    .. "(bass, guitar, keys, piano, drums, vocals, chart, chords, lyrics, score, part...). "
-    .. "Joined words are split: \"songA\" matches \"Song A - Bass.pdf\".\n"
-    .. "Example: region \"Song One\" matches \"song one.pdf\".\n\n"
-    .. "Search: shows the regions whose name contains the text.\n"
-    .. "Show: all, needs PDF (no PDF or several matches), assigned, ignored.\n"
+  UI.heading(ctx, string.format("Region list (%d)", #R.regions), "A region gets the PDF with the same name, for example \"Song One\" and \"01 Song One (Bb).pdf\". "
+    .. "The full rules are in Help > Regions.\n\n"
     .. "Symbol: green filled circle = has a PDF, yellow ring = needs a PDF, grey dash = ignored.\n"
-    .. "Blue row = the region under the play cursor / edit cursor.\n"
-    .. "Click a region row to move the edit cursor to its start.", "project")
+    .. "Blue row = the region at the play cursor (edit cursor when stopped).\n"
+    .. "Click a row to move the edit cursor to the region start.", "project")
   if #R.regions == 0 then ImGui.TextDisabled(ctx, "No regions in this project."); return end
   -- search + "Show" menu, the same row as in the Library (menu text rebuilt only when a count changes)
   local c = UI.region_counts()
@@ -4315,21 +4308,9 @@ function UI.draw_autoscroll_tab(ctx)
   UI.field(ctx, "Autoscroll mode")
   ch, mi = ImGui.Combo(ctx, "##ascroll", mi, SCROLL_ITEMS)
   if ch then Nav.set_scroll_mode(SCROLL_MODES[mi + 1]) end
-  -- default for projects that have no mode of their own (S.scroll_mode)
-  local di = 0
-  for i, m in ipairs(SCROLL_MODES) do if m == S.scroll_mode then di = i - 1 end end
-  UI.field(ctx, "Default for new projects")
-  ch, di = ImGui.Combo(ctx, "##ascrolldef", di, SCROLL_ITEMS)
-  if ch then S.scroll_mode = SCROLL_MODES[di + 1]; Util.mark_dirty() end
-  UI.scope_after(ctx, "computer")
-  UI.tip(ctx, "The mode of a project where you have not chosen a mode yet.")
   local mode = Nav.scroll_mode()
-  if mode == "off" then
-    UI.note(ctx, "Autoscroll is off. The page moves only when you scroll it.", COL.GREY)
-    return
-  end
   -- turn pages early (Markers and Cue list), saved in this project like the mode
-  do
+  if mode ~= "off" then
     local EARLY = { 0, 0.5, 1, 2 }
     local ei = 0
     for i, v in ipairs(EARLY) do if math.abs(P.turn_early - v) < 1e-6 then ei = i - 1 end end
@@ -4339,6 +4320,18 @@ function UI.draw_autoscroll_tab(ctx)
     if ech then P.turn_early = EARLY[ei + 1]; Util.mark_pdirty() end
     UI.tip(ctx, "Shows the next page a little before its page turn, so you can read ahead.\n"
       .. "The new page starts at the top. Saved in this project.")
+  end
+  -- default for projects that have no mode of their own (S.scroll_mode): last, it is saved on this computer
+  local di = 0
+  for i, m in ipairs(SCROLL_MODES) do if m == S.scroll_mode then di = i - 1 end end
+  UI.field(ctx, "Default for new projects")
+  ch, di = ImGui.Combo(ctx, "##ascrolldef", di, SCROLL_ITEMS)
+  if ch then S.scroll_mode = SCROLL_MODES[di + 1]; Util.mark_dirty() end
+  UI.scope_after(ctx, "computer")
+  UI.tip(ctx, "The mode of a project where you have not chosen a mode yet.")
+  if mode == "off" then
+    UI.note(ctx, "Autoscroll is off. The page moves only when you scroll it.", COL.GREY)
+    return
   end
 
   -- only the settings of the chosen mode are shown
@@ -4351,7 +4344,7 @@ function UI.draw_autoscroll_tab(ctx)
     .. "If a PDFSCROLL marker occurs at the same time, PDFSCROLL wins.\n"
     .. "Marker names are case-insensitive.\n\n"
     .. "The markers inside a region work from the region start to the region end.", "project")
-  local rs, rm = UI.button_pair2(ctx, "Rescan project##markers", "primary", "Remove PDF markers...##markers", "danger",
+  local rs, rm = UI.button_pair2(ctx, "Rescan project##markers", nil,"Remove PDF markers...##markers", "danger",
     "Markers and regions are rescanned automatically after each project change.\nUse this only if something looks wrong.",
     "Removes only PDF markers (names starting with PDFPAGE or PDFSCROLL).\n"
     .. "Regions and other markers are not changed. One undo step (Ctrl+Z).")
@@ -4371,8 +4364,21 @@ end
 function UI.draw_midi_tab(ctx)
   local ch
 
-  UI.heading(ctx, "Mode", "MIDI control is optional. Ignore this tab if you do not use a controller.\n\n"
-    .. "Absolute: a knob/fader position (0-127) sets the scroll position.\n"
+  -- the input switch first: most options below need it
+  UI.heading(ctx, "Input", "MIDI control is optional. Ignore this section if you do not use a controller.\n\n"
+    .. "'Read MIDI directly' uses the CC numbers below. "
+    .. "Leave it off if the script is bound to a CC in the Action List.", "computer")
+  ch, S.direct_midi = UI.checkbox(ctx, "Read MIDI directly", S.direct_midi)
+  UI.tip(ctx, "Reads the CC numbers below directly from your MIDI inputs (no Action List binding needed).")
+  if ch then
+    Util.mark_dirty()
+    if S.direct_midi and r.MIDI_GetRecentInputEvent then
+      R.last_midi_seq = (r.MIDI_GetRecentInputEvent(0)) or 0
+    end
+  end
+
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Scroll", "Absolute: a knob/fader position (0-127) sets the scroll position.\n"
     .. "Relative: an endless encoder moves the page up or down. Pick the encoding your controller sends.", "computer")
   UI.field(ctx, "MIDI mode")
   local mi = (S.mode == "absolute") and 0 or 1
@@ -4398,19 +4404,10 @@ function UI.draw_midi_tab(ctx)
     if ch then Util.mark_dirty() end
   end
 
-  UI.group_sep(ctx)
-  UI.heading(ctx, "Input", "'Read MIDI directly' uses the CC numbers above. "
-    .. "Leave it off if the script is bound to a CC in the Action List.\n\n"
-    .. "Turn pages with MIDI: a CC value of 64 or more turns the page (direct input only).", "computer")
-  ch, S.direct_midi = UI.checkbox(ctx, "Read MIDI directly", S.direct_midi)
-  UI.tip(ctx, "Reads the CC numbers above directly from your MIDI inputs (no Action List binding needed).")
-  if ch then
-    Util.mark_dirty()
-    if S.direct_midi and r.MIDI_GetRecentInputEvent then
-      R.last_midi_seq = (r.MIDI_GetRecentInputEvent(0)) or 0
-    end
-  end
   if not S.direct_midi then UI.draw_midi_debug(ctx); return end -- the options below need direct input
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Buttons", "Turn pages and add cues with buttons on your controller (direct input only).\n"
+    .. "A CC value of 64 or more counts as a button press.", "computer")
   ch, S.midi_page_turn = UI.checkbox(ctx, "Turn pages with MIDI", S.midi_page_turn)
   UI.tip(ctx, "A CC value of 64 or more counts as a button press.")
   if ch then Util.mark_dirty() end
@@ -4485,10 +4482,10 @@ function UI.reset_all_settings()
   R.reset_layout = true
   Util.save_settings(); R.dirty = false
   if S.pdf_path ~= "" then PDF.open_pdf(S.pdf_path, true) end
-  Msg.notify("All settings were reset to the defaults.", false, "display")
+  Msg.notify("All settings were reset to the defaults.", false, "general")
 end
 
--- Display and view: sorted by what you do (View on stage, Page quality, Layout, Troubleshooting).
+-- Display and view: sorted by what you do (View on stage, Page quality with the cache, Layout).
 function UI.draw_display_tab(ctx)
   local ch
   UI.heading(ctx, "View", "What you see during playback.\n\n"
@@ -4504,22 +4501,27 @@ function UI.draw_display_tab(ctx)
   UI.tip(ctx, "Lower than 100% makes the white paper darker for dark stages.")
   ch, S.turn_flash = UI.checkbox(ctx, "Page-turn flash", S.turn_flash)
   if ch then Util.mark_dirty() end
+  UI.tip(ctx, "A short blue frame around the page when it turns during playback.")
   ch, S.hide_controls_playing = UI.checkbox(ctx, "Hide controls when playing", S.hide_controls_playing)
   if ch then Util.mark_dirty() end
+  UI.tip(ctx, "While REAPER plays, only a small toolbar shows, so the music gets more space.\n"
+    .. "The status bar shows only when there is an error.")
 
   UI.group_sep(ctx)
   UI.heading(ctx, "Page quality", "Page sharpness (DPI) sets how sharp the page images are. Higher = sharper, but slower and more disk space.\n\n"
-    .. "'Match DPI to current view' sets the DPI for the current zoom.", "computer")
+    .. "'Match DPI to current view' sets the DPI for the current zoom.\n\n"
+    .. "Page cache: the pages are stored on disk so a PDF opens fast the next time. "
+    .. "Clearing it never deletes the page on screen; pages are prepared again when needed.", "computer")
   UI.field(ctx, "PDF engine")
   local ei = (PDF.engine() == "poppler") and 1 or 0
   ch, ei = ImGui.Combo(ctx, "##engine", ei, "Windows (built in)\0Poppler (pdftoppm.exe)\0")
+  UI.tip(ctx, "Windows (built in): no extra software (Windows 10/11).\nPoppler: optional; select pdftoppm.exe below.")
   if ch then
     S.engine = (ei == 1) and "poppler" or "windows"; Util.mark_dirty()
     if S.engine == "poppler" and not R.exe then R.exe = PDF.find_pdftoppm(); PDF.check_pdfinfo() end
     Msg.set_error(nil)
     if S.pdf_path ~= "" then PDF.open_pdf(S.pdf_path, true) end
   end
-  UI.tip(ctx, "Windows (built in): no extra software (Windows 10/11).\nPoppler: optional; select pdftoppm.exe below.")
   if PDF.engine() == "poppler" then UI.draw_poppler_settings(ctx) end
   -- the DPI number: shown as text with "Change"; the field appears only when you want to type a value
   -- (or when no PDF is open yet, so there is no quality note and no "Match DPI" button)
@@ -4532,7 +4534,7 @@ function UI.draw_display_tab(ctx)
       if d ~= S.dpi then S.dpi = d; Util.mark_dirty(); if S.pdf_path ~= "" then PDF.open_pdf(S.pdf_path, true) end end
     end
   else
-    local cx, cw = UI.row_start(ctx, "Page sharpness")
+    local cx, cw = UI.row_start(ctx, "Page sharpness (DPI)")
     local txt = string.format("%d DPI", S.dpi)
     UI.row_text(ctx, txt)
     local bw = UI.btn_w(ctx, "Change", CFG.SMALL_BTN_W)
@@ -4562,27 +4564,6 @@ function UI.draw_display_tab(ctx)
     end
   end
 
-  UI.group_sep(ctx)
-  UI.heading(ctx, "Layout", "Comfortable layout: more empty space between rows and sections. Buttons, fields and tabs keep their size.\n\n"
-    .. "Reset window layout: moves the window back to its default size and place.", "computer")
-  ch, S.comfortable = UI.checkbox(ctx, "Comfortable layout", S.comfortable)
-  if ch then Util.mark_dirty() end
-  UI.tip(ctx, "More empty space between rows and sections. Buttons, fields and tabs keep their size.")
-  if UI.full_button(ctx, "Reset window layout", "primary") then
-    R.reset_layout = true
-    Msg.notify("Window layout reset.", false, "display")
-  end
-
-  UI.group_sep(ctx)
-  UI.heading(ctx, "Troubleshooting", "Write diagnostic log: writes technical events (visibility, docking, recovered errors) "
-    .. "to the REAPER console. Use it only to report a problem.\n\n"
-    .. "Page cache: the pages are stored on disk so a PDF opens fast the next time. "
-    .. "Clearing it never deletes the page on screen; pages are prepared again when needed.\n\n"
-    .. "Reset all settings: sets the settings of this computer back to the defaults. "
-    .. "Your projects (library, regions, cues) are not changed.", "computer")
-  ch, S.log_diag = UI.checkbox(ctx, "Write diagnostic log", S.log_diag)
-  if ch then Util.mark_dirty() end
-  UI.tip(ctx, "Writes technical events to the REAPER console.")
   -- page cache: one row "<size>  [Clear...]". The size is calculated in the background when this
   -- section is shown and no size is known yet (never every frame: the job runs once, then the result stays).
   local clearing = R.cache_clear_t and Util.now() - R.cache_clear_t < 2 -- wait for the delete to run
@@ -4603,18 +4584,44 @@ function UI.draw_display_tab(ctx)
     end
   end
   UI.draw_ask(ctx, "cache_clear")
+  UI.section_msg(ctx, "display")
+
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Layout", "Comfortable layout: more empty space between rows and sections. Buttons, fields and tabs keep their size.\n\n"
+    .. "Reset window layout: moves the window back to its default size and place.", "computer")
+  ch, S.comfortable = UI.checkbox(ctx, "Comfortable layout", S.comfortable)
+  if ch then Util.mark_dirty() end
+  UI.tip(ctx, "More empty space between rows and sections. Buttons, fields and tabs keep their size.")
+  if UI.full_button(ctx, "Reset window layout") then
+    R.reset_layout = true
+    Msg.notify("Window layout reset.", false, "layout")
+  end
+  UI.section_msg(ctx, "layout")
+end
+
+-- Troubleshooting for all of Chart Cue (end of Settings > General).
+function UI.draw_general_troubleshooting(ctx)
+  local ch
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Troubleshooting", "Write diagnostic log: writes technical events (visibility, docking, recovered errors) "
+    .. "to the REAPER console. Use it only to report a problem.\n\n"
+    .. "Reset all settings: sets the settings of this computer back to the defaults. "
+    .. "Your projects (library, regions, cues) are not changed.", "computer")
+  ch, S.log_diag = UI.checkbox(ctx, "Write diagnostic log", S.log_diag)
+  if ch then Util.mark_dirty() end
+  UI.tip(ctx, "Writes technical events to the REAPER console.")
   if UI.danger_button(ctx, "Reset all settings...") then
     UI.ask("reset_all", "Reset all Chart Cue settings on this computer to the defaults? This resets the PDF engine, "
       .. "page sharpness, window, MIDI and autoscroll settings. Your projects (library, regions, cues) are not changed.",
       "Yes, reset", UI.reset_all_settings)
   end
   UI.draw_ask(ctx, "reset_all")
-  UI.section_msg(ctx, "display")
+  UI.section_msg(ctx, "general")
 end
 
 function UI.draw_project_tab(ctx)
   local ch
-  UI.heading(ctx, "Current project", nil, "project")
+  UI.heading(ctx, "Current project", "The REAPER project file that holds the Chart Cue data of this project.", "project")
   do -- Project file: label | path | "Show in Explorer" right-aligned, across the full panel width
     local x0 = ImGui.GetCursorPosX(ctx)
     local aw = UI.panel_w(ctx)
@@ -4674,6 +4681,7 @@ function UI.draw_project_tab(ctx)
     UI.tip(ctx, "Two open methods can start Chart Cue twice. 'Open automatically' is enough.")
     UI.section_msg(ctx, "project")
   end
+  UI.draw_general_troubleshooting(ctx)
 end
 
 ---------------------------------------------------------------------------
@@ -4692,11 +4700,11 @@ Chart Cue shows your sheet music or chord charts (PDF files) inside REAPER. It c
 4. Optional: in REAPER, make a region with the same name as the PDF. For example, a region named "Song One" for the file "Song One.pdf". Chart Cue then opens that PDF by itself when the song plays.
 5. Optional: choose an autoscroll mode at the top right, so the page moves by itself while REAPER plays.
 
-Click a tab to open it. Click the same tab again to hide it and get more space for the music. The Settings tab has 4 sections: Autoscroll, MIDI, Display and view, and Project. Click a section name to open or close it. Only one section is open at a time. The first section of the Library, Regions and Cues tabs can also be closed with the arrow before its name.]==],
+Click a tab to open it. Click the same tab again to hide it and get more space for the music. The Settings tab has 4 sections: Autoscroll, MIDI, Display and view, and General. Click a section name to open or close it. Only one section is open at a time. The first section of the Library, Regions and Cues tabs can also be closed with the arrow before its name.]==],
     more = [==[
 - You can dock the Chart Cue window like any other REAPER window. Chart Cue remembers where it was.
 - The first time a PDF opens, Chart Cue prepares the pages in the background ("Loading PDF" and "Preparing page"). After that, the PDF opens at once.
-- The status bar at the bottom shows the scroll position, the current region and the autoscroll mode. Its second line shows the most important message, for example an error or a hint. When there is no message, it shows the page ("Page 2 / 5") and, in the Cue list and Markers modes, the next page turn ("Next: page 3 at 17.1.00"). Without a PDF, it shows the keyboard shortcuts.
+- The status bar at the bottom shows the scroll position, the current region and, in the Cue list and Markers modes, the next page turn ("Next: page 3 at 17.1.00"). Its second line shows the most important message, for example an error or a hint. When there is no message, it shows the keyboard shortcuts. Move the mouse over them to see the full list.
 - Most settings have a round "?" icon. Move the mouse over it for a short explanation.]==] },
 
   { title = "Library: your PDFs", text = [==[
@@ -4731,6 +4739,7 @@ If your project contains several songs, each song can have its own PDF. Mark eac
 - "Keep last page" (Regions tab, on by default): when a song has no PDF, during playback the last page stays on screen with a yellow note at the top. The buttons show when playback stops.
 - "Switch PDF at regions" turns this whole function on or off.]==],
     more = [==[
+- Joined words are split: "songA" matches "Song A - Bass.pdf".
 - Matching example: region "Song One" matches "song one.pdf", "Song_One.pdf", "song-one.PDF", "SongOne.pdf", "01 Song One.pdf", "Song One (Bb).pdf", "Song One v2.pdf" and "Song One - Bass.pdf".
 - Chart Cue ignores a track number at the start, text in brackets, versions (v2) and part words (bass, guitar, gtr, keys, piano, drums, vocals, vox, chart, chords, lyrics, score, part, Bb, Eb, concert, final, copy). If 2 or more PDFs match one song (for example a bass and a guitar part), choose one in the region's menu; Chart Cue remembers it.
 - If several PDFs match the same region, the dot is yellow and the menu shows "(several PDFs match)". Choose the correct one.
@@ -4806,7 +4815,7 @@ You can scroll the page with a knob, fader or endless encoder on a MIDI controll
 - Page brightness (View): lower than 100% makes the white paper darker for dark stages. 100% = not dimmed.
 - Page-turn flash (View): a short blue frame when the page turns during playback.
 - Comfortable layout (Layout): more empty space between rows and sections; buttons, fields and tabs keep their size.
-- Page cache (Troubleshooting): Chart Cue keeps the pages on your disk, so PDFs open fast. Its size is shown next to "Clear...", which clears it at any time. It is filled again when needed.]==],
+- Page cache (Page quality): Chart Cue keeps the pages on your disk, so PDFs open fast. Its size is shown next to "Clear...", which clears it at any time. It is filled again when needed.]==],
     more = [==[
 - "Match DPI to current view" sets the DPI that fits your current zoom.
 - Chart Cue prepares all pages of a PDF in the background. The pages near the current page come first.
@@ -4814,8 +4823,8 @@ You can scroll the page with a knob, fader or endless encoder on a MIDI controll
 - The Windows engine uses Windows PowerShell in the background. The first time a PDF opens, this takes about 1 second.
 - Poppler: choose "Poppler (pdftoppm.exe)" as the engine, then select pdftoppm.exe. pdfinfo.exe must be in the same folder.
 - Each engine and each DPI has its own cache folder.
-- "Write diagnostic log" (Troubleshooting) writes technical events to the REAPER console. Use it only to report a problem.
-- "Reset all settings..." (Troubleshooting) sets the settings of this computer back to the defaults. Your projects are not changed.
+- "Write diagnostic log" (Settings > General > Troubleshooting) writes technical events to the REAPER console. Use it only to report a problem.
+- "Reset all settings..." (Settings > General > Troubleshooting) sets the settings of this computer back to the defaults. Your projects are not changed.
 - "Reset window layout" (Layout) moves the window back to its default size and place.]==] },
 
   { title = "Project: saving, opening, closing", text = [==[
@@ -4863,20 +4872,20 @@ To turn pages when the Chart Cue window is not active (for example with a foot p
 - A PDF name is red: the file was moved or renamed. Click "Relocate..." in the Library tab.
 - The page looks blurry: click "Match DPI to current view" in Settings > Display and view > Page quality (or "Change" to type a higher DPI).
 - The wrong PDF opens for a song: check the menu of that region in the Regions tab.
-- Chart Cue opens twice, or REAPER asks about a running script: use only one way to open Chart Cue automatically (Settings > Project).
+- Chart Cue opens twice, or REAPER asks about a running script: use only one way to open Chart Cue automatically (Settings > General).
 - Nothing helps: change the PDF engine in Settings > Display and view and try again.]==],
     more = [==[
 - Password-protected PDFs cannot be shown. Save a copy without a password.
 - "Marker warning" in the status bar: a PDFPAGE or PDFSCROLL marker has a wrong number. The message shows its name and time.
 - "Marker autoscroll is on but no PDFSCROLL or PDFPAGE markers were found": add markers, or choose another autoscroll mode.
 - PDFs on network drives or in online-only cloud folders can be slow or not found. Copy them into the project (Library tab).
-- To report a problem: turn on "Write diagnostic log" (Settings > Display and view > Troubleshooting), repeat the problem, and copy the text from the REAPER console.]==] },
+- To report a problem: turn on "Write diagnostic log" (Settings > General > Troubleshooting), repeat the problem, and copy the text from the REAPER console.]==] },
 }
 
 HELP_TOPICS[#HELP_TOPICS + 1] = { title = "Remove Chart Cue", guide_only = true, text = [==[
 To remove Chart Cue completely from this computer:
 
-1. Settings > Project: turn off "Open automatically". This removes the 3 Chart Cue lines from __startup.lua.
+1. Settings > General: turn off "Open automatically". This removes the 3 Chart Cue lines from __startup.lua.
 2. If you used SWS startup actions: in each of those projects, click "Remove the SWS startup action..." and save the project.
 3. Close Chart Cue. In REAPER's Action List, find "Script: Chart Cue.lua", right-click it and choose "Remove".
 4. Delete the folder Scripts\Chart Cue in the REAPER resource folder (Options > Show REAPER resource path). It contains the settings, the page cache, the guide and the helper scripts.
@@ -4988,7 +4997,7 @@ function UI.draw_help_tab(ctx)
   UI.value(ctx, "Version", CFG.VERSION)
   UI.value(ctx, "Author", CFG.AUTHOR)
   UI.value(ctx, "License", "MIT")
-  UI.value(ctx, "Report a problem", "Turn on 'Write diagnostic log' (Settings > Display and view > Troubleshooting), repeat the problem, "
+  UI.value(ctx, "Report a problem", "Turn on 'Write diagnostic log' (Settings > General > Troubleshooting), repeat the problem, "
     .. "and copy the text from the REAPER console.")
 end
 
@@ -5002,7 +5011,7 @@ local SETTINGS_SECTIONS = {
   { "Autoscroll", UI.draw_autoscroll_tab },
   { "MIDI", UI.draw_midi_tab },
   { "Display and view", UI.draw_display_tab },
-  { "Project", UI.draw_project_tab },
+  { "General", UI.draw_project_tab }, -- project file, open/close, troubleshooting
 }
 -- One section open at a time (or none): a click on a section closes the open one.
 -- The headers use the larger bold font, so they stand one level above the headings inside them.
@@ -5159,29 +5168,39 @@ end
 
 -- Status line 2 with a PDF open: "Page 2 / 5", plus "Next: page 3 at <time>" in the Cue list
 -- (time in the project's cue unit) and Markers modes. Rebuilt at most every 0.1 s.
-function UI.page_status_text()
+-- "Next: page 3 at 17.1.00" (Markers and Cue list modes), or nil when no page turn follows.
+function UI.next_turn_text()
   local now = Util.now()
-  if R.page_status and now - R.page_status_t < 0.1 then return R.page_status end
-  local txt = string.format("Page %d / %d", S.page, R.total)
+  if R.page_status ~= nil and now - R.page_status_t < 0.1 then return R.page_status or nil end
+  local txt
   local mode, t = Nav.scroll_mode(), Project.time_pos()
-  if mode == "cues" then
+  if R.total > 0 and mode == "cues" then
     local reg = Cues.playing_region()
     local p = Cues.from_time(reg, t)
     for _, c in ipairs(Cues.list(reg)) do
       if c.page and c.pos > p + 1e-6 then
-        txt = txt .. string.format("  |  Next: page %d at %s", c.page, Cues.label(reg, c.pos)); break
+        txt = string.format("Next: page %d at %s", c.page, Cues.label(reg, c.pos)); break
       end
     end
-  elseif mode == "marker" then
+  elseif R.total > 0 and mode == "marker" then
     for _, m in ipairs(R.page_pts) do
       if m.t > t + 1e-6 then
-        txt = txt .. string.format("  |  Next: page %d at %s", m.page, r.format_timestr_pos(m.t, "", 2)); break
+        txt = string.format("Next: page %d at %s", m.page, r.format_timestr_pos(m.t, "", 2)); break
       end
     end
   end
-  R.page_status, R.page_status_t = txt, now
+  R.page_status, R.page_status_t = txt or false, now
   return txt
 end
+
+-- Shortcut list for status line 2: the most useful keys first (the end is cut off in a narrow window).
+-- C and S work only while Record cues is on, so they show only then.
+local SHORTCUTS = "Left/Right page  |  Home top  |  Ctrl+wheel zoom  |  F performance  |  L lock  |  R record cues"
+local SHORTCUTS_REC = "C page turn  |  S scroll point  |  " .. SHORTCUTS
+local SHORTCUTS_TIP = "Left arrow / Page Up: previous page\nRight arrow / Page Down: next page\nHome: top of the page\n"
+  .. "Ctrl + mouse wheel, Ctrl and + / -: zoom.  Ctrl and 0: fit the page width\nF: performance mode (F or Esc goes back)\n"
+  .. "L: lock\nR: record cues on / off (Cue list mode)\nC: add a page turn, S: add a scroll point (while Record cues is on)\n\n"
+  .. "The keys work when the Chart Cue window is active."
 
 -- The project has cues or PDF markers that the current mode does not use:
 -- returns message, mode to switch to, button label (or nil).
@@ -5206,10 +5225,8 @@ function UI.draw_status(ctx)
   local parts = {}
   parts[#parts + 1] = string.format("Scroll %.0f%%", pct)
   if reg then parts[#parts + 1] = "Region: " .. reg.name end
-  parts[#parts + 1] = "Autoscroll: " .. UI.autoscroll_state_text()
-  if Nav.scroll_mode() == "marker" and R.marker_pct and R.autoscroll_active then
-    parts[#parts + 1] = string.format("marker %.0f%%", R.marker_pct)
-  end
+  local nxt = UI.next_turn_text()
+  if nxt then parts[#parts + 1] = nxt end
   if UI.midi_in_use() then
     parts[#parts + 1] = string.format("MIDI %s%s", S.mode, R.last_cc and (" CC=" .. R.last_cc) or "")
   end
@@ -5255,10 +5272,9 @@ function UI.draw_status(ctx)
     ImGui.TextColored(ctx, COL.YELLOW, "Cue list is on, but this song has no cues yet (Cues tab).")
   elseif Nav.scroll_mode() == "marker" and #R.scroll_pts == 0 and #R.page_pts == 0 then
     ImGui.TextColored(ctx, COL.YELLOW, "Marker autoscroll is on but no PDFSCROLL or PDFPAGE markers were found.")
-  elseif R.total > 0 then
-    ImGui.Text(ctx, UI.trunc_text(ctx, UI.page_status_text(), aw - 6))
   else
-    ImGui.TextDisabled(ctx, UI.trunc_text(ctx, "Arrows/PgUp/PgDn page | Home top | Ctrl +/-/0 zoom | F performance | L lock | R record cues | C page turn | S scroll point", aw - 6))
+    ImGui.TextDisabled(ctx, UI.trunc_text(ctx, R.rec and SHORTCUTS_REC or SHORTCUTS, aw - 6))
+    UI.tip(ctx, SHORTCUTS_TIP)
   end
 end
 
