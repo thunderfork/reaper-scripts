@@ -36,7 +36,13 @@
 - Item 9 (commit d9adc5c): inline confirmations (UI.ask / UI.draw_ask) for remove all cues, remove PDF markers, reset all settings. Message boxes kept on purpose: ReaImGui missing, same-name file in project folder (3 choices), Open automatically (shows the __startup.lua lines).
 - Pass 3, items 13–15: bold selected filter; autoscroll "(ready)" / "(moving)"; status line 2 "Page 2 / 5  |  Next: page 3 at ..." (UI.page_status_text, cached 0.1 s); one term each: "page cache", "PDF markers".
 
+- Second review, passes A and B: kept page can be turned (Nav.page_blocked); status bar ignores sticky; questions close on tab / song change; banner "Autoscroll paused."; "Default for new projects" row (S.scroll_mode); "Not now" on the mode hint (P.hint_off, written only when set); Record button hidden / toggle disabled outside Cue list; MIDI debug back in MIDI > Advanced; "Open and close" labelled "This computer"; Settings sections remembered (S.settings_open).
+
 ## Future consideration (not planned)
+- Confirmation (or undo) for the single-row cue "Remove".
+- One shared confirmation pattern: port R.confirm (page cache) and R.confirm_remove (Library) to UI.ask.
+- Settings: inner headings look like the section headers.
+- No way to show the mode hint again after "Not now".
 - Cue undo: see the open question above.
 - UI scale 100 / 125 / 150 % (item 12): high risk, fonts must be rebuilt between frames and all pixel constants in CFG must scale.
 

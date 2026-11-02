@@ -263,6 +263,7 @@ local S = {
   import_copy = true,          -- copy imported PDFs into <project folder>\PDFs (else link the original)
   tab = 1, panel_open = true,
   tab_ver = 1,                 -- 2 = tab numbers include the Cues tab; 3 = one Settings tab (v4.8)
+  settings_open = "1000",      -- Settings tab sections open (1) or closed (0): Autoscroll, MIDI, Display, Project
   panel_h = 0,                 -- 0 = automatic (~40% of free height); otherwise the user's dragged height
   win_x = CFG.DEFAULT_WIN[1], win_y = CFG.DEFAULT_WIN[2], win_w = CFG.DEFAULT_WIN[3], win_h = CFG.DEFAULT_WIN[4],
   dock_id = 0,
@@ -395,6 +396,7 @@ function Project.default_project()
     cues = {},            -- region key (or "_project") -> list of { pos, page, scroll }
     cue_unit = "beats",   -- "beats" (quarter notes from the region start) or "seconds"
     scroll_mode = "",     -- autoscroll mode of this project; "" = use the default (S.scroll_mode)
+    hint_off = false,     -- "Not now" clicked on the mode hint (status line 2); written only when true
     view = {},            -- pdf path -> { fit = fit mode, zoom = manual zoom } (per-PDF zoom)
   }
 end
@@ -952,6 +954,7 @@ function Project.parse_cfg(lines_iter)
     elseif k == "cue_unit" then p.cue_unit = (v == "seconds") and "seconds" or "beats"
     elseif k == "scroll_mode" then
       p.scroll_mode = (v == "off" or v == "fixed" or v == "marker" or v == "cues") and v or ""
+    elseif k == "hint_off" then p.hint_off = (v == "1")
     elseif k == "view" then
       local path, fit, zoom = v:match("^(.-)\t(.-)\t(.*)$")
       if path and fit ~= "" then p.view[path] = { fit = fit, zoom = tonumber(zoom) or 1.0 } end
@@ -998,6 +1001,7 @@ function Project.serialize_cfg()
   w("cue_unit", P.cue_unit)
   -- only written when set, so projects that never changed the mode keep the same text
   if P.scroll_mode ~= "" then w("scroll_mode", P.scroll_mode) end
+  if P.hint_off then w("hint_off", 1) end -- only when set, so older projects keep the same text
   for _, path in ipairs(sorted(P.view)) do
     w("view", string.format("%s\t%s\t%.3f", path, P.view[path].fit, P.view[path].zoom))
   end
@@ -1430,7 +1434,7 @@ function Project.finish_copy(job, final)
     R.cur_region_key = nil
   end
   if Project.copy_pending() == 0 and not o.region_key then
-    Msg.notify("PDF copy into the project folder is complete.", false, "library", true)
+    Msg.notify("PDF copy into the project folder is complete.", false, "library")
   end
 end
 
@@ -1672,8 +1676,13 @@ function Nav.rebaseline()
   end
 end
 
+-- A region without a PDF blocks page turns, unless its last page is kept on screen (R.kept_key).
+function Nav.page_blocked()
+  return R.empty_region ~= nil and R.kept_key ~= R.empty_region.key
+end
+
 function Nav.go_page(p)
-  if R.total == 0 or R.empty_region then return end
+  if R.total == 0 or Nav.page_blocked() then return end
   p = Util.clamp(p, 1, R.total)
   if p == S.page then return end
   S.page = p; S.scroll_y = 0; S.scroll_x = 0; R.abs_target = nil
@@ -1718,7 +1727,7 @@ end
 
 function Midi.handle_page_cc(cc, v)
   if not S.midi_page_turn then return end
-  if R.empty_region or R.total == 0 then return end -- no PDF for this region: ignore page turns
+  if Nav.page_blocked() or R.total == 0 then return end -- no PDF for this region (and no kept page)
   local prev = R.page_cc_state[cc] or 0
   R.page_cc_state[cc] = v
   if v >= 64 and prev < 64 then
@@ -2175,9 +2184,11 @@ function Msg.notify(msg, is_err, source, sticky)
   R.msg = { text = msg, err = is_err and true or false, t = Util.now(), src = source, sticky = sticky or nil }
 end
 
-function Msg.recent(source)
+-- timed_only: ignore the sticky flag (the status bar has no "x", so it uses the time rule only)
+function Msg.recent(source, timed_only)
   local m = R.msg
-  if m and (source == nil or m.src == source) and (m.sticky or Util.now() - m.t < CFG.MSG_SECONDS) then return m end
+  local live = (m and m.sticky and not timed_only) or (m and Util.now() - m.t < CFG.MSG_SECONDS)
+  if m and live and (source == nil or m.src == source) then return m end
   return nil
 end
 
@@ -3054,8 +3065,8 @@ function UI.toolbar_items(ctx, perf)
     UI.tip(ctx, "Lock (L): during playback the page ignores the mouse wheel, dragging and the keys.\n"
       .. "MIDI and autoscroll still work. Click again or press L to unlock.")
   end)
-  -- record cues: a square icon button, the same size as the lock button
-  add(bw, function()
+  -- record cues: a square icon button, the same size as the lock button (only in the Cue list mode)
+  if Nav.scroll_mode() == "cues" then add(bw, function()
     local nc, nv = UI.push_kind(ctx, R.rec and "danger" or nil)
     local hit = UI.button(ctx, "##rec", bw, 0)
     UI.pop_kind(ctx, nc, nv)
@@ -3065,7 +3076,7 @@ function UI.toolbar_items(ctx, perf)
     if hit then UI.toggle_rec() end
     UI.tip(ctx, "Record cues (R): while on, the C and S keys and the MIDI cue buttons add cues.\n"
       .. "Only in the Cue list autoscroll mode. Lock mode blocks it during playback.")
-  end)
+  end) end
   if perf then
     local st = "Autoscroll: " .. UI.autoscroll_state_text()
     add((ImGui.CalcTextSize(ctx, st)), function() UI.row_text(ctx, st) end)
@@ -3205,13 +3216,16 @@ end
 -- The message area of a section: the latest message of `source`, always under its buttons.
 -- Inline confirmation (in place of a message box): UI.ask() arms it, UI.draw_ask() shows the
 -- question with a red "Yes, ..." and a "Cancel" button at the place where it was asked.
-function UI.ask(id, text, yes_label, run)
-  R.ask = { id = id, text = text, yes = yes_label, run = run }
+-- `key` (optional): what the question is about, e.g. the song; draw_ask closes the question when
+-- its key changes, so an old question never stays open for a different song.
+function UI.ask(id, text, yes_label, run, key)
+  R.ask = { id = id, text = text, yes = yes_label, run = run, key = key }
 end
 
-function UI.draw_ask(ctx, id)
+function UI.draw_ask(ctx, id, key)
   local a = R.ask
   if not a or a.id ~= id then return end
+  if a.key ~= key then R.ask = nil; return end
   UI.note(ctx, a.text, COL.YELLOW)
   ImGui.PushID(ctx, "ask_" .. id)
   local _, cw = UI.row_start(ctx)
@@ -3224,14 +3238,14 @@ function UI.draw_ask(ctx, id)
 end
 
 -- "Remove PDF markers...": asks first, with the number of markers and where they are.
-function UI.ask_remove_markers(id, lo, hi, where)
+function UI.ask_remove_markers(id, lo, hi, where, key)
   local n = #Project.script_markers(lo, hi)
   if n == 0 then
     Msg.notify("There are no PDF markers in " .. where .. ".", false, "cues"); return
   end
   UI.ask(id, string.format("Remove %d PDF marker(s) in %s? Only PDF markers (PDFPAGE / PDFSCROLL) are removed. "
     .. "Regions and other markers are not changed. Edit > Undo (Ctrl+Z) brings them back.", n, where),
-    "Yes, remove", function() Project.remove_script_markers(lo, hi, where) end)
+    "Yes, remove", function() Project.remove_script_markers(lo, hi, where) end, key)
 end
 
 function UI.section_msg(ctx, source)
@@ -3967,10 +3981,16 @@ function UI.draw_cue_list(ctx)
   UI.vgap(ctx, UI.sp("LIST"))
 
   -- recording
+  -- only usable in the Cue list mode (shown disabled otherwise, with the reason)
+  local can = Nav.scroll_mode() == "cues"
+  if not can then ImGui.BeginDisabled(ctx, true) end
   local rch, rv = UI.checkbox(ctx, "Record cues (R)", R.rec)
-  if rch and rv ~= R.rec then UI.toggle_rec() end
-  UI.tip(ctx, "While on, the C and S keys and the MIDI cue buttons add cues. Not saved: it is off when Chart Cue starts.\n"
-    .. "The two buttons below always work.")
+  if not can then ImGui.EndDisabled(ctx) end -- always paired with BeginDisabled above
+  if can and rch and rv ~= R.rec then UI.toggle_rec() end
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+    ImGui.SetTooltip(ctx, can and ("While on, the C and S keys and the MIDI cue buttons add cues. Not saved: it is off when Chart Cue starts.\n"
+      .. "The two buttons below always work.") or "Works only in the Cue list mode. Click 'Use Cue list mode' above.")
+  end
   local a, b = UI.button_pair(ctx, "Add page turn (C)", "Add scroll point (S)", "primary")
   if a then Cues.add_page_turn() end
   if b then Cues.add_scroll_point() end
@@ -3994,9 +4014,10 @@ function UI.draw_cue_list(ctx)
   end
   UI.tip(ctx, all and "Copies the PDF markers of every song into its cue list."
     or "Copies the PDF markers of this song into its cue list.")
+  local song = all and "_all" or Cues.key(reg) -- an open question closes when the song changes
   local c2, c3 = UI.button_pair(ctx, "Remove all cues...", "Remove PDF markers...", true)
   if c2 then
-    local key = all and "_all" or Cues.key(reg)
+    local key = song
     local count = 0
     if all then for _, l in pairs(P.cues) do count = count + #l end else count = #Cues.list(reg) end
     if count == 0 then
@@ -4007,19 +4028,19 @@ function UI.draw_cue_list(ctx)
         "Yes, remove", function()
           Cues.remove_all(key)
           Msg.notify(string.format("%d cue(s) removed.", count), false, "cues")
-        end)
+        end, song)
     end
   end
   -- remove the Chart Cue markers of this song (or of all songs) - e.g. after copying them into cues
   if c3 then
-    if all or not reg then UI.ask_remove_markers("cue_markers", -math.huge, math.huge, "the whole project")
-    else UI.ask_remove_markers("cue_markers", reg.start, reg.stop, '"' .. reg.name .. '"') end
+    if all or not reg then UI.ask_remove_markers("cue_markers", -math.huge, math.huge, "the whole project", song)
+    else UI.ask_remove_markers("cue_markers", reg.start, reg.stop, '"' .. reg.name .. '"', song) end
   end
   UI.tip(ctx, (all and "All songs: " or "This song: ")
     .. "removes only markers named PDFPAGE ... or PDFSCROLL ... (one undo step).\n"
     .. "Use it after 'Copy markers into cues', so a setlist program sees no extra markers.")
-  UI.draw_ask(ctx, "cues_all")
-  UI.draw_ask(ctx, "cue_markers")
+  UI.draw_ask(ctx, "cues_all", song)
+  UI.draw_ask(ctx, "cue_markers", song)
   UI.section_msg(ctx, "cues")
 
   -- lists
@@ -4051,12 +4072,21 @@ function UI.draw_cue_list(ctx)
 end
 function UI.draw_autoscroll_tab(ctx)
   local ch
-  UI.heading(ctx, "Mode", nil, "project")
+  UI.heading(ctx, "Mode") -- mixed section: the scope is on each row
   local mi = 0
   for i, m in ipairs(SCROLL_MODES) do if m == Nav.scroll_mode() then mi = i - 1 end end
   UI.field(ctx, "Autoscroll mode")
   ch, mi = ImGui.Combo(ctx, "##ascroll", mi, SCROLL_ITEMS)
   if ch then Nav.set_scroll_mode(SCROLL_MODES[mi + 1]) end
+  UI.scope_after(ctx, "project")
+  -- default for projects that have no mode of their own (S.scroll_mode)
+  local di = 0
+  for i, m in ipairs(SCROLL_MODES) do if m == S.scroll_mode then di = i - 1 end end
+  UI.field(ctx, "Default for new projects")
+  ch, di = ImGui.Combo(ctx, "##ascrolldef", di, SCROLL_ITEMS)
+  if ch then S.scroll_mode = SCROLL_MODES[di + 1]; Util.mark_dirty() end
+  UI.scope_after(ctx, "computer")
+  UI.tip(ctx, "The mode of a project where you have not chosen a mode yet.")
   local mode = Nav.scroll_mode()
   if mode == "off" then
     UI.note(ctx, "Autoscroll is off. The page moves only when you scroll it.", COL.GREY)
@@ -4152,7 +4182,7 @@ function UI.draw_midi_tab(ctx)
       R.last_midi_seq = (r.MIDI_GetRecentInputEvent(0)) or 0
     end
   end
-  if not S.direct_midi then return end -- the options below need direct input
+  if not S.direct_midi then UI.draw_midi_debug(ctx); return end -- the options below need direct input
   ch, S.midi_page_turn = UI.checkbox(ctx, "Turn pages with MIDI", S.midi_page_turn)
   UI.tip(ctx, "A CC value of 64 or more counts as a button press.")
   if ch then Util.mark_dirty() end
@@ -4176,11 +4206,14 @@ function UI.draw_midi_tab(ctx)
     ch, S.cc_add_scroll = ImGui.InputInt(ctx, "##ccaddscroll", S.cc_add_scroll, 1, 8)
     if ch then S.cc_add_scroll = Util.clamp(S.cc_add_scroll, 0, 127); Util.mark_dirty() end
   end
+  UI.draw_midi_debug(ctx)
 end
 
--- "Show MIDI debug" (Display tab > Advanced): the last CC that Chart Cue received.
+-- "Show MIDI debug" (end of the MIDI section): the last CC that Chart Cue received.
 function UI.draw_midi_debug(ctx)
   local ch
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Advanced", nil, "computer")
   ch, S.show_midi_debug = UI.checkbox(ctx, "Show MIDI debug", S.show_midi_debug)
   if ch then Util.mark_dirty() end
   UI.tip(ctx, "Shows the last CC number and value that Chart Cue received. Use it to find the CC number of your knob.")
@@ -4296,7 +4329,6 @@ function UI.draw_display_tab(ctx)
   UI.group_sep(ctx)
   UI.heading(ctx, "Advanced", "Write diagnostic log: writes technical events (visibility, docking, recovered errors) "
     .. "to the REAPER console. Use it only to report a problem.\n\n"
-    .. "Show MIDI debug: shows the last CC number and value that Chart Cue received.\n\n"
     .. "Page cache: the pages are stored on disk so a PDF opens fast the next time. "
     .. "Clearing it never deletes the page on screen; pages are prepared again when needed.\n\n"
     .. "Reset all settings: sets the settings of this computer back to the defaults. "
@@ -4304,7 +4336,6 @@ function UI.draw_display_tab(ctx)
   ch, S.log_diag = UI.checkbox(ctx, "Write diagnostic log", S.log_diag)
   if ch then Util.mark_dirty() end
   UI.tip(ctx, "Writes technical events to the REAPER console.")
-  UI.draw_midi_debug(ctx)
   -- render cache
   local clearing = R.cache_clear_t and Util.now() - R.cache_clear_t < 2 -- wait for the delete to run
   local size_label = (R.size_job or clearing) and "Calculating..."
@@ -4376,7 +4407,7 @@ function UI.draw_project_tab(ctx)
     "Open automatically: Chart Cue opens when you open (or switch to) any project that contains Chart Cue data. "
     .. "It adds 3 marked lines to REAPER's __startup.lua (with a backup) and needs one REAPER restart. No SWS needed.\n\n"
     .. "Close: Chart Cue closes when you close the project tab, or when File > Close / New / Open project "
-    .. "replaces the project in the same tab. Switching tabs and 'Save as' keep it open.")
+    .. "replaces the project in the same tab. Switching tabs and 'Save as' keep it open.", "computer")
 
   -- main method: automatic open for all Chart Cue projects
   local on = Autostart.installed()
@@ -4532,7 +4563,7 @@ You can scroll the page with a knob, fader or endless encoder on a MIDI controll
 - Another way: bind the Chart Cue action to a knob in REAPER's Action List (Add shortcut, then move the knob). When REAPER asks about the running script, choose "New instance" and "Remember my answer". The new instance only sends the value to the open Chart Cue.
 - With an Action List binding, do NOT tick "Read MIDI directly".
 - "Sensitivity" sets how far the page moves for each step of a relative encoder.
-- "Show MIDI debug" (Settings > Display > Advanced) shows the last CC number and value that Chart Cue received. Use it to find the CC number of your knob.
+- "Show MIDI debug" (Advanced, at the end of Settings > MIDI) shows the last CC number and value that Chart Cue received. Use it to find the CC number of your knob.
 - Page turning works with direct MIDI input. A value of 64 or more counts as a button press.]==] },
 
   { title = "Display settings", text = [==[
@@ -4736,17 +4767,24 @@ function UI.draw_cues_tab(ctx)
   UI.draw_cue_list(ctx)
 end
 
--- Settings tab: one collapsible section per area. Autoscroll is open the first time.
+-- Settings tab: one collapsible section per area. Which sections are open is saved (S.settings_open).
 local SETTINGS_SECTIONS = {
-  { "Autoscroll", UI.draw_autoscroll_tab, true },
+  { "Autoscroll", UI.draw_autoscroll_tab },
   { "MIDI", UI.draw_midi_tab },
   { "Display", UI.draw_display_tab },
   { "Project", UI.draw_project_tab },
 }
 function UI.draw_settings_tab(ctx)
   for i, sec in ipairs(SETTINGS_SECTIONS) do
-    if sec[3] then ImGui.SetNextItemOpen(ctx, true, ImGui.Cond_Once()) end
-    if ImGui.CollapsingHeader(ctx, sec[1] .. "##settings" .. i) then
+    local was = S.settings_open:sub(i, i) == "1"
+    ImGui.SetNextItemOpen(ctx, was, ImGui.Cond_Once()) -- the saved state, once per session
+    local open = ImGui.CollapsingHeader(ctx, sec[1] .. "##settings" .. i)
+    if open ~= was then
+      local s = (S.settings_open .. "0000"):sub(1, #SETTINGS_SECTIONS)
+      S.settings_open = s:sub(1, i - 1) .. (open and "1" or "0") .. s:sub(i + 1)
+      Util.mark_dirty()
+    end
+    if open then
       ImGui.Indent(ctx, 8)
       ImGui.PushID(ctx, sec[1]) -- the sections share one panel: keep their widget IDs apart
       sec[2](ctx)
@@ -4837,6 +4875,7 @@ function UI.draw_tab_strip(ctx)
   ImGui.SetCursorScreenPos(ctx, x0, strip_b + below)
 
   if clicked then
+    R.ask = nil -- an open question belongs to the tab it was asked in
     if S.tab == clicked then S.panel_open = not S.panel_open -- active tab again: collapse / expand
     else S.tab = clicked; S.panel_open = true end
     Util.mark_dirty()
@@ -4914,6 +4953,7 @@ function UI.page_status_text()
 end
 
 function UI.mode_hint()
+  if P.hint_off then return nil end -- "Not now" for this project
   local mode = Nav.scroll_mode()
   local ncues = 0
   for _, list in pairs(P.cues) do ncues = ncues + #list end
@@ -4945,7 +4985,7 @@ function UI.draw_status(ctx)
 
   -- line 2, by priority: errors > import progress > region has no PDF > warnings > normal
   local needs = R.empty_region
-  local recent = Msg.recent()
+  local recent = Msg.recent(nil, true)
   if R.error then
     UI.row_text(ctx, UI.trunc_text(ctx, R.error, aw - 140), COL.RED)
     ImGui.SameLine(ctx)
@@ -4972,9 +5012,12 @@ function UI.draw_status(ctx)
       #R.marker_warns > 1 and string.format(" (+%d more)", #R.marker_warns - 1) or ""), aw - 6))
   elseif UI.mode_hint() then
     local txt, mode, lbl = UI.mode_hint()
-    UI.row_text(ctx, UI.trunc_text(ctx, txt, aw - 150), COL.YELLOW)
+    UI.row_text(ctx, UI.trunc_text(ctx, txt, aw - 230), COL.YELLOW)
     ImGui.SameLine(ctx)
     if UI.button(ctx, lbl .. "##modehint") then Nav.set_scroll_mode(mode) end
+    ImGui.SameLine(ctx)
+    if UI.button(ctx, "Not now##modehint") then P.hint_off = true; Util.mark_pdirty() end
+    UI.tip(ctx, "Hides this hint for this project. It is saved with the project.")
   elseif Nav.scroll_mode() == "cues" and R.total > 0 and #Cues.list(Cues.playing_region()) == 0 then
     ImGui.TextColored(ctx, COL.YELLOW, "Cue list is on, but this song has no cues yet (Cues tab).")
   elseif Nav.scroll_mode() == "marker" and #R.scroll_pts == 0 and #R.page_pts == 0 then
@@ -5019,7 +5062,8 @@ function UI.locked() return R.lock and Util.playing() end
 -- Record cues (R): only in the Cue list mode, never while locked.
 function UI.toggle_rec()
   if not R.rec and Nav.scroll_mode() ~= "cues" then
-    Msg.notify("Record cues works only in the Cue list autoscroll mode.", true); return
+    -- R key in another mode: a hint, not an error (the Record button is hidden in that mode)
+    Msg.notify("Record cues works only in the Cue list autoscroll mode.", false); return
   end
   R.rec = not R.rec
   Msg.notify(R.rec and "Record cues on: C, S and the MIDI cue buttons add cues (R to stop)."
@@ -5357,7 +5401,7 @@ function UI.draw_view(ctx, view_w, view_h)
   local badge_y = y0 + 10
   if kept then
     local reg = R.empty_region
-    local txt = UI.trunc_text(ctx, string.format('No PDF for "%s" - showing the last page.',
+    local txt = UI.trunc_text(ctx, string.format('No PDF for "%s" - showing the last page. Autoscroll paused.',
       reg.name ~= "" and reg.name or "(unnamed region)"), area_w - 24)
     local _, th = ImGui.CalcTextSize(ctx, txt)
     ImGui.DrawList_AddRectFilled(dl, x0, y0, x0 + area_w, y0 + th + 10, 0x3A3200E6)
