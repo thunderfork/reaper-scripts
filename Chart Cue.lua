@@ -1300,8 +1300,9 @@ function PDF.finish_open(path, keep_position, n, info)
   -- Cap texture size: if page 1 at the chosen DPI exceeds MAX_IMAGE_DIM, render with -scale-to instead.
   R.scale_to = nil
   local wpt, hpt = (info or ""):match("Page size:%s*([%d%.]+)%s*x%s*([%d%.]+)")
-  R.page_w_pt = tonumber(wpt) -- page width in points (1/72 inch), used for "100%" = real size
-  if wpt and math.max(tonumber(wpt), tonumber(hpt)) / 72 * S.dpi > CFG.MAX_IMAGE_DIM then
+  wpt, hpt = tonumber(wpt), tonumber(hpt) -- nil when the size is missing or not a number (e.g. ".")
+  R.page_w_pt = wpt -- page width in points (1/72 inch), used for "100%" = real size
+  if wpt and hpt and math.max(wpt, hpt) / 72 * S.dpi > CFG.MAX_IMAGE_DIM then
     R.scale_to = CFG.MAX_IMAGE_DIM
   end
   if R.force_scale then R.scale_to = CFG.MAX_IMAGE_DIM end

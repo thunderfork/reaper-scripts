@@ -3,47 +3,98 @@
 Chart Cue is a Windows-only REAPER Lua/ReaImGui script for displaying and
 scrolling PDF charts during playback.
 
-Main file: Chart Cue.lua
+Main file: `Chart Cue.lua`.
+
+## Working with me
+
+- I do not read code. I decide what Chart Cue looks like and how it behaves (GUI and taste);
+  you decide the technical details.
+- Before a change, explain in plain words what I will see or notice, and ask me only about
+  visible behaviour, layout and wording. Do not show diffs or code unless I ask.
+- Ask me before any change to what is saved in my projects or settings, or before removing
+  a feature or a control.
+- After editing, list only the functions changed, and the manual test I should do in REAPER.
+- Commit only when I ask.
 
 ## Editing rules
 
-- Never output or rewrite the entire Chart Cue.lua file.
+- Never output or rewrite the entire `Chart Cue.lua` file.
 - Make the smallest focused change possible.
-- Show a diff before applying non-trivial changes.
-- Preserve the existing architecture and naming style.
+- Preserve the existing architecture, naming style, and user-facing behaviour.
 - Do not change user-facing behaviour unless explicitly requested.
-- After editing, list only the functions changed.
+- Do not introduce external dependencies without asking.
+- Keep the files' LF line endings (core.autocrlf can turn them into CRLF).
+
+## Saved data (compatibility)
+
+- Do not change the format of the project data (ExtState "ChartCue"/"cfg") or existing
+  settings.ini keys. Add new keys only, with defaults.
+- Write a new project key only when it differs from its default: Chart Cue compares the saved
+  text to tell "Save as" from "Open another project".
+- Keep reading and writing old project keys unchanged (e.g. `fixed_start`), for the same reason.
+- A settings.ini key that nothing reads may be removed, with my approval.
+
+## REAPER/Lua constraints
+
+- Target REAPER's embedded Lua runtime on Windows (Lua 5.4).
+- Use only `reaper.*` APIs unless explicitly requested otherwise.
+- Do not assume external Lua libraries are installed.
+- Preserve REAPER-compatible path handling.
+- Do not use `io.*` or `os.*` unless the existing code already requires it or I explicitly request it.
 
 ## Architecture
 
-- `CFG`: constants, paths and defaults.
-- `S`: global settings saved in settings.ini.
-- `R`: runtime state.
+- `CFG`: constants, paths, and defaults.
+- `S`: global settings persisted in `settings.ini`.
+- `R`: volatile runtime state.
 - `P`: per-project configuration stored in the REAPER project.
-- `PDF`: PDF info, rendering, cache and page images.
-- `Project`: regions, markers, library, project configuration.
+- `PDF`: PDF info, rendering, cache, and page images.
+- `Project`: regions, markers, library, and project configuration.
 - `UI`: ReaImGui interface and main deferred loop.
-- `Nav`: page, scroll, zoom and autoscroll logic.
+- `Nav`: page, scroll, zoom, and autoscroll logic.
 - `Midi`: MIDI input and CC handling.
+
+Do not move state between `CFG`, `S`, `R`, and `P` without asking.
+
+## Performance rules
+
+- The UI update loop runs every frame; treat it as hot code.
+- Do not allocate tables, concatenate display strings, sort lists, scan folders, or query the filesystem every frame unless unavoidable.
+  (Short labels with live values, such as "Page 3 / 12", are fine; cache what does not change between frames.)
+- Cache stable labels, formatted strings, directory listings, and lookup tables outside the frame loop.
+- Invalidate caches explicitly when their source data changes.
+- Poll background PDF jobs at most every 100 ms.
+
+## Verification
+
+- After editing, run `.\check.ps1` before deploying. It must end with "Syntax and globals OK":
+  1. syntax (`luac -p`, Lua 5.4.6 from winget DEVCOM.Lua),
+  2. undefined globals (from the `luac -l` listing; allowed: standard Lua and `reaper`),
+  3. Lua Language Server warnings (information only).
+- Compare Language Server warnings with the known false alarms (19 "Need check nil" /
+  "unknown|nil" warnings on 2026-11-02); look at every new one.
+- These checks do not replace a test in REAPER.
+- Ensure ReaImGui calls remain valid in their intended UI/deferred-loop context.
+- Do not claim a change is tested unless I have tested it in REAPER.
+- If a change affects rendering, scrolling, MIDI, caching, or project state, state the manual test I should perform.
 
 ## Deployment
 
-- The development copy is `Chart Cue.lua` in this repository.
+- Development copy: `Chart Cue.lua` in this repository, and the action scripts
+  `Chart Cue - Next page.lua`, `Chart Cue - Previous page.lua`, `Chart Cue - Toggle performance mode.lua`.
 - Deploy with:
 
 ```powershell
 .\deploy.ps1
 ```
 
-- The deployed copy belongs in:
-  `C:\Users\ngkog\AppData\Roaming\REAPER\Scripts\Chart Cue.lua`
-- Never move or rename:
+- Deployed copy: `C:\Users\ngkog\AppData\Roaming\REAPER\Scripts\` (the main script and the action scripts).
+- Never move, rename, or edit by hand (Claude must not touch it):
   `C:\Users\ngkog\AppData\Roaming\REAPER\Scripts\Chart Cue`
-- That folder contains settings.ini, cache, tmp and autostart.lua.
 
-## Performance rules
+That folder contains `settings.ini`, cache, `tmp`, and `autostart.lua`; the script itself writes them.
 
-- Avoid disk I/O in per-frame code unless necessary.
-- Poll background PDF jobs at most every 100 ms.
-- Cache strings, combo labels and tables rebuilt every frame.
-- Do not rescan directories or the PDF library every frame.
+## Other files
+
+- `PLAN.md`: done work, open items and the release checklist.
+- `README.md`: for other users. `check.ps1` and `.luarc.json`: the static checks.
