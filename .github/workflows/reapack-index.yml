@@ -20,6 +20,8 @@ jobs:
         with:
           ruby-version: "3.3"
       - run: gem install reapack-index
+      # pandoc converts the @about text to RTF; without it the package is skipped
+      - run: sudo apt-get update && sudo apt-get install -y pandoc
       - name: Build index.xml
         run: |
           git config user.name "github-actions[bot]"
