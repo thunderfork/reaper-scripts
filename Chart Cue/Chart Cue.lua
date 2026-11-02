@@ -1,14 +1,17 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 4.8
+-- @version 1.0
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
 --   Chart Cue - PDF Viewer for REAPER. Shows PDF charts and scrolls them with markers,
 --   cue lists, MIDI CC, mouse wheel or dragging. Windows only.
+--   Needs the ReaImGui extension (ReaPack: ReaTeam Extensions).
+-- @provides
+--   [main] Chart Cue - Next page.lua
+--   [main] Chart Cue - Previous page.lua
+--   [main] Chart Cue - Toggle performance mode.lua
 -- @changelog
---   Fixed: the autoscroll mode, the cue time unit and the open PDF are now restored when a project opens.
---   New Cues tab, one Settings tab, list search, Record cues (R) and an option to turn pages early.
---   Removed: Fixed speed mode and "Continue after region end".
+--   First public version.
 
 -- MIT License
 --
@@ -86,7 +89,7 @@ CFG.DEFAULT_WIN = { 100, 100, 760, 900 }
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "4.8"       -- keep equal to @version in the header
+CFG.VERSION = "1.0"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.RES = r.GetResourcePath()
 CFG.BASE_DIR = CFG.RES .. SEP .. "Scripts" .. SEP .. "Chart Cue"
@@ -229,14 +232,28 @@ end
 -- ReaImGui API pinned to 0.9.3 with the official compatibility shim, so newer ReaImGui versions
 -- behave the same and no version checks are needed in the code.
 local IMGUI_SHIM = r.GetResourcePath() .. "/Scripts/ReaTeam Extensions/API/imgui.lua"
-local IMGUI_MISSING = "ReaImGui 0.9.3 or newer is needed.\n\nInstall or update it with ReaPack:\nExtensions > ReaPack > Browse packages > search 'ReaImGui' > Install, then restart REAPER."
+-- ReaImGui missing or too old: with ReaPack, offer to open its package browser on "ReaImGui";
+-- without ReaPack, say where to get it. (An extension loads only at REAPER start: a restart is needed.)
+local function imgui_missing()
+  if r.ReaPack_BrowsePackages then
+    local ok = r.ShowMessageBox("Chart Cue needs the ReaImGui extension (version 0.9.3 or newer).\n\n"
+      .. "Open ReaPack now to install or update it?\n\n"
+      .. "In the ReaPack window: right-click ReaImGui > Install, click OK, then restart REAPER.", CFG.TITLE, 4)
+    if ok == 6 then r.ReaPack_BrowsePackages("ReaImGui") end -- 6 = Yes
+  else
+    r.ShowMessageBox("Chart Cue needs the ReaImGui extension (version 0.9.3 or newer).\n\n"
+      .. "1. Install ReaPack from https://reapack.com and restart REAPER.\n"
+      .. "2. Extensions > ReaPack > Browse packages > search 'ReaImGui' > Install.\n"
+      .. "3. Restart REAPER and run Chart Cue again.", CFG.TITLE, 0)
+  end
+end
 if not r.ImGui_CreateContext or not r.file_exists(IMGUI_SHIM) then
-  r.ShowMessageBox(IMGUI_MISSING, CFG.TITLE, 0)
+  imgui_missing()
   return
 end
 -- the shim raises an error when the installed ReaImGui is older than 0.9.3
 if not pcall(function() dofile(IMGUI_SHIM)("0.9.3") end) then
-  r.ShowMessageBox(IMGUI_MISSING, CFG.TITLE, 0)
+  imgui_missing()
   return
 end
 

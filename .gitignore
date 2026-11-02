@@ -1,6 +1,9 @@
 # Local Claude preferences
 CLAUDE.local.md
 
+# zips made by release.ps1
+release/
+
 # OS / editor clutter
 Thumbs.db
 desktop.ini

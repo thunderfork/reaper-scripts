@@ -3,7 +3,7 @@
 Chart Cue is a Windows-only REAPER Lua/ReaImGui script for displaying and
 scrolling PDF charts during playback.
 
-Main file: `Chart Cue.lua`.
+Main file: `Chart Cue/Chart Cue.lua` (the `Chart Cue` folder is the ReaPack category; keep the scripts there).
 
 ## Working with me
 
@@ -80,8 +80,9 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 
 ## Deployment
 
-- Development copy: `Chart Cue.lua` in this repository, and the action scripts
-  `Chart Cue - Next page.lua`, `Chart Cue - Previous page.lua`, `Chart Cue - Toggle performance mode.lua`.
+- Development copy: `Chart Cue/Chart Cue.lua` in this repository, and the action scripts
+  `Chart Cue - Next page.lua`, `Chart Cue - Previous page.lua`, `Chart Cue - Toggle performance mode.lua`
+  in the same folder.
 - Deploy with:
 
 ```powershell
@@ -98,3 +99,13 @@ That folder contains `settings.ini`, cache, `tmp`, and `autostart.lua`; the scri
 
 - `PLAN.md`: done work, open items and the release checklist.
 - `README.md`: for other users. `check.ps1` and `.luarc.json`: the static checks.
+- `LICENSE` (MIT). `release.ps1`: makes `release\Chart-Cue-<version>.zip` (git-ignored).
+- `.github/workflows/reapack-index.yml`: GitHub builds `index.xml` (the ReaPack repository
+  file) after each push to main. Do not edit `index.xml` by hand.
+
+## Releasing a version
+
+1. Run the release checklist in PLAN.md (in REAPER).
+2. Raise `@version` and `CFG.VERSION` together; write 1-3 user-facing `@changelog` lines.
+3. Commit and push (when I ask). GitHub updates `index.xml`; ReaPack users get the update.
+4. `.\release.ps1`, then attach the zip to a GitHub Release with the same version.

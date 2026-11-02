@@ -20,7 +20,7 @@ $known = @('reaper', 'string', 'math', 'table', 'utf8', 'io', 'os', 'package', '
   'tostring', 'tonumber', 'type', 'pcall', 'xpcall', 'setmetatable', 'getmetatable', 'dofile',
   'next', 'select', 'error', 'print', 'assert', 'rawget', 'rawset', 'require', '_G')
 
-$files = Get-ChildItem -Path $root -Filter "*.lua"
+$files = Get-ChildItem -Path (Join-Path $root "Chart Cue") -Filter "*.lua"
 Write-Host "== 1. Syntax ==" -ForegroundColor Cyan
 foreach ($f in $files) {
   $out = & $luac -p $f.FullName 2>&1
@@ -45,9 +45,9 @@ $exe = if ($ls) { Join-Path $ls.FullName "server\bin\lua-language-server.exe" } 
 if ($exe -and (Test-Path $exe)) {
   $log = Join-Path $env:TEMP "chartcue_luals"
   New-Item -ItemType Directory -Force $log | Out-Null
-  $out = & $exe --check $root --checklevel=Warning --configpath="$root\.luarc.json" --logpath=$log --check_format=pretty 2>&1
+  $out = & $exe --check (Join-Path $root "Chart Cue")--checklevel=Warning --configpath="$root\.luarc.json" --logpath=$log --check_format=pretty 2>&1
   # one line per warning (the tool prints its list twice)
-  $warn = $out | Select-String '^\S.*\.lua:\d+:\d+ \[' | ForEach-Object { $_.Line.Replace("$root\", "") } | Sort-Object -Unique
+  $warn = $out | Select-String '^\S.*\.lua:\d+:\d+ \[' | ForEach-Object { $_.Line.Replace("$root\Chart Cue\", "") } | Sort-Object -Unique
   if ($warn) { $warn | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow } } else { Write-Host "  no warnings" }
   Write-Host "  $(@($warn).Count) warning(s). Check new ones; most 'Need check nil' warnings are false alarms."
 } else {

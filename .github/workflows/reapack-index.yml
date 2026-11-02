@@ -1,0 +1,28 @@
+# Updates index.xml (the ReaPack repository file) after each push to main.
+# ReaPack users add https://github.com/<user>/<repo>/raw/main/index.xml once
+# (Extensions > ReaPack > Import repositories) and then get each new @version.
+name: ReaPack index
+on:
+  push:
+    branches: [main]
+    paths-ignore: [index.xml]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+      - run: gem install reapack-index
+      - name: Build index.xml
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          reapack-index --rebuild --commit --name "thunderfork" --no-warnings
+          git push
