@@ -4,7 +4,7 @@
 -- @license MIT
 -- @about
 --   Chart Cue - PDF Viewer for REAPER. Shows PDF charts and scrolls them with markers,
---   fixed-speed autoscroll, MIDI CC, mouse wheel or dragging. Windows only.
+--   cue lists, MIDI CC, mouse wheel or dragging. Windows only.
 -- @changelog
 --   Record cues (R, red dot button): C, S and the MIDI cue buttons add cues only while it is on.
 --   The autoscroll mode is saved per project. A region without a PDF keeps the last page during playback.
@@ -31,7 +31,7 @@
 
 --[[
   Chart Cue: shows PDF charts in a ReaImGui window and scrolls them during playback
-  (PDFSCROLL / PDFPAGE markers, cue lists, fixed speed or MIDI CC). One PDF per region.
+  (PDFSCROLL / PDFPAGE markers, cue lists or MIDI CC). One PDF per region.
   Requirements: REAPER 7 or newer on Windows 10 / 11, and ReaImGui 0.9.3 or newer (ReaPack).
   Optional: Poppler (pdftoppm.exe, pdfinfo.exe) as an alternative PDF engine, and the SWS
   extension for the per-project startup action.
@@ -250,9 +250,8 @@ local S = {
   sensitivity = 24.0, direct_midi = false,
   midi_page_turn = false, cc_page_next = 3, cc_page_prev = 4, show_midi_debug = false,
   midi_add_cue = false, cc_add_cue = 5, cc_add_scroll = 6,   -- "Add cues with MIDI"
-  scroll_mode = "off",         -- "off" | "fixed" | "marker" | "cues"; default for projects without P.scroll_mode
+  scroll_mode = "off",         -- "off" | "marker" | "cues"; default for projects without P.scroll_mode
   keep_last_page = true,       -- during playback, keep the last page when a region has no PDF
-  autoscroll_pps = 40.0, auto_page_turn = false, -- the Fixed speed start time is per project (P.fixed_start)
   include_subfolders = false,
   hide_controls_playing = true,
   comfortable = false,         -- "Comfortable layout": more empty space (compact is the default)
@@ -318,7 +317,7 @@ local R = {
   total = 0, cache_dir = nil, prefix = nil, scale_to = nil, force_scale = false,
   bstate = {}, job = nil, batches_done = 0, page_paths = {}, images = {}, image_order = {},
   max_x = 0, max_y = 0, view_w = 0, view_h = 0, last_ratio = nil,
-  last_cc = nil, abs_target = nil, override_until = 0, was_override = false,
+  last_cc = nil, abs_target = nil, override_until = 0,
   autoscroll_active = false, last_midi_seq = 0, page_cc_state = {},
   pdf_name = "", dpi_edit = nil,
   dbg = {},
@@ -329,7 +328,7 @@ local R = {
   cur_region_key = nil, active_region = nil,
   mpage_last = nil, was_playing = false, marker_pct = nil,
   libpages = {}, libexists = {}, libexists_t = 0, lib_scan_t = 0,
-  confirm = nil, cache_size = nil,
+  cache_size = nil,
   dock_applied = false, reset_layout = false,
   -- region empty state (current region has no PDF)
   empty_region = nil,          -- the region (table) whose empty state is shown, or nil
@@ -391,13 +390,13 @@ function Project.default_project()
     ignore = {},          -- region key -> true (ignored permanently)
     names = {},           -- region key -> last known region name (for display)
     auto_switch = true,
-    continue_after_end = false,
+    continue_after_end = false, -- not used since 4.8 (markers stop at the region end); still read and written, so the saved text stays the same
     active_pdf = "",
     cues = {},            -- region key (or "_project") -> list of { pos, page, scroll }
     cue_unit = "beats",   -- "beats" (quarter notes from the region start) or "seconds"
     scroll_mode = "",     -- autoscroll mode of this project; "" = use the default (S.scroll_mode)
     hint_off = false,     -- "Not now" clicked on the mode hint (status line 2); written only when true
-    fixed_start = 0,      -- Fixed speed: time where the top of the page is shown; written only when not 0
+    fixed_start = 0,      -- not used since 4.8 (Fixed speed removed); still read and written, so the saved text stays the same
     view = {},            -- pdf path -> { fit = fit mode, zoom = manual zoom } (per-PDF zoom)
   }
 end
@@ -1658,26 +1657,21 @@ function Util.playing()
   return ((st & 1) ~= 0 or (st & 4) ~= 0) and (st & 2) == 0
 end
 
--- The ONE autoscroll mode state: "off" | "fixed" | "marker" | "cues"
+-- The ONE autoscroll mode state: "off" | "marker" | "cues"
 -- Saved per project (P.scroll_mode). A project without one uses the default in settings.ini.
+-- "fixed" (Fixed speed, removed in 4.8) can still be saved in older projects: it means "off".
 function Nav.scroll_mode()
   local m = (P.scroll_mode ~= "") and P.scroll_mode or S.scroll_mode
-  if m == "fixed" or m == "marker" or m == "cues" then return m end
+  if m == "marker" or m == "cues" then return m end
   return "off"
 end
 
 -- Writes only to the project; the settings.ini default does not change.
 function Nav.set_scroll_mode(m)
   P.scroll_mode = m
-  R.was_override = false; R.mpage_last = nil
+  R.mpage_last = nil
   if m ~= "cues" then R.rec = false end -- recording needs the Cue list mode
   Util.mark_pdirty()
-end
-
-function Nav.rebaseline()
-  if S.autoscroll_pps > 0 then
-    P.fixed_start = r.GetPlayPosition() - S.scroll_y / S.autoscroll_pps
-  end
 end
 
 -- A region without a PDF blocks page turns, unless its last page is kept on screen (R.kept_key).
@@ -1691,7 +1685,6 @@ function Nav.go_page(p)
   if p == S.page then return end
   S.page = p; S.scroll_y = 0; S.scroll_x = 0; R.abs_target = nil
   if Util.playing() then R.flash_t = Util.now() end -- page-turn flash
-  if Nav.scroll_mode() == "fixed" and Util.playing() then P.fixed_start = r.GetPlayPosition() end
   Util.mark_dirty()
 end
 
@@ -1793,12 +1786,10 @@ function Nav.timeline_tick(is_play, overriding, page_pts, scroll_pts)
   local pos = r.GetPlayPosition()
   local reg = R.active_region
   local lo, hi = -math.huge, math.huge
+  -- inside a region, its markers / cues work from the region start to the region end
   if reg then
-    lo = reg.start
-    if not P.continue_after_end then
-      hi = reg.stop
-      if pos >= hi or pos < lo then return end
-    end
+    lo, hi = reg.start, reg.stop
+    if pos >= hi or pos < lo then return end
   end
 
   -- find the page segment containing pos
@@ -1857,25 +1848,6 @@ function Nav.update_motion()
       Nav.timeline_tick(is_play, overriding, pp, sp)
     else
       R.autoscroll_active = false
-    end
-  elseif mode == "fixed" then
-    if overriding then
-      R.was_override = true
-    else
-      if R.was_override then
-        if is_play then Nav.rebaseline() end
-        R.was_override = false
-      end
-      if is_play and S.autoscroll_pps > 0 then
-        R.autoscroll_active = true
-        local pos = r.GetPlayPosition()
-        local y = (pos - P.fixed_start) * S.autoscroll_pps
-        S.scroll_y = Util.clamp(y, 0, R.max_y)
-        if S.auto_page_turn and R.max_y > 0 and y >= R.max_y and S.page < R.total then
-          Nav.go_page(S.page + 1)
-          P.fixed_start = pos
-        end
-      end
     end
   end
   S.scroll_y = Util.clamp(S.scroll_y, 0, R.max_y)
@@ -2530,10 +2502,10 @@ end
 
 local MODE_ITEMS = "Absolute\0Relative\0"
 local REL_ITEMS = "Relative 1 - two's complement (1=+1, 127=-1)\0Relative 2 - binary offset (65=+1, 63=-1)\0Relative 3 - sign-magnitude (1=+1, 65=-1)\0Direction only (>64 down, <64 up)\0"
-local SCROLL_ITEMS = "Off\0Fixed speed\0Markers\0Cue list\0"
-local SCROLL_TOOLBAR_ITEMS = "Scroll: Off\0Scroll: Fixed speed\0Scroll: Markers\0Scroll: Cue list\0"
+local SCROLL_ITEMS = "Off\0Markers\0Cue list\0"
+local SCROLL_TOOLBAR_ITEMS = "Scroll: Off\0Scroll: Markers\0Scroll: Cue list\0"
 local FIT_ITEMS = { { "width", "Fit width" }, { "height", "Fit height" }, { "page", "Fit page" }, { "100", "100%" } }
-local SCROLL_MODES = { "off", "fixed", "marker", "cues" }
+local SCROLL_MODES = { "off", "marker", "cues" }
 local SORT_ITEMS = "Sort: Name\0Sort: Page count\0Sort: Recently added\0"
 local TAB_NAMES = { "Library", "Regions", "Cues", "Settings" }
 local TAB_REGIONS = 2
@@ -2755,7 +2727,7 @@ end
 function UI.autoscroll_state_text()
   local mode = Nav.scroll_mode()
   if mode == "off" then return "Off" end
-  local names = { marker = "Markers", fixed = "Fixed speed", cues = "Cue list" }
+  local names = { marker = "Markers", cues = "Cue list" }
   -- words, not colour only: "moving" while the page is moved, "ready" while REAPER does not play
   return names[mode] .. (R.autoscroll_active and " (moving)" or " (ready)")
 end
@@ -3962,8 +3934,11 @@ function UI.remove_x_button(ctx, id, size)
   return hit
 end
 
-function UI.draw_cue_rows(ctx, reg, list)
+-- first: the number of the first row (in "(all songs)" the numbers run on across the songs);
+-- total: the highest number in the whole view, so every song's "#" column has the same width
+function UI.draw_cue_rows(ctx, reg, list, first, total)
   local POS_W, NUM_W = 120, 70
+  first = first or 1
   local key = Cues.key(reg)
   -- the cue that plays now (blue row)
   local now_i
@@ -3971,8 +3946,17 @@ function UI.draw_cue_rows(ctx, reg, list)
     local p = Cues.from_time(reg, r.GetPlayPosition())
     for i, c in ipairs(list) do if c.pos <= p + 1e-6 then now_i = i end end
   end
-  UI.list_header(ctx, { { P.cue_unit == "seconds" and "From song start" or "Bar.Beat", 0 },
-    { "Page", POS_W + 16 }, { "Scroll %", POS_W + NUM_W + 24 } })
+  -- columns, like an event list: # | Position | Page | Scroll % | X  (x relative to the row start)
+  local IDX_W = math.max(28, (ImGui.CalcTextSize(ctx, tostring(total or (first + #list - 1)))) + 14)
+  local POS_X = IDX_W
+  local PAGE_X, SCROLL_X = POS_X + POS_W + 16, POS_X + POS_W + NUM_W + 24
+  local DEL_X = POS_X + POS_W + NUM_W * 2 + 32
+  local x0 = ImGui.GetCursorPosX(ctx)
+  ImGui.TextDisabled(ctx, "#")
+  ImGui.SameLine(ctx, x0 + POS_X); ImGui.TextDisabled(ctx, "Position")
+  UI.tip(ctx, P.cue_unit == "seconds" and "Time from the song start (m:ss)." or "Bar.beat from the song start.")
+  ImGui.SameLine(ctx, x0 + PAGE_X); ImGui.TextDisabled(ctx, "Page")
+  ImGui.SameLine(ctx, x0 + SCROLL_X); ImGui.TextDisabled(ctx, "Scroll %")
   local remove_i, moved
   -- One cue field. `apply(raw)` saves a valid value and returns nil, or returns the reason it is
   -- not accepted: then the typed text stays, with a red border (no silent revert). Esc keeps the old value.
@@ -3994,14 +3978,18 @@ function UI.draw_cue_rows(ctx, reg, list)
     local aw = UI.panel_w(ctx)
     if i == now_i then UI.row_highlight(ctx, aw) end
     local id = key .. ":" .. i
+    -- number of the cue in this list
+    ImGui.SetCursorPosX(ctx, x0)
+    UI.row_text(ctx, tostring(first + i - 1), COL.TEXT_DIM)
     -- position
+    ImGui.SameLine(ctx, x0 + POS_X)
     cue_field(id .. "p", "##pos", POS_W, Cues.label(reg, c.pos), function(raw)
       local v = Cues.parse_label(reg, raw)
       if not v then return "Position not understood. Use bar.beat (e.g. 9.1.00) or m:ss (e.g. 0:24.5)." end
       c.pos = v; Cues.sort(list); Util.mark_pdirty(); moved = true
     end)
     -- page (checked against the page count of this song's PDF)
-    ImGui.SameLine(ctx, POS_W + 16)
+    ImGui.SameLine(ctx, x0 + PAGE_X)
     cue_field(id .. "g", "##page", NUM_W, c.page and tostring(c.page) or "", function(raw)
       if raw == "" then c.page = nil; Util.mark_pdirty(); return end
       local v, maxp = tonumber(raw), Cues.max_page(reg)
@@ -4011,7 +3999,7 @@ function UI.draw_cue_rows(ctx, reg, list)
     end)
     UI.tip(ctx, "Page to show from this cue. Empty = keep the page.")
     -- scroll (an empty field removes the scroll point; a wrong value never does)
-    ImGui.SameLine(ctx, POS_W + NUM_W + 24)
+    ImGui.SameLine(ctx, x0 + SCROLL_X)
     cue_field(id .. "s", "##scroll", NUM_W, c.scroll and string.format("%g", c.scroll) or "", function(raw)
       if raw == "" then c.scroll = nil; Util.mark_pdirty(); return end
       local v = tonumber((raw:gsub("%%$", "")))
@@ -4021,7 +4009,7 @@ function UI.draw_cue_rows(ctx, reg, list)
     UI.tip(ctx, "Scroll position at this cue: 0 = top, 100 = bottom. Empty = no scroll point.\n"
       .. "Between two scroll points the page moves smoothly.")
     -- remove
-    ImGui.SameLine(ctx, POS_W + NUM_W * 2 + 32)
+    ImGui.SameLine(ctx, x0 + DEL_X)
     if UI.remove_x_button(ctx, "##del", UI.h(ctx)) then remove_i = i end
     UI.tip(ctx, "Remove this cue")
     ImGui.PopID(ctx)
@@ -4189,13 +4177,14 @@ function UI.draw_cue_list(ctx)
     .. "A red border means the value is not accepted: move the mouse over it to see why, then correct it or press Esc.\n"
     .. "Blue row = the cue that plays now.", "project")
   if all then
-    local shown = 0
+    local shown, num = 0, 1 -- num: the number of the next cue (runs on across the songs)
     local function block(rg, title)
       local list = Cues.list(rg)
       if #list == 0 then return end
       shown = shown + 1
       UI.song_title(ctx, title, rg)
-      UI.draw_cue_rows(ctx, rg, list)
+      UI.draw_cue_rows(ctx, rg, list, num, ncues)
+      num = num + #list
     end
     for _, rg in ipairs(R.regions) do block(rg, rg.name ~= "" and rg.name or "(unnamed region)") end
     block(nil, "(whole project, no region)")
@@ -4239,16 +4228,13 @@ function UI.draw_autoscroll_tab(ctx)
   -- only the settings of the chosen mode are shown
   UI.group_sep(ctx)
   if mode == "cues" then UI.note(ctx, "Edit the cues in the Cues tab.", COL.GREY); return end
-  if mode == "fixed" then UI.draw_fixed_speed(ctx); return end
 
   UI.heading(ctx, "Marker settings", "PDFSCROLL 0..100 sets the scroll position as a percentage of the current page.\n"
     .. "0 = top, 100 = bottom. The position is interpolated between markers by playback position.\n\n"
     .. "PDFPAGE n turns to page n and resets scroll to 0.\n"
     .. "If a PDFSCROLL marker occurs at the same time, PDFSCROLL wins.\n"
-    .. "Marker names are case-insensitive.", "project")
-  ch, P.continue_after_end = UI.checkbox(ctx, "Continue after region end", P.continue_after_end)
-  if ch then Util.mark_pdirty() end
-  UI.tip(ctx, "The markers keep working after the end of the song's region.")
+    .. "Marker names are case-insensitive.\n\n"
+    .. "The markers inside a region work from the region start to the region end.", "project")
   local rs, rm = UI.button_pair2(ctx, "Rescan project##markers", "primary", "Remove PDF markers...##markers", "danger",
     "Markers and regions are rescanned automatically after each project change.\nUse this only if something looks wrong.",
     "Removes only PDF markers (names starting with PDFPAGE or PDFSCROLL).\n"
@@ -4264,26 +4250,6 @@ function UI.draw_autoscroll_tab(ctx)
     if i > 5 then UI.note(ctx, string.format("... and %d more invalid markers", nwarn - 5), COL.YELLOW); break end
     UI.note(ctx, w, COL.YELLOW)
   end
-end
-
-function UI.draw_fixed_speed(ctx)
-  local ch
-  UI.heading(ctx, "Fixed speed", "Speed and Auto page turn: saved on this computer.\n"
-    .. "The start time: saved in this project (each song has its own).")
-  UI.field(ctx, "Speed (px/sec)")
-  ch, S.autoscroll_pps = ImGui.SliderDouble(ctx, "##pps", S.autoscroll_pps, 1, 400, "%.0f")
-  if ch then Util.mark_dirty() end
-  ch, S.auto_page_turn = UI.checkbox(ctx, "Auto page turn", S.auto_page_turn)
-  if ch then Util.mark_dirty() end
-  -- the start time belongs to the song, so it is saved with the project (P.fixed_start)
-  if UI.full_button(ctx, "Set start at play cursor", "primary") then
-    P.fixed_start = Util.playing() and r.GetPlayPosition() or r.GetCursorPosition()
-    S.scroll_y = 0; R.abs_target = nil; Util.mark_pdirty()
-  end
-  UI.scope_after(ctx, "project")
-  UI.tip(ctx, "The top of the page is shown at this time (the play cursor, or the edit cursor when stopped);\n"
-    .. "the page then moves down at the speed above.")
-  UI.note(ctx, "Start time: " .. Util.fmt_mmss(P.fixed_start), COL.GREY)
 end
 
 function UI.draw_midi_tab(ctx)
@@ -4439,12 +4405,24 @@ function UI.draw_display_tab(ctx)
   end
   UI.tip(ctx, "Windows (built in): no extra software (Windows 10/11).\nPoppler: optional; select pdftoppm.exe below.")
   if PDF.engine() == "poppler" then UI.draw_poppler_settings(ctx) end
-  UI.field(ctx, "Page sharpness (DPI)")
-  ch, R.dpi_edit = ImGui.InputInt(ctx, "##dpi", R.dpi_edit or S.dpi, 25, 50)
-  if ImGui.IsItemDeactivatedAfterEdit(ctx) then
-    local d = Util.clamp(R.dpi_edit, 50, 600)
-    R.dpi_edit = d
-    if d ~= S.dpi then S.dpi = d; Util.mark_dirty(); if S.pdf_path ~= "" then PDF.open_pdf(S.pdf_path, true) end end
+  -- the DPI number: shown as text with "Change"; the field appears only when you want to type a value
+  -- (or when no PDF is open yet, so there is no quality note and no "Match DPI" button)
+  if R.dpi_manual or not R.last_ratio then
+    UI.field(ctx, "Page sharpness (DPI)")
+    ch, R.dpi_edit = ImGui.InputInt(ctx, "##dpi", R.dpi_edit or S.dpi, 25, 50)
+    if ImGui.IsItemDeactivatedAfterEdit(ctx) then
+      local d = Util.clamp(R.dpi_edit, 50, 600)
+      R.dpi_edit = d
+      if d ~= S.dpi then S.dpi = d; Util.mark_dirty(); if S.pdf_path ~= "" then PDF.open_pdf(S.pdf_path, true) end end
+    end
+  else
+    local cx, cw = UI.row_start(ctx, "Page sharpness")
+    local txt = string.format("%d DPI", S.dpi)
+    UI.row_text(ctx, txt)
+    local bw = UI.btn_w(ctx, "Change", CFG.SMALL_BTN_W)
+    ImGui.SameLine(ctx, math.max(cx + (ImGui.CalcTextSize(ctx, txt)) + 12, cx + cw - bw))
+    if UI.row_button(ctx, "Change##dpi", bw, "ghost") then R.dpi_manual = true; R.dpi_edit = S.dpi end
+    UI.tip(ctx, "Type the DPI by hand. Usually 'Match DPI to current view' below is enough.")
   end
   if R.last_ratio then
     local q, qcol
@@ -4489,37 +4467,27 @@ function UI.draw_display_tab(ctx)
   ch, S.log_diag = UI.checkbox(ctx, "Write diagnostic log", S.log_diag)
   if ch then Util.mark_dirty() end
   UI.tip(ctx, "Writes technical events to the REAPER console.")
-  -- render cache
+  -- page cache: one row "<size>  [Clear...]". The size is calculated in the background when this
+  -- section is shown and no size is known yet (never every frame: the job runs once, then the result stays).
   local clearing = R.cache_clear_t and Util.now() - R.cache_clear_t < 2 -- wait for the delete to run
-  local size_label = (R.size_job or clearing) and "Calculating..."
-    or (R.cache_size and (Util.fmt_bytes(R.cache_size) .. "  -  calculate again") or "Calculate")
-  if UI.full_button(ctx, size_label .. "##cachesize", "primary", "Page cache size") and not R.size_job and not clearing then
-    Util.start_dir_size(CFG.CACHE_ROOT, 3)
-  end
-  UI.tip(ctx, "Total size of the page cache of all PDFs.\nFolder: " .. (R.cache_dir or CFG.CACHE_ROOT))
-  if not R.confirm then
-    local a, b = UI.button_pair(ctx, "Current PDF", "All PDFs", true, "Clear page cache")
-    if a then R.confirm = "current" end
-    if b then R.confirm = "all" end
-  else
-    UI.note(ctx, R.confirm == "all"
-      and "Delete the whole page cache? (The page on screen is kept.)"
-      or "Delete the page cache of the current PDF? (The page on screen is kept.)", COL.YELLOW)
-    local yes, no
-    do -- "Yes, delete" red, "Cancel" normal, in the same row
-      local cx, cw = UI.row_start(ctx, "Clear page cache")
-      local hw = math.floor((cw - 8) / 2)
-      yes = UI.row_button(ctx, "Yes, delete", hw, true)
-      ImGui.SameLine(ctx, 0, 8)
-      no = UI.button(ctx, "Cancel", cw - hw - 8, UI.h(ctx))
+  if not R.cache_size and not R.size_job and not clearing then Util.start_dir_size(CFG.CACHE_ROOT, 3) end
+  do
+    local cx, cw = UI.row_start(ctx, "Page cache")
+    local bw = UI.btn_w(ctx, "Clear...", CFG.SMALL_BTN_W)
+    local size_txt = (R.size_job or clearing or not R.cache_size) and "Calculating..." or Util.fmt_bytes(R.cache_size)
+    UI.row_text(ctx, size_txt, COL.TEXT_DIM)
+    UI.tip(ctx, "Total size of the page cache of all PDFs.\nFolder: " .. (R.cache_dir or CFG.CACHE_ROOT))
+    -- the button at the right end of the control column (after the text when the column is narrow)
+    ImGui.SameLine(ctx, math.max(cx + (ImGui.CalcTextSize(ctx, size_txt)) + 12, cx + cw - bw))
+    if UI.row_button(ctx, "Clear...", bw, true) then
+      UI.ask("cache_clear", "Delete the whole page cache? The page on screen is kept; pages are prepared again when needed.",
+        "Yes, delete", function()
+          PDF.clear_all_cache(); R.cache_size = nil
+          Msg.notify("Page cache cleared.", false, "display")
+        end)
     end
-    if yes then
-      if R.confirm == "all" then PDF.clear_all_cache() else PDF.clear_current_cache() end
-      R.confirm = nil; R.cache_size = nil
-      Msg.notify("Page cache cleared.", false, "display")
-    end
-    if no then R.confirm = nil end
   end
+  UI.draw_ask(ctx, "cache_clear")
   if UI.danger_button(ctx, "Reset all settings...") then
     UI.ask("reset_all", "Reset all Chart Cue settings on this computer to the defaults? This resets the PDF engine, "
       .. "page sharpness, window, MIDI and autoscroll settings. Your projects (library, regions, cues) are not changed.",
@@ -4660,7 +4628,6 @@ If your project contains several songs, each song can have its own PDF. Mark eac
 Autoscroll moves the page while REAPER plays. Choose the mode at the top right, or in Settings > Autoscroll. Each project saves its own mode.
 
 - Off: the page moves only when you scroll it.
-- Fixed speed: the page moves down at a steady speed. Set the speed in Settings > Autoscroll.
 - Markers: you put markers in your REAPER project that tell Chart Cue what to show.
 - Cue list: the same as markers, but Chart Cue keeps the list itself. No markers are added to your project. Use this if another program (for example a setlist program) must not see extra markers.
 
@@ -4681,8 +4648,7 @@ If you scroll by hand during playback, autoscroll waits a moment and then contin
 - Marker names are not case-sensitive ("pdfpage 2" works). Markers with a wrong number are ignored and listed as a warning.
 - A PDFPAGE marker always starts the page at the top. If a PDFSCROLL marker is at exactly the same time, the PDFSCROLL marker wins.
 - The smooth movement never continues past a PDFPAGE marker.
-- With regions, the markers inside a region control the PDF of that region. "Continue after region end" lets the markers work after the region ends.
-- Fixed speed: "Auto page turn" goes to the next page at the bottom of a page. "Set start at play cursor" sets where the top of the page is.
+- With regions, the markers inside a region control the PDF of that region. They work from the region start to the region end.
 - Manual scrolling (wheel, drag, MIDI) pauses autoscroll for 1.5 seconds.
 - Cue list: each song (region) has its own cues, counted from the region start. If you move a region, its cues move with it. Without regions, the cues count from the project start ("whole project").
 - Cue list: "Count time in" is chosen per project. Beats: a cue stays on its bar and beat when the tempo changes. Seconds: a cue stays at the same time. Switching keeps every cue at its current place.
@@ -4723,7 +4689,7 @@ You can scroll the page with a knob, fader or endless encoder on a MIDI controll
 - Page brightness (View): lower than 100% makes the white paper darker for dark stages. 100% = not dimmed.
 - Page-turn flash (View): a short blue frame when the page turns during playback.
 - Comfortable layout (Layout): more empty space between rows and sections; buttons, fields and tabs keep their size.
-- Page cache (Troubleshooting): Chart Cue keeps the pages on your disk, so PDFs open fast. You can clear it at any time. It is filled again when needed.]==],
+- Page cache (Troubleshooting): Chart Cue keeps the pages on your disk, so PDFs open fast. Its size is shown next to "Clear...", which clears it at any time. It is filled again when needed.]==],
     more = [==[
 - "Match DPI to current view" sets the DPI that fits your current zoom.
 - Chart Cue prepares all pages of a PDF in the background. The pages near the current page come first.
@@ -4776,7 +4742,7 @@ The keys work when the Chart Cue window is active. Click on it first.]==],
 - "No PDF open": open a PDF in the Library tab.
 - "Loading PDF" or "Preparing page" stays for a long time: wait a moment. Large PDFs need more time the first time. If nothing changes, click "Retry rendering" in the status bar.
 - A PDF name is red: the file was moved or renamed. Click "Relocate..." in the Library tab.
-- The page looks blurry: raise "Page sharpness (DPI)" in Settings > Display and view.
+- The page looks blurry: click "Match DPI to current view" in Settings > Display and view > Page quality (or "Change" to type a higher DPI).
 - The wrong PDF opens for a song: check the menu of that region in the Regions tab.
 - Chart Cue opens twice, or REAPER asks about a running script: use only one way to open Chart Cue automatically (Settings > Project).
 - Nothing helps: change the PDF engine in Settings > Display and view and try again.]==],

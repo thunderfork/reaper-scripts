@@ -40,6 +40,8 @@
 
 - UI cleanup round: BUG FIX Project.parse_cfg ignored keys with "_" (scroll_mode, cue_unit, active_pdf, auto_switch, continue_after_end, hint_off, fixed_start) since 4.7; PDF list and region list in columns; Regions search + "Show" menu (UI.search_row); "Region settings", "Region list (n)", "Cue settings", "Cue list (n)", "Marker settings", MIDI "Troubleshooting"; Display -> "Display and view" (View, Page quality, Layout, Troubleshooting); Fixed speed start per project (P.fixed_start); scope moved into the "?" text, labels only on 3 exception rows; red round X (UI.remove_x_button) for cues and PDFs; foldable first sections (UI.heading fold, S.folded); Settings sections in the heading style, one open at a time.
 
+- Removed (approved): Fixed speed mode (S.autoscroll_pps, S.auto_page_turn removed; P.fixed_start and scroll_mode=fixed still read/written so the saved text and "Save as" detection stay the same; "fixed" means "off"); "Continue after region end" (always off; P.continue_after_end still read/written). Page cache in one row with "Clear..." (UI.ask); DPI shown as text with "Change". Cue list: "#" column numbered across all songs, "Position" title.
+
 ## Future consideration (not planned)
 - Cue list columns: centred layout was rejected; look again later.
 - Confirmation (or undo) for the single-row cue "Remove".
