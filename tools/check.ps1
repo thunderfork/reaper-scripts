@@ -1,5 +1,5 @@
 # Static checks for the Chart Cue scripts (no REAPER needed). Run before deploying:
-#   .\check.ps1
+#   .\tools\check.ps1
 # 1. Syntax (luac -p)                       - must pass
 # 2. Undefined globals (from the luac listing) - must pass
 # 3. Lua Language Server warnings            - information only (many are false alarms:
@@ -7,7 +7,7 @@
 # These checks find syntax errors and wrong names. They do not replace a test in REAPER.
 
 $ErrorActionPreference = "Stop"
-$root = $PSScriptRoot
+$root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is in tools\)
 $failed = $false
 
 # luac.exe: on the PATH, else the winget install folder

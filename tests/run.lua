@@ -1,5 +1,5 @@
 -- @noindex
--- Chart Cue tests. Run with .\test.ps1 (it starts the portable test REAPER in C:\REAPERtest).
+-- Chart Cue tests. Run with .\tools\test.ps1 (it starts the portable test REAPER in C:\REAPERtest).
 -- Loads Chart Cue.lua without its window, runs each test, writes tests\result.txt, quits REAPER.
 local r = reaper
 local here = ({ r.get_action_context() })[2]:match("^(.*)[/\\]")

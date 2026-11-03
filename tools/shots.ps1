@@ -1,11 +1,12 @@
 # Takes screenshots of the Chart Cue window in the portable test REAPER (C:\REAPERtest):
-#   .\shots.ps1                (compact layout, into tests\shots)
-#   .\shots.ps1 -Comfortable   ("Comfortable layout" on, into tests\shots\comfortable)
+#   .\tools\shots.ps1                (compact layout, into tests\shots)
+#   .\tools\shots.ps1 -Comfortable   ("Comfortable layout" on, into tests\shots\comfortable)
 # tests\shots.lua shows each scene and writes tests\shots\req.txt; this script saves
 # <folder>\<scene>.png and deletes req.txt. The test REAPER starts with no Chart Cue settings.
 param([switch]$Comfortable)
+$root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is in tools\)
 $reaper = "C:\REAPERtest\reaper.exe"
-$dir = Join-Path $PSScriptRoot "tests\shots"
+$dir = Join-Path $root "tests\shots"
 $req = Join-Path $dir "req.txt"
 $env:CHARTCUE_COMFORT = if ($Comfortable) { "1" } else { "0" }
 if ($Comfortable) { $dir = Join-Path $dir "comfortable" }
@@ -28,7 +29,7 @@ public static class Win {
 "@
 [Win]::SetProcessDPIAware() | Out-Null
 
-$p = Start-Process $reaper -ArgumentList "-newinst", "-nosplash", "`"$(Join-Path $PSScriptRoot 'tests\shots.lua')`"" -PassThru
+$p = Start-Process $reaper -ArgumentList "-newinst", "-nosplash", "`"$(Join-Path $root 'tests\shots.lua')`"" -PassThru
 $end = (Get-Date).AddSeconds(120)
 while (-not $p.HasExited -and (Get-Date) -lt $end) {
   if (Test-Path $req) {

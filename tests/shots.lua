@@ -1,5 +1,5 @@
 -- @noindex
--- Chart Cue screenshots. Run with .\shots.ps1 (it starts the portable test REAPER in C:\REAPERtest).
+-- Chart Cue screenshots. Run with .\tools\shots.ps1 (it starts the portable test REAPER in C:\REAPERtest).
 -- Starts Chart Cue normally, shows one scene after the other and asks shots.ps1 for a screenshot:
 -- writes tests\shots\req.txt (scene name), waits until shots.ps1 deletes it, then the next scene.
 local r = reaper
@@ -29,7 +29,7 @@ dofile(here .. "\\..\\Chart Cue\\Chart Cue.lua")
 local C = ChartCueTest
 ChartCueTest = nil
 C.UI.init() -- the normal start, with the window
-C.S.comfortable = os.getenv("CHARTCUE_COMFORT") == "1" -- set by .\shots.ps1 -Comfortable
+C.S.comfortable = os.getenv("CHARTCUE_COMFORT") == "1" -- set by .\tools\shots.ps1 -Comfortable
 
 local S, R = C.S, C.R
 local function settings(open) S.tab = 4; S.settings_open = open end

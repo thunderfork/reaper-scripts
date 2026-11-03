@@ -1,8 +1,8 @@
 # Makes the zip for direct sharing: release\Chart-Cue-<version>.zip
 # (the 4 scripts, README.md and LICENSE). Run the checks first:
-#   .\check.ps1; .\release.ps1
+#   .\tools\check.ps1; .\tools\release.ps1
 $ErrorActionPreference = "Stop"
-$root = $PSScriptRoot
+$root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is in tools\)
 $src = Join-Path $root "Chart Cue"
 
 # the version from the script header (@version), so the zip name always matches

@@ -1,4 +1,5 @@
-$srcdir = Join-Path $PSScriptRoot "Chart Cue"
+$root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is in tools\)
+$srcdir = Join-Path $root "Chart Cue"
 $scripts = Join-Path $env:APPDATA "REAPER\Scripts" # the standard REAPER resource folder of this Windows user
 # installed with ReaPack: the actions run the copy in the ReaPack folder, so deploy there
 $reapack = Join-Path $scripts "thunderfork\Chart Cue"

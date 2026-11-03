@@ -67,13 +67,13 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 
 ## Verification
 
-- After editing, run `.\check.ps1` before deploying. It must end with "Syntax and globals OK":
+- After editing, run `.\tools\check.ps1` before deploying. It must end with "Syntax and globals OK":
   1. syntax (`luac -p`, Lua 5.4.6 from winget DEVCOM.Lua),
   2. undefined globals (from the `luac -l` listing; allowed: standard Lua and `reaper`),
   3. Lua Language Server warnings (information only).
 - Compare Language Server warnings with the known false alarms (19 "Need check nil" /
   "unknown|nil" warnings on 2026-11-02); look at every new one.
-- For logic changes (navigation, autoscroll, project data, cache), also run `.\test.ps1`. It runs
+- For logic changes (navigation, autoscroll, project data, cache), also run `.\tools\test.ps1`. It runs
   `tests\run.lua` in the portable test REAPER `C:\REAPERtest` (never the normal REAPER) and must
   end with "0 failed". Add a test for each fixed bug when practical.
 - These checks do not replace a test in REAPER.
@@ -89,7 +89,7 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 - Deploy with:
 
 ```powershell
-.\deploy.ps1
+.\tools\deploy.ps1
 ```
 
 - Deployed copy: `%APPDATA%\REAPER\Scripts\thunderfork\Chart Cue\` (the ReaPack install; the REAPER
@@ -102,8 +102,9 @@ That folder contains `settings.ini`, cache, `tmp`, and `autostart.lua`; the scri
 ## Other files
 
 - `PLAN.md`: done work, open items and the release checklist.
-- `README.md`: for other users. `check.ps1` and `.luarc.json`: the static checks.
-- `LICENSE` (MIT). `release.ps1`: makes `release\Chart-Cue-<version>.zip` (git-ignored).
+- `README.md`: for other users. `tools\`: check.ps1 (with `.luarc.json`: the static checks), test.ps1,
+  deploy.ps1, release.ps1, shots.ps1. `tests\`: run.lua (logic tests), shots.lua, test.pdf.
+- `LICENSE` (MIT). `tools\release.ps1`: makes `release\Chart-Cue-<version>.zip` (git-ignored).
 - `.github/workflows/reapack-index.yml`: GitHub builds `index.xml` (the ReaPack repository
   file) after each push to main. Do not edit `index.xml` by hand.
 
@@ -112,4 +113,4 @@ That folder contains `settings.ini`, cache, `tmp`, and `autostart.lua`; the scri
 1. Run the release checklist in PLAN.md (in REAPER).
 2. Raise `@version` and `CFG.VERSION` together; write 1-3 user-facing `@changelog` lines.
 3. Commit and push (when I ask). GitHub updates `index.xml`; ReaPack users get the update.
-4. `.\release.ps1`, then attach the zip to a GitHub Release with the same version.
+4. `.\tools\release.ps1`, then attach the zip to a GitHub Release with the same version.
