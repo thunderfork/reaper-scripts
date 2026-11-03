@@ -92,7 +92,7 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 .\tools\deploy.ps1
 ```
 
-- Deployed copy: `%APPDATA%\REAPER\Scripts\thunderfork\Chart Cue\` (the ReaPack install; the REAPER
+- Deployed copy: `%APPDATA%\REAPER\Scripts\Thunderfork Scripts\Chart Cue\` (the ReaPack install; the REAPER
   actions run this copy), else `%APPDATA%\REAPER\Scripts\` when ReaPack has not installed it.
 - Never move, rename, or edit by hand (Claude must not touch it):
   `%APPDATA%\REAPER\Scripts\Chart Cue`

@@ -35,13 +35,13 @@ Windows only.
 
 1. In REAPER, open Extensions > ReaPack > Import repositories...
 2. Paste this link and click OK:
-   `https://github.com/thunderfork/chart-cue/raw/main/index.xml`
+   `https://github.com/thunderfork/reaper-scripts/raw/main/index.xml`
 3. Open Extensions > ReaPack > Browse packages, search "Chart Cue", right-click it > Install, and click OK.
 4. In the Action List, run "Script: Chart Cue.lua". The 3 page-turn actions are installed too.
 
 ## Install from the zip
 
-1. Download the zip from the [Releases](https://github.com/thunderfork/chart-cue/releases) page and unzip it.
+1. Download the zip from the [Releases](https://github.com/thunderfork/reaper-scripts/releases) page and unzip it.
 2. Copy `Chart Cue.lua` into your REAPER `Scripts` folder. Options > Show REAPER resource path opens the folder that contains it.
 3. Optional: copy the 3 files `Chart Cue - Next page.lua`, `Chart Cue - Previous page.lua` and `Chart Cue - Toggle performance mode.lua` into the same folder.
 4. In REAPER, open Actions > Show action list > New action > Load ReaScript..., and load `Chart Cue.lua` and the optional files.

@@ -40,7 +40,7 @@
   Requirements: REAPER 7 or newer on Windows 10 / 11, and ReaImGui 0.9.3 or newer (ReaPack).
   Optional: Poppler (pdftoppm.exe, pdfinfo.exe) as an alternative PDF engine, and the
   "Chart Cue - Next page / Previous page / Toggle performance mode" action scripts.
-  Install: with ReaPack (https://github.com/thunderfork/chart-cue/raw/main/index.xml), or
+  Install: with ReaPack (https://github.com/thunderfork/reaper-scripts/raw/main/index.xml), or
   Actions > Show action list > New action... > Load ReaScript... > pick this file.
   Settings are saved in the .rpp (project) and in settings.ini (global).
   See the in-app Help ("?" at the end of the tab strip) for all features.
@@ -98,7 +98,7 @@ local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
 CFG.VERSION = "1.1"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
-CFG.FEEDBACK_URL = "https://github.com/thunderfork/chart-cue/issues" -- Help > About > "Send feedback"
+CFG.FEEDBACK_URL = "https://github.com/thunderfork/reaper-scripts/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
 CFG.BASE_DIR = CFG.RES .. SEP .. "Scripts" .. SEP .. "Chart Cue"
 CFG.CACHE_ROOT = CFG.BASE_DIR .. SEP .. "cache"
