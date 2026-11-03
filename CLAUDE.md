@@ -141,5 +141,12 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 1. Run the release checklist in PLAN.md (in REAPER).
 2. Raise `@version` and `CFG.VERSION` together; write 1-3 user-facing `@changelog` lines.
 3. Commit and push (when I ask). Check the "ReaPack index" workflow; ReaPack users then get the update.
-4. When I ask: `.\tools\release.ps1`, then create the GitHub Release with `gh` (logged in as
+4. `.\tools\release.ps1`, then create the GitHub Release with `gh` (logged in as
    thunderfork): tag `vX.Y` on main, title "Chart Cue X.Y", the changelog lines as notes, and the zip.
+
+Every time I ask to commit and push:
+- If the scripts in `Chart Cue/` changed, the commit is a new version: do steps 2-4 above
+  (raise the version, commit and push, check the workflow, then create the GitHub Release and upload
+  the zip) without asking again.
+- If only other files changed (CLAUDE.md, PLAN.md, README.md, tools, tests), commit and push without
+  a new version or release, and say so.
