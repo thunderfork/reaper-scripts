@@ -3,6 +3,10 @@
 Chart Cue is a Windows-only REAPER Lua/ReaImGui script for displaying and
 scrolling PDF charts during playback.
 
+Repository: `thunderfork/reaper-scripts` (https://github.com/thunderfork/reaper-scripts), shown in
+ReaPack as "Thunderfork Scripts". It is meant for all my REAPER scripts; today it holds only Chart Cue.
+When a second script arrives, split this file into general rules and per-script rules.
+
 Main file: `Chart Cue/Chart Cue.lua` (the `Chart Cue` folder is the ReaPack category; keep the scripts there).
 
 ## Working with me
@@ -14,7 +18,9 @@ Main file: `Chart Cue/Chart Cue.lua` (the `Chart Cue` folder is the ReaPack cate
 - Ask me before any change to what is saved in my projects or settings, or before removing
   a feature or a control.
 - After editing, list only the functions changed, and the manual test I should do in REAPER.
-- Commit only when I ask.
+- Deploy after every change to the scripts (after the checks pass), without waiting to be told.
+- Take screenshots (`.\tools\shots.ps1`) only when I agree; ask first, in one line.
+- Commit and push only when I ask.
 
 ## Editing rules
 
@@ -23,7 +29,8 @@ Main file: `Chart Cue/Chart Cue.lua` (the `Chart Cue` folder is the ReaPack cate
 - Preserve the existing architecture, naming style, and user-facing behaviour.
 - Do not change user-facing behaviour unless explicitly requested.
 - Do not introduce external dependencies without asking.
-- Keep the files' LF line endings (core.autocrlf can turn them into CRLF).
+- Keep the files' LF line endings (core.autocrlf can turn them into CRLF). Check for CRLF after
+  writing a file with PowerShell.
 
 ## Saved data (compatibility)
 
@@ -37,22 +44,29 @@ Main file: `Chart Cue/Chart Cue.lua` (the `Chart Cue` folder is the ReaPack cate
 ## REAPER/Lua constraints
 
 - Target REAPER's embedded Lua runtime on Windows (Lua 5.4).
-- Use only `reaper.*` APIs unless explicitly requested otherwise.
+- Prefer `reaper.*` functions. Use `io` / `os` only for files and processes, as the existing code
+  does (settings, cache, copies, helper scripts); never for things REAPER has an API for.
 - Do not assume external Lua libraries are installed.
 - Preserve REAPER-compatible path handling.
-- Do not use `io.*` or `os.*` unless the existing code already requires it or I explicitly request it.
+- ReaImGui API is pinned to 0.9.3 (shim). Some calls return 2 values: wrap them in parentheses
+  when they are the last argument of a call (e.g. `math.max(1, (ImGui.CalcTextSize(ctx, s)))`).
 
 ## Architecture
 
-- `CFG`: constants, paths, and defaults.
+- `CFG`: constants, paths, and defaults. `COL`: the colours.
 - `S`: global settings persisted in `settings.ini`.
 - `R`: volatile runtime state.
 - `P`: per-project configuration stored in the REAPER project.
+- `Util`: small helpers (paths, files, time, settings load / save).
 - `PDF`: PDF info, rendering, cache, and page images.
 - `Project`: regions, markers, library, and project configuration.
-- `UI`: ReaImGui interface and main deferred loop.
+- `Cues`: the cue list (per region, in the project data) and its undo.
 - `Nav`: page, scroll, zoom, and autoscroll logic.
-- `Midi`: MIDI input and CC handling.
+- `Midi`: MIDI input and CC handling, and the commands of the action scripts.
+- `Msg`: messages, errors and the diagnostic log.
+- `Dock`: docking, window position and size, the resize edges.
+- `Autostart`: "Open automatically" (the block in `__startup.lua` and `autostart.lua`).
+- `UI`: ReaImGui interface and main deferred loop.
 
 Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 
@@ -75,7 +89,10 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
   "unknown|nil" warnings on 2026-11-02); look at every new one.
 - For logic changes (navigation, autoscroll, project data, cache), also run `.\tools\test.ps1`. It runs
   `tests\run.lua` in the portable test REAPER `C:\REAPERtest` (never the normal REAPER) and must
-  end with "0 failed". Add a test for each fixed bug when practical.
+  end with "0 failed". Add a test for each fixed bug when practical. The test REAPER can run while
+  my normal REAPER is open; never close or save my REAPER.
+- For UI code that the tests do not reach (menus, popups, new windows), run it once in the test
+  REAPER with a small script that opens it and logs console errors, before deploying.
 - These checks do not replace a test in REAPER.
 - Ensure ReaImGui calls remain valid in their intended UI/deferred-loop context.
 - Do not claim a change is tested unless I have tested it in REAPER.
@@ -92,12 +109,14 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 .\tools\deploy.ps1
 ```
 
-- Deployed copy: `%APPDATA%\REAPER\Scripts\Thunderfork Scripts\Chart Cue\` (the ReaPack install; the REAPER
-  actions run this copy), else `%APPDATA%\REAPER\Scripts\` when ReaPack has not installed it.
-- Never move, rename, or edit by hand (Claude must not touch it):
-  `%APPDATA%\REAPER\Scripts\Chart Cue`
-
-That folder contains `settings.ini`, cache, `tmp`, and `autostart.lua`; the script itself writes them.
+- Deployed copy (the REAPER actions run it), the first folder that exists:
+  1. `%APPDATA%\REAPER\Scripts\Thunderfork Scripts\Chart Cue\` (the ReaPack install),
+  2. `%APPDATA%\REAPER\Scripts\thunderfork\Chart Cue\` (the ReaPack install before the rename on 2026-11-03),
+  3. `%APPDATA%\REAPER\Scripts\`.
+- Chart Cue's data folder, on every user's computer: `%APPDATA%\REAPER\Data\Chart Cue\` (since 2026-11-03)
+  (`settings.ini`, `cache\`, `tmp\`, `autostart.lua`, `Chart Cue Guide.html`; the script writes them).
+  Reading it is OK. Never change, move or delete anything there without asking me first: it holds
+  my real settings, and the `__startup.lua` block points to `autostart.lua` in it.
 
 ## Other files
 
@@ -107,10 +126,20 @@ That folder contains `settings.ini`, cache, `tmp`, and `autostart.lua`; the scri
 - `LICENSE` (MIT). `tools\release.ps1`: makes `release\Chart-Cue-<version>.zip` (git-ignored).
 - `.github/workflows/reapack-index.yml`: GitHub builds `index.xml` (the ReaPack repository
   file) after each push to main. Do not edit `index.xml` by hand.
+- Temporary files (test logs, helper scripts): in the scratchpad folder, never in the repository.
+
+## Git
+
+- Write commit messages with `git commit -m "..." -m "..."` (not from a file written by PowerShell
+  or the Write tool: they add a byte-order mark to the title).
+- End each commit message with the `Co-Authored-By` line.
+- After each push, check that the "ReaPack index" workflow succeeded (`gh run list`); if it failed,
+  ReaPack users do not get the update. Then `git pull` the new `index.xml`.
 
 ## Releasing a version
 
 1. Run the release checklist in PLAN.md (in REAPER).
 2. Raise `@version` and `CFG.VERSION` together; write 1-3 user-facing `@changelog` lines.
-3. Commit and push (when I ask). GitHub updates `index.xml`; ReaPack users get the update.
-4. `.\tools\release.ps1`, then attach the zip to a GitHub Release with the same version.
+3. Commit and push (when I ask). Check the "ReaPack index" workflow; ReaPack users then get the update.
+4. When I ask: `.\tools\release.ps1`, then create the GitHub Release with `gh` (logged in as
+   thunderfork): tag `vX.Y` on main, title "Chart Cue X.Y", the changelog lines as notes, and the zip.

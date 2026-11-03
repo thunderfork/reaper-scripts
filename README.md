@@ -60,7 +60,7 @@ The round "?" next to each heading explains its settings. The "?" at the end of 
 
 ## Settings and data
 
-- **Your settings** are saved in `Scripts\Chart Cue\settings.ini`. The page cache is in `Scripts\Chart Cue\cache`.
+- **Your settings** are saved in `Data\Chart Cue\settings.ini` in the REAPER resource folder (Options > Show REAPER resource path). The page cache is in `Data\Chart Cue\cache`.
 - **The library, the region choices and the cues** are saved inside the REAPER project. Save the project after changes.
 
 ## License

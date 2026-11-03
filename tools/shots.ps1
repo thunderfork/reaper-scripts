@@ -14,7 +14,7 @@ if (-not (Test-Path $reaper)) { Write-Host "Test REAPER not found: $reaper" -For
 New-Item -ItemType Directory -Force $dir | Out-Null
 Get-ChildItem $dir -Filter "*.png" | Remove-Item
 Remove-Item $req -ErrorAction SilentlyContinue
-Remove-Item "C:\REAPERtest\Scripts\Chart Cue\settings.ini" -ErrorAction SilentlyContinue # a first start
+Remove-Item "C:\REAPERtest\Data\Chart Cue\settings.ini" -ErrorAction SilentlyContinue # a first start
 
 Add-Type -AssemblyName System.Drawing
 Add-Type @"

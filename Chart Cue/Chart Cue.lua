@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 1.1
+-- @version 1.2
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -11,9 +11,8 @@
 --   [main] Chart Cue - Previous page.lua
 --   [main] Chart Cue - Toggle performance mode.lua
 -- @changelog
---   Cue list: click a row to go to its cue, a Start row, + below, Use current view and Undo.
---   Autoscroll: Smooth or Jump scrolling; toolbar in groups with icons and a Hide controls button.
---   Clearer Settings and Help; Settings is a gear icon.
+--   Settings and the page cache are now in REAPER's Data folder (Data\Chart Cue).
+--   During playback the autoscroll mode is locked and shown as text in the toolbar.
 
 -- MIT License
 --
@@ -96,11 +95,11 @@ CFG.WIN_MIN_W, CFG.WIN_MIN_H = 300, 200 -- smallest window size when resizing
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.1"      -- keep equal to @version in the header
+CFG.VERSION = "1.2"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.FEEDBACK_URL = "https://github.com/thunderfork/reaper-scripts/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
-CFG.BASE_DIR = CFG.RES .. SEP .. "Scripts" .. SEP .. "Chart Cue"
+CFG.BASE_DIR = CFG.RES .. SEP .. "Data" .. SEP .. "Chart Cue" -- REAPER's data folder: settings, cache, helper files
 CFG.CACHE_ROOT = CFG.BASE_DIR .. SEP .. "cache"
 CFG.TMP_DIR = CFG.BASE_DIR .. SEP .. "tmp"
 CFG.SETTINGS_FILE = CFG.BASE_DIR .. SEP .. "settings.ini"
@@ -128,7 +127,7 @@ CFG.CUE_UNDO_MAX = 50      -- undo steps kept for the cue list
 CFG.AS_BEGIN = "-- >>> Chart Cue autostart (added by Chart Cue; remove with the Chart Cue option) >>>"
 CFG.AS_END = "-- <<< Chart Cue autostart <<<"
 CFG.AS_BLOCK = CFG.AS_BEGIN .. "\n"
-  .. 'pcall(dofile, reaper.GetResourcePath() .. "/Scripts/Chart Cue/autostart.lua")\n'
+  .. 'pcall(dofile, reaper.GetResourcePath() .. "/Data/Chart Cue/autostart.lua")\n'
   .. CFG.AS_END .. "\n"
 -- Fonts (Segoe UI)
 CFG.FONT_SIZE = 14
@@ -2798,6 +2797,7 @@ local MODE_ITEMS = "Absolute (knob or fader)\0Relative (endless encoder)\0"
 local REL_ITEMS = "Relative 1 - two's complement (1=+1, 127=-1)\0Relative 2 - binary offset (65=+1, 63=-1)\0Relative 3 - sign-magnitude (1=+1, 65=-1)\0Direction only (>64 down, <64 up)\0"
 local SCROLL_ITEMS = "Off\0Markers\0Cue list\0"
 local SCROLL_TOOLBAR_LABELS = { "Scroll: Off", "Scroll: Markers", "Scroll: Cue list" } -- same order as SCROLL_MODES
+local MODE_LOCKED_TIP = "Stop playback to change the autoscroll mode."
 local AUTOSCROLL_TIP = "Autoscroll mode (saved in this project)\n"
   .. "Off: the page moves only when you scroll it.\n"
   .. "Markers: PDFPAGE and PDFSCROLL markers in the project turn and scroll the page.\n"
@@ -2875,7 +2875,7 @@ end
 
 ---------------------------------------------------------------------------
 -- AUTOSTART: open Chart Cue for every project that contains Chart Cue data.
--- A small watcher (Scripts\Chart Cue\autostart.lua) is started from REAPER's __startup.lua.
+-- A small watcher (Data\Chart Cue\autostart.lua) is started from REAPER's __startup.lua.
 -- Chart Cue adds ONE marked block at the END of __startup.lua (after a backup) and removes only
 -- that block when the option is turned off. The user's own code is never changed.
 ---------------------------------------------------------------------------
@@ -3250,7 +3250,8 @@ end
 
 -- Dropdown whose preview text uses the shared text position (UI.text_y). Returns true while open
 -- (then call ImGui.EndCombo, exactly like BeginCombo).
-function UI.combo(ctx, id, preview, w)
+-- dim: grey preview text (for a dropdown inside BeginDisabled; the draw list text is not dimmed by it)
+function UI.combo(ctx, id, preview, w, dim)
   local dl = ImGui.GetWindowDrawList(ctx)
   local x, y = ImGui.GetCursorScreenPos(ctx)
   local h = ImGui.GetFrameHeight(ctx)
@@ -3259,7 +3260,7 @@ function UI.combo(ctx, id, preview, w)
   local ty = UI.text_y(ctx, y)
   ImGui.SetNextItemWidth(ctx, w)
   local open = ImGui.BeginCombo(ctx, id, "") -- preview drawn below, on the window's draw list
-  ImGui.DrawList_AddText(dl, x + px, ty, COL.TEXT_MAIN, txt)
+  ImGui.DrawList_AddText(dl, x + px, ty, dim and COL.TEXT_DIM or COL.TEXT_MAIN, txt)
   return open
 end
 
@@ -3333,21 +3334,32 @@ function UI.toolbar_items(ctx, perf)
   add(bw, function() if UI.icon_button(ctx, "##zoomin", bw, "plus") then Nav.zoom_by(CFG.ZOOM_STEP) end
     UI.tip(ctx, "Zoom in (Ctrl and +, Ctrl + mouse wheel)") end)
   g = 3
-  if perf then
+  -- autoscroll: during playback (full and small toolbar) the state as text, since the mode is locked
+  -- then (the page would jump); when stopped, the dropdown
+  if Util.playing() then
     local st = "Autoscroll: " .. UI.autoscroll_state_text()
-    add((ImGui.CalcTextSize(ctx, st)), function() UI.row_text(ctx, st) end)
+    add((ImGui.CalcTextSize(ctx, st)), function()
+      UI.row_text(ctx, st)
+      UI.tip(ctx, MODE_LOCKED_TIP .. "\n\n" .. AUTOSCROLL_TIP)
+    end)
   else
     add(CFG.SCROLL_COMBO_W, function()
       local labels = SCROLL_TOOLBAR_LABELS
       local cur = 1
       for i, m in ipairs(SCROLL_MODES) do if m == Nav.scroll_mode() then cur = i end end
-      if UI.combo(ctx, "##scrollmode", labels[cur] or "", CFG.SCROLL_COMBO_W) then
+      local locked = Util.playing() -- the mode never changes during playback (the page would jump)
+      ImGui.BeginDisabled(ctx, locked)
+      if UI.combo(ctx, "##scrollmode", labels[cur] or "", CFG.SCROLL_COMBO_W, locked) then
         for i, m in ipairs(SCROLL_MODES) do
           if ImGui.Selectable(ctx, labels[i], i == cur) then Nav.set_scroll_mode(m) end
         end
         ImGui.EndCombo(ctx)
       end
-      UI.tip(ctx, AUTOSCROLL_TIP)
+      ImGui.EndDisabled(ctx)
+      if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+        ImGui.SetTooltip(ctx, locked and ("Autoscroll: " .. UI.autoscroll_state_text() .. "\n" .. MODE_LOCKED_TIP .. "\n\n" .. AUTOSCROLL_TIP)
+          or AUTOSCROLL_TIP)
+      end
     end)
   end
   -- record cues: a square icon button, the same size as the lock button (only in the Cue list mode)
@@ -3459,7 +3471,7 @@ function UI.main_menu(ctx)
   if UI.menu_item(ctx, "Performance mode", "F") then UI.toggle_perf() end
   menu_sep(ctx)
   local mode = Nav.scroll_mode()
-  if UI.menu_sub(ctx, "Autoscroll") then
+  if UI.menu_sub(ctx, "Autoscroll", Util.playing()) then
     for i, sm in ipairs(SCROLL_MODES) do
       if UI.menu_item(ctx, MENU_SCROLL_LABELS[i], nil, mode == sm) then Nav.set_scroll_mode(sm) end
     end
@@ -3542,7 +3554,7 @@ end
 -- Submenu row ("Label  >"), in the same height and indent as UI.menu_item. Returns true while the
 -- submenu is open; then draw its items and call UI.menu_sub_end. ImGui's menu row is the text height
 -- plus the item spacing, centred on the text: the cursor moves down by `half` first and back after.
-function UI.menu_sub(ctx, label)
+function UI.menu_sub(ctx, label, disabled)
   local fs = ImGui.GetFontSize(ctx)
   local h = math.floor(fs + 10)
   local half = math.floor((h - fs) / 2)
@@ -3558,7 +3570,7 @@ function UI.menu_sub(ctx, label)
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_PopupRounding(), 0)
   ImGui.PushStyleColor(ctx, ImGui.Col_HeaderHovered(), COL.BTN_HOVER)
   ImGui.PushStyleColor(ctx, ImGui.Col_Header(), COL.BTN_HOVER)
-  local open = ImGui.BeginMenu(ctx, R.menu_indent .. label .. "##sub")
+  local open = ImGui.BeginMenu(ctx, R.menu_indent .. label .. "##sub", not disabled)
   ImGui.PopStyleColor(ctx, 2)
   ImGui.PopStyleVar(ctx, 3)
   if open then
@@ -4660,7 +4672,12 @@ function UI.draw_cue_list(ctx)
     -- not in the Cue list mode: say so first, with a one-click fix (blue, like the other main buttons)
     if Nav.scroll_mode() ~= "cues" then
       UI.note(ctx, "The autoscroll mode is not Cue list. The cues do not move the page.", COL.YELLOW)
-      if UI.full_button(ctx, "Use Cue list mode", "primary") then Nav.set_scroll_mode("cues") end
+      ImGui.BeginDisabled(ctx, Util.playing())
+      if UI.full_button(ctx, "Use Cue list mode", "primary") and not Util.playing() then Nav.set_scroll_mode("cues") end
+      ImGui.EndDisabled(ctx)
+      if Util.playing() and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+        ImGui.SetTooltip(ctx, MODE_LOCKED_TIP)
+      end
     end
 
     -- unit (per project)
@@ -5269,7 +5286,7 @@ If your project contains several songs, each song can have its own PDF. Mark eac
 - Regions and markers are read again automatically after each change in the project. "Rescan project" does it by hand.]==] },
 
   { title = "Autoscroll: the page moves by itself", text = [==[
-Autoscroll moves the page while REAPER plays. Choose the mode in the toolbar ("Scroll: ..."). Settings > Autoscroll has the options of each mode. Each project saves its own mode.
+Autoscroll moves the page while REAPER plays. Choose the mode in the toolbar ("Scroll: ..."). Settings > Autoscroll has the options of each mode. Each project saves its own mode. During playback the mode is locked, so the page cannot jump; stop playback to change it.
 
 - Off: the page moves only when you scroll it.
 - Markers: you put markers in your REAPER project that tell Chart Cue what to show.
@@ -5358,7 +5375,7 @@ The round "?" next to a heading tells you where its settings are saved: in this 
 - "Close with project": Chart Cue closes together with its project.]==],
     more = [==[
 - Saved in the project (.rpp): the library, region choices, ignored regions, "Switch PDF at regions", the autoscroll mode and the PDF on screen.
-- Saved for your computer (Scripts\Chart Cue\settings.ini): the PDF engine, DPI, window and dock place, MIDI settings and the default autoscroll mode (used by projects that have no mode yet).
+- Saved for your computer (Data\Chart Cue\settings.ini in the REAPER resource folder): the PDF engine, DPI, window and dock place, MIDI settings and the default autoscroll mode (used by projects that have no mode yet).
 - Automatic open adds 3 marked lines at the end of REAPER's Scripts\__startup.lua. A backup is saved first (__startup.lua.chartcue-backup). Turning the option off removes only these 3 lines.
 - Chart Cue closes when you close the project tab, or when File > Close project, New project or Open project replaces the project in the same tab. Switching tabs and "Save as" keep it open.]==] },
 
@@ -5411,7 +5428,7 @@ To remove Chart Cue completely from this computer:
 
 1. Settings > General: turn off "Open automatically". This removes the 3 Chart Cue lines from __startup.lua.
 2. Close Chart Cue. In REAPER's Action List, find "Script: Chart Cue.lua", right-click it and choose "Remove".
-3. Delete the folder Scripts\Chart Cue in the REAPER resource folder (Options > Show REAPER resource path). It contains the settings, the page cache, the guide and the helper scripts.
+3. Delete the folder Data\Chart Cue in the REAPER resource folder (Options > Show REAPER resource path). It contains the settings, the page cache, the guide and the helper scripts.
 4. Delete the file Chart Cue.lua.]==],
   more = [==[
 - Your projects are not damaged. They only contain a small Chart Cue data section, which REAPER ignores without Chart Cue.
@@ -5832,7 +5849,12 @@ function UI.draw_status(ctx)
   elseif hint_txt then
     UI.row_text(ctx, UI.trunc_text(ctx, hint_txt, aw - 230), COL.YELLOW)
     ImGui.SameLine(ctx)
-    if UI.button(ctx, hint_lbl .. "##modehint") then Nav.set_scroll_mode(hint_mode) end
+    ImGui.BeginDisabled(ctx, Util.playing())
+    if UI.button(ctx, hint_lbl .. "##modehint") and not Util.playing() then Nav.set_scroll_mode(hint_mode) end
+    ImGui.EndDisabled(ctx)
+    if Util.playing() and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+      ImGui.SetTooltip(ctx, MODE_LOCKED_TIP)
+    end
     ImGui.SameLine(ctx)
     if UI.button(ctx, "Not now##modehint") then P.hint_off = true; Util.mark_pdirty() end
     UI.tip(ctx, "Hides this hint for this project. It is saved with the project.")
