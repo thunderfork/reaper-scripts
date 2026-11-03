@@ -73,6 +73,9 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
   3. Lua Language Server warnings (information only).
 - Compare Language Server warnings with the known false alarms (19 "Need check nil" /
   "unknown|nil" warnings on 2026-11-02); look at every new one.
+- For logic changes (navigation, autoscroll, project data, cache), also run `.\test.ps1`. It runs
+  `tests\run.lua` in the portable test REAPER `C:\REAPERtest` (never the normal REAPER) and must
+  end with "0 failed". Add a test for each fixed bug when practical.
 - These checks do not replace a test in REAPER.
 - Ensure ReaImGui calls remain valid in their intended UI/deferred-loop context.
 - Do not claim a change is tested unless I have tested it in REAPER.
@@ -89,7 +92,8 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 .\deploy.ps1
 ```
 
-- Deployed copy: `%APPDATA%\REAPER\Scripts\` (the main script and the action scripts).
+- Deployed copy: `%APPDATA%\REAPER\Scripts\thunderfork\Chart Cue\` (the ReaPack install; the REAPER
+  actions run this copy), else `%APPDATA%\REAPER\Scripts\` when ReaPack has not installed it.
 - Never move, rename, or edit by hand (Claude must not touch it):
   `%APPDATA%\REAPER\Scripts\Chart Cue`
 

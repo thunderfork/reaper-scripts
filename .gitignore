@@ -9,3 +9,6 @@ Thumbs.db
 desktop.ini
 *.tmp
 ~$*
+# test output (test.ps1)
+tests/result.txt
+tests/shots/
