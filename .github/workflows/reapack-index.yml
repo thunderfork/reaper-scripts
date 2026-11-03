@@ -11,7 +11,7 @@ permissions:
   contents: write
 jobs:
   index:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # fixed version: a new runner image can break the gem build
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,7 +19,10 @@ jobs:
       - uses: ruby/setup-ruby@v1
         with:
           ruby-version: "3.3"
+      # rugged (a reapack-index part) has an old CMakeLists.txt; CMake 4 builds it only with this setting
       - run: gem install reapack-index
+        env:
+          CMAKE_POLICY_VERSION_MINIMUM: "3.5"
       # pandoc converts the @about text to RTF; without it the package is skipped
       - run: sudo apt-get update && sudo apt-get install -y pandoc
       - name: Build index.xml
