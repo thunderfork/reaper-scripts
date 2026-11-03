@@ -1,7 +1,7 @@
-# Chart Cue: plan (state on 2 November 2026)
+# Chart Cue: plan (state on 3 November 2026)
 
 ## Context
-- File: `Chart Cue.lua`, v4.7. REAPER 7 ReaScript, Lua 5.4, ReaImGui API pinned to 0.9.3 through the ReaTeam shim. Windows only.
+- File: `Chart Cue/Chart Cue.lua`, public version 1.1 (the v4.x numbers below are the pre-release versions). REAPER 7 ReaScript, Lua 5.4, ReaImGui API pinned to 0.9.3 through the ReaTeam shim. Windows only.
 - Modules: CFG, S (settings.ini), R (runtime), COL, P (project config in the .rpp ExtState "ChartCue"/"cfg"), Util, PDF, Project, Nav, Midi, UI, Cues, Msg, Dock, Autostart.
 - Layout system: UI.form / UI.field / UI.button_pair / UI.full_button, CFG.SP + UI.sp, one control height UI.h, one text rule CFG.TEXT_LIFT. Compact layout is the default.
 - Constraints:
@@ -31,7 +31,7 @@
 
 - 4.8 robustness fixes (commit 84fb3ae): __startup.lua duplicate block / backup check, stale "quit" flag, GUID diag, PowerShell block hints.
 - Items 10–11: cue fields keep a wrong value with a red border and a reason (UI.mark_invalid, R.cue_err), Esc restores; scroll % no longer deleted by a wrong value. Msg.notify sticky flag with an "x" (7 messages).
-- Cue undo: postponed. Open question: does REAPER undo restore SetProjExtState data? Test script in the chat of 2 November 2026. "before" -> REAPER undo blocks; "after" -> own multi-level snapshot stack.
+- Cue undo: done in 1.1 as Chart Cue's own snapshot stack (REAPER undo does not reliably cover the project ExtState).
 
 - Item 9 (commit d9adc5c): inline confirmations (UI.ask / UI.draw_ask) for remove all cues, remove PDF markers, reset all settings. Message boxes kept on purpose: ReaImGui missing, same-name file in project folder (3 choices), Open automatically (shows the __startup.lua lines).
 - Pass 3, items 13–15: bold selected filter; autoscroll "(ready)" / "(moving)"; status line 2 "Page 2 / 5  |  Next: page 3 at ..." (UI.page_status_text, cached 0.1 s); one term each: "page cache", "PDF markers".
@@ -44,6 +44,8 @@
 
 - REAPER actions: "Chart Cue - Next page / Previous page / Toggle performance mode.lua" write to ExtState "cmd_q" (next, prev, perf); Chart Cue reads it in Midi.poll_forwarded_midi, also in lock mode; cleared at start and close. deploy.ps1 copies them next to Chart Cue.lua. README.md added.
 
+- 1.1 (3 November 2026): UI review (gear tab, welcome, Settings sections, Help About / Send feedback, SWS and "This computer" labels removed); tests in the portable test REAPER (test.ps1, shots.ps1); toolbar in 3 groups with drawn icons and a "Hide controls when playing" button; Autoscroll settings order, "Scroll" Smooth / Jump (P.scroll_jump, written only when on; jump gives the page-turn flash); cue list: full-width rows, click a row = edit cursor, fixed Start row, per-row "Use current view" and "+ below", bar with Record / + Page turn / + Scroll point / Undo (own snapshot stack, Ctrl+Z), messages in the title line; panel grip double-click 40% <-> 60%; floating window: own 6 px resize edges and corner grip (WindowFlags_NoResize, move by title bar only), full size kept while collapsed; right-click menus (toolbar / page main menu with Autoscroll and Page brightness submenus, Library / Regions / Cues row menus), "Replace PDF..." (Project.replace_pdf, cue page check); page brightness minimum 25%.
+
 ## Release checklist (do before sharing a new version)
 1. Version: @version and CFG.VERSION are equal; @changelog has 1–3 user-facing lines.
 2. Start: Chart Cue starts without errors; the last tab and the open Settings section come back.
@@ -53,7 +55,7 @@
 6. PDFs: add a PDF and a folder; copy into the project; replace a PDF with a different file of the same name; relocate a missing PDF. Use a Greek folder and file name with spaces and an apostrophe.
 7. Engines: open a PDF with the Windows engine and with Poppler; clear the page cache while a PDF is open.
 8. Regions: rename, move, undo, save and reopen: the PDF assignment stays. "Keep last page" during playback in a region without a PDF; the page can be turned.
-9. Cues: record page turns and scroll points (Record on and off, Lock on); insert a cue between 2 cues; switch Beats / Seconds; a wrong value shows a red border.
+9. Cues: record page turns and scroll points (Record on and off, Lock on); insert a cue between 2 cues; "+ below" and "Use current view" (also on the Start row); Undo and Ctrl+Z; switch Beats / Seconds; a wrong value shows a red border; Scroll Smooth / Jump.
 10. Markers: PDFPAGE / PDFSCROLL markers scroll the page; "Remove PDF markers..." asks first and Ctrl+Z brings them back.
 11. Control: keys (window active); the 3 actions (window not active, also in lock mode); MIDI absolute and relative; MIDI page turns and cue buttons.
 12. Stage: performance mode on / off; lock; hide controls when playing; page brightness.
@@ -61,12 +63,11 @@
 
 ## Future consideration (not planned)
 - Half-page turn (top half shows the next page while the bottom of the current page is still read).
-- Cue list columns: centred layout was rejected; look again later.
-- Confirmation (or undo) for the single-row cue "Remove".
+- Guitar Pro files: convert to PDF with MuseScore's command line (optional external program, like Poppler).
+- REAPER forum button in Help > About (disabled until there is a forum thread).
 - One shared confirmation pattern: done (the Library remove question uses UI.ask, 2026-11-02).
 - Settings: inner headings look like the section headers.
 - No way to show the mode hint again after "Not now".
-- Cue undo: see the open question above.
 - UI scale 100 / 125 / 150 % (item 12): high risk, fonts must be rebuilt between frames and all pixel constants in CFG must scale.
 
 ## Old plan text (done, kept for reference)

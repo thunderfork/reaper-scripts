@@ -160,6 +160,16 @@ test("scroll between scroll points", function()
   eq(S.scroll_y, 123, "a manual scroll is not overwritten")
 end)
 
+test("scroll: jump at each scroll point", function()
+  local S = setup_view()
+  local P = C.get_P()
+  local sp = { { t = 8, pct = 20 }, { t = 12, pct = 100 } }
+  P.scroll_jump = true
+  at_play(10, function() C.Nav.timeline_tick(true, false, PAGES, sp) end)
+  P.scroll_jump = false
+  eq(S.scroll_y, 200, "stays at 20 % until the next point")
+end)
+
 test("page turns stay inside the region", function()
   local S, R = setup_view()
   R.active_region = { start = 30, stop = 40, key = "r1" }
@@ -264,6 +274,38 @@ test("cues: add scroll point (S) keeps the page", function()
   at_play(1, function() C.Cues.add_scroll_point() end)
   local c = P.cues["_project"][2]
   eq(c.page, 3); eq(c.scroll, 25, "25 %"); eq(c.pos, 2, "beat 2")
+end)
+
+test("cues: + below adds a scroll point halfway, undo takes it back", function()
+  local S, R, P = setup_cues()
+  R.cue_undo = nil -- the steps of the tests before
+  P.cues["_project"] = { { pos = 0, page = 3, scroll = 0 }, { pos = 8, page = 4, scroll = 0 } }
+  S.page, S.scroll_y = 3, 250
+  local list = P.cues["_project"]
+  C.Cues.add_below(nil, list, 1)
+  eq(#list, 3); eq(list[2].pos, 4, "halfway"); eq(list[2].page, 3); eq(list[2].scroll, 25, "from the view")
+  C.Cues.add_below(nil, P.cues["_project"], 3)
+  eq(P.cues["_project"][4].pos, 12, "1 bar after the last cue")
+  C.Cues.undo(); eq(#P.cues["_project"], 3)
+  C.Cues.undo(); eq(#P.cues["_project"], 2)
+  eq(C.Cues.can_undo(), false)
+end)
+
+test("cues: + on the Start row", function()
+  local S, _, P = setup_cues()
+  P.cues["_project"] = { { pos = 8, page = 2, scroll = 0 } }
+  S.page, S.scroll_y = 1, 300
+  C.Cues.add_below(nil, P.cues["_project"], 0)
+  local c = P.cues["_project"][1]
+  eq(c.pos, 4, "halfway to the first cue"); eq(c.page, 1); eq(c.scroll, 30)
+end)
+
+test("cues: use current view", function()
+  local S, _, P = setup_cues()
+  P.cues["_project"] = { { pos = 0, page = 1, scroll = 0 } }
+  S.page, S.scroll_y = 2, 500
+  C.Cues.use_view(P.cues["_project"][1])
+  eq(P.cues["_project"][1].page, 2); eq(P.cues["_project"][1].scroll, 50)
 end)
 
 test("cues: beats <-> seconds keeps the time", function()

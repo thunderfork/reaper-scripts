@@ -11,6 +11,7 @@ Windows only.
   - **Cue list:** play the song and press C at each page turn and S where the page must move. The cues are saved in the project, and no markers are added.
   - **Markers:** put `PDFPAGE 2` and `PDFSCROLL 50` markers in your project.
 - **Turn pages early**, for example 1 beat before the page turn, so you can read ahead.
+- **Smooth or jump scrolling:** the page moves slowly between scroll points, or jumps to each one.
 - **Stage-ready:**
   - Performance mode (only the page).
   - Lock mode (the page ignores the mouse and the keys during playback).
@@ -44,7 +45,7 @@ Windows only.
 2. Copy `Chart Cue.lua` into your REAPER `Scripts` folder. Options > Show REAPER resource path opens the folder that contains it.
 3. Optional: copy the 3 files `Chart Cue - Next page.lua`, `Chart Cue - Previous page.lua` and `Chart Cue - Toggle performance mode.lua` into the same folder.
 4. In REAPER, open Actions > Show action list > New action > Load ReaScript..., and load `Chart Cue.lua` and the optional files.
-5. Run the action "Chart Cue".
+5. Run the action "Script: Chart Cue.lua".
 
 To open Chart Cue automatically with your projects, use Settings > General > Open automatically.
 
@@ -53,7 +54,7 @@ To open Chart Cue automatically with your projects, use Settings > General > Ope
 1. In the Library tab, click "Add PDF..." and choose a PDF.
 2. Click the PDF in the list. The first page appears.
 3. Optional: make a REAPER region with the same name as the PDF.
-4. Optional: in the Cues tab, click "Use Cue list mode", play the song, and press C at each page turn.
+4. Optional: in the Cues tab, click "Use Cue list mode", turn on "Record" (R), play the song, and press C at each page turn.
 
 The round "?" next to each heading explains its settings. The "?" at the end of the tab strip opens the help, which has a full guide.
 

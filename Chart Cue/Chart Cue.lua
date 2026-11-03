@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 1.0
+-- @version 1.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -11,7 +11,9 @@
 --   [main] Chart Cue - Previous page.lua
 --   [main] Chart Cue - Toggle performance mode.lua
 -- @changelog
---   First public version.
+--   Cue list: click a row to go to its cue, a Start row, + below, Use current view and Undo.
+--   Autoscroll: Smooth or Jump scrolling; toolbar in groups with icons and a Hide controls button.
+--   Clearer Settings and Help; Settings is a gear icon.
 
 -- MIT License
 --
@@ -79,6 +81,7 @@ CFG.JOB_POLL_SEC = 0.1          -- background jobs (render, page count, folder d
 CFG.SCROLLBAR_W = 14
 CFG.MIN_VIEW_H = 160            -- the PDF view never gets smaller than this
 CFG.PANEL_DEFAULT_FRAC = 0.40   -- default panel height as a fraction of the free height
+CFG.PANEL_LARGE_FRAC = 0.60     -- panel height after a double-click on the grip (from the default height)
 CFG.PANEL_MIN_H = 70
 CFG.SPLIT_H = 12                -- height of the panel resize grip (its hit area; touch friendly)
 CFG.TAB_H = 32                  -- tab strip button height
@@ -87,10 +90,13 @@ CFG.TAB_GROUP_GAP = 12          -- gap between the main tabs and the Settings ta
 CFG.LABEL_W = 190               -- label column width in panels
 CFG.SORT_W = 170                -- width of the dropdown next to a list search field (Library sort, Regions show)
 CFG.DEFAULT_WIN = { 100, 100, 760, 900 }
+CFG.WIN_EDGE = 6                -- floating window: width of Chart Cue's resize edges (inside the window)
+CFG.WIN_GRIP = 22               -- floating window: size of the bottom-right resize corner
+CFG.WIN_MIN_W, CFG.WIN_MIN_H = 300, 200 -- smallest window size when resizing
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.0"      -- keep equal to @version in the header
+CFG.VERSION = "1.1"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.FEEDBACK_URL = "https://github.com/thunderfork/chart-cue/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
@@ -117,6 +123,7 @@ CFG.COPY_FRAME_BUDGET = 0.004    -- seconds of copying per frame
 CFG.SCREEN_DPI = 96
 -- Cue list
 CFG.CUE_SAME_POS = 0.02   -- a new cue this close to an existing one replaces it (beats or seconds)
+CFG.CUE_UNDO_MAX = 50      -- undo steps kept for the cue list
 -- Autostart block in __startup.lua
 CFG.AS_BEGIN = "-- >>> Chart Cue autostart (added by Chart Cue; remove with the Chart Cue option) >>>"
 CFG.AS_END = "-- <<< Chart Cue autostart <<<"
@@ -144,6 +151,7 @@ CFG.SP = {
 CFG.ROW_H = 26   -- height of every control (fields, dropdowns, buttons, list rows); see UI.h
 CFG.TB_BTN_W = 34          -- width of the < > - + toolbar buttons
 CFG.TB_GAP = 8             -- gap between toolbar items
+CFG.TB_GROUP_GAP = 25      -- gap between toolbar groups (a divider line in the middle)
 CFG.EXPLORER_BTN_W = 120    -- "Show in Explorer"
 CFG.MIN_PATH_W = 80         -- Library: below this width the path is hidden
 CFG.REGION_COMBO_W = 220    -- Regions: PDF menu
@@ -183,7 +191,6 @@ local COL = {
   LINE = 0x31353FFF,           -- borders, separators
   TOGGLE_OFF = 0x4A5060FF,
   SCROLL_TRACK = 0x1A1A1AFF, SCROLL_THUMB = 0x808080FF, SCROLL_THUMB_ACTIVE = 0xC0C0C0FF,
-  GRIP = 0x555A66FF,           -- panel resize grip
   -- text
   TEXT = 0xDDDDDDFF, TEXT_BRIGHT = 0xEEEEEEFF, WHITE = 0xFFFFFFFF,
   TEXT_MAIN = 0xE6E8EEFF, TEXT_DIM = 0x8C93A3FF,
@@ -276,13 +283,13 @@ local S = {
   include_subfolders = false,
   hide_controls_playing = true,
   comfortable = false,         -- "Comfortable layout": more empty space (compact is the default)
-  dim_page = false, dim_level = 0.65,   -- dim mode: page brightness 0.3..1 (no re-render)
+  dim_page = false, dim_level = 0.65,   -- dim mode: page brightness 0.25..1 (no re-render)
   turn_flash = true,           -- accent border for a moment when the page turns during playback
   close_with_project = true,   -- close Chart Cue when its project closes or is replaced in the same tab
   import_copy = true,          -- copy imported PDFs into <project folder>\PDFs (else link the original)
   tab = 1, panel_open = true,
-  tab_ver = 1,                 -- 2 = tab numbers include the Cues tab; 3 = one Settings tab (v4.8)
-  settings_open = "1000",      -- Settings tab sections open (1) or closed (0): Autoscroll, MIDI, Display, Project
+  tab_ver = 1,                 -- 2 = tab numbers include the Cues tab; 3 = one Settings tab (before 1.0)
+  settings_open = "1000",      -- Settings tab sections open (1) or closed (0): Autoscroll, MIDI, Display, General
   folded = ",",                -- closed foldable headings (first section of Library, Regions, Cues): ",id,id,"
   panel_h = 0,                 -- 0 = automatic (~40% of free height); otherwise the user's dragged height
   win_x = CFG.DEFAULT_WIN[1], win_y = CFG.DEFAULT_WIN[2], win_w = CFG.DEFAULT_WIN[3], win_h = CFG.DEFAULT_WIN[4],
@@ -327,7 +334,7 @@ function Util.validate_settings()
   int("dpi", 50, 600); int("page", 1, 100000); int("tab", 1, 99); int("tab_ver", 1, 99)
   for _, k in ipairs({ "cc_abs", "cc_rel", "cc_page_next", "cc_page_prev", "cc_add_cue", "cc_add_scroll" }) do int(k, 0, 127) end
   int("rel_encoding", 1, 4)
-  num("sensitivity", 1, 200); num("dim_level", 0.3, 1); num("zoom", CFG.MIN_ZOOM, CFG.MAX_ZOOM)
+  num("sensitivity", 1, 200); num("dim_level", 0.25, 1); num("zoom", CFG.MIN_ZOOM, CFG.MAX_ZOOM)
   num("scroll_y", 0, math.huge); num("scroll_x", 0, math.huge); num("panel_h", 0, 10000)
   num("win_w", 200, 20000); num("win_h", 150, 20000)
   one_of("engine", "windows", "poppler")
@@ -372,7 +379,7 @@ local R = {
   state_cc = nil, scan_due = nil,
   regions = {}, scroll_pts = {}, page_pts = {}, marker_warns = {},
   cur_region_key = nil, active_region = nil,
-  mpage_last = nil, was_playing = false, marker_pct = nil,
+  mpage_last = nil, was_playing = false,
   libpages = {}, libexists = {}, libexists_t = 0, lib_scan_t = 0,
   cache_size = nil,
   dock_applied = false, reset_layout = false,
@@ -443,14 +450,15 @@ function Project.default_project()
     ignore = {},          -- region key -> true (ignored permanently)
     names = {},           -- region key -> last known region name (for display)
     auto_switch = true,
-    continue_after_end = false, -- not used since 4.8 (markers stop at the region end); still read and written, so the saved text stays the same
+    continue_after_end = false, -- not used any more (markers stop at the region end); still read and written, so the saved text stays the same
     active_pdf = "",
     cues = {},            -- region key (or "_project") -> list of { pos, page, scroll }
     cue_unit = "beats",   -- "beats" (quarter notes from the region start) or "seconds"
     scroll_mode = "",     -- autoscroll mode of this project; "" = use the default (S.scroll_mode)
     hint_off = false,     -- "Not now" clicked on the mode hint (status line 2); written only when true
     turn_early = 0,       -- turn pages this many beats before their marker / cue (0 = on time); written only when not 0
-    fixed_start = 0,      -- not used since 4.8 (Fixed speed removed); still read and written, so the saved text stays the same
+    scroll_jump = false,  -- true: jump to each scroll point; false: move smoothly between them; written only when true
+    fixed_start = 0,      -- not used any more (the Fixed speed mode was removed before 1.0); still read and written, so the saved text stays the same
     view = {},            -- pdf path -> { fit = fit mode, zoom = manual zoom } (per-PDF zoom)
   }
 end
@@ -1048,6 +1056,7 @@ function Project.parse_cfg(lines_iter)
       p.scroll_mode = (v == "off" or v == "fixed" or v == "marker" or v == "cues") and v or ""
     elseif k == "hint_off" then p.hint_off = (v == "1")
     elseif k == "turn_early" then p.turn_early = Util.clamp(tonumber(v) or 0, 0, 4)
+    elseif k == "scroll_jump" then p.scroll_jump = (v == "1")
     elseif k == "fixed_start" then p.fixed_start = tonumber(v) or 0
     elseif k == "view" then
       local path, fit, zoom = v:match("^(.-)\t(.-)\t(.*)$")
@@ -1097,6 +1106,7 @@ function Project.serialize_cfg()
   if P.scroll_mode ~= "" then w("scroll_mode", P.scroll_mode) end
   if P.hint_off then w("hint_off", 1) end -- only when set, so older projects keep the same text
   if P.turn_early ~= 0 then w("turn_early", string.format("%g", P.turn_early)) end -- the same
+  if P.scroll_jump then w("scroll_jump", 1) end -- the same
   if P.fixed_start ~= 0 then w("fixed_start", string.format("%.6f", P.fixed_start)) end
   for _, path in ipairs(sorted(P.view)) do
     w("view", string.format("%s\t%s\t%.3f", path, P.view[path].fit, P.view[path].zoom))
@@ -1316,6 +1326,7 @@ function PDF.finish_open(path, keep_position, n, info)
   if not n or n < 1 then Msg.set_error("Could not determine the page count (invalid PDF)."); return end
   R.total = n
   R.libpages[path] = n; Util.bump_lib()
+  if R.replace_check and Util.same_path(path, R.replace_check) then R.replace_check = nil; Project.check_replaced_pages(path, n) end
 
   -- Cap texture size: if page 1 at the chosen DPI exceeds MAX_IMAGE_DIM, render with -scale-to instead.
   R.scale_to = nil
@@ -1425,6 +1436,61 @@ function Project.relocate_pdf(old, new)
   -- reload the region under the play cursor if its PDF just came back
   R.cur_region_key = nil
   return found
+end
+
+-- "Replace PDF..." (toolbar / page menu: the PDF on screen; PDF row menu: that PDF): a new file for
+-- the library entry `old`. Region choices, zoom and cues stay (cues belong to the song). The new file
+-- is copied into the project like any import. PDF.finish_open checks the cue pages (R.replace_check).
+function Project.replace_pdf(old)
+  local ok, f = r.GetUserFileNameForRead("", "Replace " .. Util.name_of(old), "pdf")
+  if not (ok and f and f ~= "") or Util.same_path(f, old) then return end
+  local was_open = Util.same_path(old, S.pdf_path) and R.total > 0
+  R.libpages[f] = nil -- the old page count does not belong to the new file
+  local dst = Project.should_copy(f) and (Project.pdf_dir() .. SEP .. Util.name_of(f)) or f
+  R.replace_check = dst
+  local res = Project.import_pdf(f, { remap_from = old, open = was_open })
+  if res == "queued" then
+    Msg.notify("Copying the new PDF into the project folder...", false, "library")
+  else
+    R.libpages[f] = nil
+    Project.resolve_regions(); R.cur_region_key = nil; R.libexists_t = 0
+    Msg.notify(string.format("Replaced %s with %s.", Util.name_of(old), Util.name_of(f)), false, "library")
+  end
+end
+
+-- After "Replace PDF...": the cues of the songs that use `path` with a page above `n` (message only).
+function Project.check_replaced_pages(path, n)
+  local bad = 0
+  for _, reg in ipairs(R.regions) do
+    if reg.pdf and Util.same_path(reg.pdf, path) then
+      for _, c in ipairs(Cues.list(reg)) do if c.page and c.page > n then bad = bad + 1 end end
+    end
+  end
+  if bad > 0 then
+    Msg.notify(string.format("The new PDF has %d page(s); %d cue(s) use a higher page. Check them in the Cues tab.", n, bad),
+      true, "library", true)
+  end
+end
+
+-- Takes a PDF off the library (the file is not deleted); its region choices are cleared.
+function Project.remove_from_library(path)
+  for i, p in ipairs(P.pdfs) do
+    if Util.same_path(p, path) then table.remove(P.pdfs, i); break end
+  end
+  for key, p in pairs(P.assign) do if Util.same_path(p, path) then P.assign[key] = nil end end
+  if Util.same_path(P.active_pdf, path) then P.active_pdf = "" end
+  P.rel[path] = nil; P.view[path] = nil
+  R.libpages[path] = nil; R.libexists[path] = nil
+  Project.resolve_regions(); Util.mark_pdirty()
+end
+
+-- "Remove from library": asks first (inline, in the PDF's row), with the number of region choices.
+function UI.ask_remove_pdf(path)
+  local n = 0
+  for _, p in pairs(P.assign) do if Util.same_path(p, path) then n = n + 1 end end
+  UI.ask("lib_remove", n > 0 and string.format("Remove this PDF from the library? %d region assignment(s) will be cleared. "
+    .. "The file is not deleted.", n) or "Remove this PDF from the library? The file is not deleted.",
+    "Yes, remove", function() Project.remove_from_library(path) end, path)
 end
 
 -- Returns true if added, false if it was already in the library.
@@ -1774,7 +1840,7 @@ end
 
 -- The ONE autoscroll mode state: "off" | "marker" | "cues"
 -- Saved per project (P.scroll_mode). A project without one uses the default in settings.ini.
--- "fixed" (Fixed speed, removed in 4.8) can still be saved in older projects: it means "off".
+-- "fixed" (Fixed speed, removed before 1.0) can still be saved in older projects: it means "off".
 function Nav.scroll_mode()
   local m = (P.scroll_mode ~= "") and P.scroll_mode or S.scroll_mode
   if m == "marker" or m == "cues" then return m end
@@ -1946,10 +2012,17 @@ function Nav.timeline_tick(is_play, overriding, page_pts, scroll_pts)
   end
   local pct = 0
   if prev then
-    if nxt then pct = prev.pct + (nxt.pct - prev.pct) * (pos - prev.t) / (nxt.t - prev.t)
+    if nxt and not P.scroll_jump then pct = prev.pct + (nxt.pct - prev.pct) * (pos - prev.t) / (nxt.t - prev.t)
     else pct = prev.pct end
   end
-  R.marker_pct = pct
+  -- Jump mode: a new scroll point that moves the page gives the page-turn flash
+  -- (R.jump_prev == false: playback just started, no flash for the first point)
+  if P.scroll_jump and prev ~= R.jump_prev then
+    if R.jump_prev ~= false and prev and not overriding and (R.jump_prev == nil or R.jump_prev.pct ~= prev.pct) then
+      R.flash_t = Util.now()
+    end
+    R.jump_prev = prev
+  end
   if not overriding then
     R.autoscroll_active = true
     S.scroll_y = Util.clamp(pct / 100 * R.max_y, 0, R.max_y)
@@ -1964,7 +2037,7 @@ function Nav.update_motion()
     else S.scroll_y = S.scroll_y + diff * CFG.ABS_SMOOTHING end
   end
   local is_play = Util.playing()
-  if is_play and not R.was_playing then R.mpage_last = nil end
+  if is_play and not R.was_playing then R.mpage_last = nil; R.jump_prev = false end
   R.was_playing = is_play
   R.autoscroll_active = false
   local mode = Nav.scroll_mode()
@@ -2287,7 +2360,7 @@ try {
 ]=]
 
 -- One message system: a message shows for CFG.MSG_SECONDS in the status bar and, when it has a
--- source ("library", "regions", "cues", "display", "layout", "project", "general", "help"), also in that section of the UI.
+-- source ("library", "regions", "cues", "display", "project", "general", "help"), also in that section of the UI.
 -- sticky: the message stays until its "x" is clicked or another message replaces it
 -- (use it for messages that ask the user to do something).
 function Msg.notify(msg, is_err, source, sticky)
@@ -2527,7 +2600,7 @@ function Cues.record_start()
   return true, reg, P.cues[key], pos
 end
 
--- "Add page turn" (C key, MIDI): the page after the cue before it (first page turn = page 2),
+-- "+ Page turn" (C key, MIDI): the page after the cue before it (first page turn = page 2),
 -- at the top of the page. Following cues are renumbered when the new page would repeat.
 function Cues.add_page_turn()
   local ok, reg, list, pos = Cues.record_start()
@@ -2537,6 +2610,7 @@ function Cues.add_page_turn()
   if maxp and page > maxp then
     Msg.notify(string.format("No page turn added: this PDF has only %d page(s).", maxp), true, "cues"); return
   end
+  Cues.save_undo()
   local replacing = false
   for _, c in ipairs(list) do if math.abs(c.pos - pos) < CFG.CUE_SAME_POS then replacing = true end end
   if not replacing then
@@ -2554,31 +2628,96 @@ function Cues.add_page_turn()
     reg and (' in "' .. reg.name .. '"') or ""), false, "cues")
 end
 
--- "Add scroll point" (S key, MIDI): the page of the cue before it, with the current scroll position.
+-- "+ Scroll point" (S key, MIDI): the page of the cue before it, with the current scroll position.
 function Cues.add_scroll_point()
   local ok, reg, list, pos = Cues.record_start()
   if not ok then return end
   local page = Cues.page_before(list, pos) or S.page
-  local scroll = (R.max_y > 0) and (math.floor(S.scroll_y / R.max_y * 1000 + 0.5) / 10) or 0
+  local scroll = Cues.view_scroll()
+  Cues.save_undo()
   Cues.put(reg, pos, page, scroll)
   Msg.notify(string.format("Scroll point added at %s: page %d, scroll %d%%%s.", Cues.label(reg, pos), page,
     math.floor(scroll + 0.5), reg and (' in "' .. reg.name .. '"') or ""), false, "cues")
 end
 -- Removes all cues of one song (key), or of all songs (key == "_all").
 function Cues.remove_all(key)
+  Cues.save_undo()
   if key == "_all" then P.cues = {} else P.cues[key] = nil end
   Util.mark_pdirty()
 end
 
 function Cues.remove(reg, index)
   local list = P.cues[Cues.key(reg)]
-  if list and list[index] then table.remove(list, index); Util.mark_pdirty() end
+  if list and list[index] then Cues.save_undo(); table.remove(list, index); Util.mark_pdirty() end
   if list and #list == 0 then P.cues[Cues.key(reg)] = nil end
+end
+
+-- Undo for cue changes (Chart Cue's own: REAPER's undo does not cover the project data).
+-- A copy of all cues before each change; up to CFG.CUE_UNDO_MAX steps, for the current project only.
+function Cues.copy()
+  local t = {}
+  for key, list in pairs(P.cues) do
+    local l = {}
+    for i, c in ipairs(list) do l[i] = { pos = c.pos, page = c.page, scroll = c.scroll } end
+    t[key] = l
+  end
+  return t
+end
+
+function Cues.save_undo(snap)
+  if not R.cue_undo or R.cue_undo.P ~= P then R.cue_undo = { P = P } end
+  local u = R.cue_undo
+  u[#u + 1] = snap or Cues.copy()
+  if #u > CFG.CUE_UNDO_MAX then table.remove(u, 1) end
+end
+
+function Cues.can_undo() return R.cue_undo ~= nil and R.cue_undo.P == P and #R.cue_undo > 0 end
+
+function Cues.undo()
+  if not Cues.can_undo() then Msg.notify("Nothing to undo in the cue list.", false, "cues"); return end
+  P.cues = table.remove(R.cue_undo)
+  R.cue_err, R.cue_text = {}, {}
+  Util.mark_pdirty()
+  Msg.notify("Cue change undone.", false, "cues")
+end
+
+-- Current scroll position of the view, in percent (0.1 steps), like "+ Scroll point".
+function Cues.view_scroll()
+  return (R.max_y > 0) and (math.floor(S.scroll_y / R.max_y * 1000 + 0.5) / 10) or 0
+end
+
+-- "Use current view": the cue gets the page and the scroll position shown now.
+function Cues.use_view(c)
+  if R.total == 0 then Msg.notify("Open a PDF first.", true, "cues"); return end
+  Cues.save_undo()
+  c.page, c.scroll = S.page, Cues.view_scroll()
+  Util.mark_pdirty()
+end
+
+local CUE_START_POINT = { pos = 0, page = 1, scroll = 0 }
+-- "+" on a row (i = 0: the Start row): a scroll point after cue i, halfway to the next cue (1 bar / 2 s after the last one).
+-- Page of cue i; scroll from the view when it shows that page, else a copy of cue i's scroll.
+function Cues.add_below(reg, list, i)
+  local c, nxt = list[i] or CUE_START_POINT, list[i + 1] -- i = 0: the Start row
+  local step = (P.cue_unit == "seconds") and 2 or 4
+  local pos = nxt and (c.pos + nxt.pos) / 2 or (c.pos + step)
+  pos = math.floor(pos * 1000 + 0.5) / 1000
+  if nxt and math.abs(nxt.pos - pos) < CFG.CUE_SAME_POS or math.abs(c.pos - pos) < CFG.CUE_SAME_POS then
+    Msg.notify("No room between these two cues.", true, "cues"); return
+  end
+  local page = c.page or Cues.page_before(list, c.pos + 2 * CFG.CUE_SAME_POS) or S.page
+  local scroll = (R.total > 0 and S.page == page) and Cues.view_scroll() or c.scroll or 0
+  Cues.save_undo()
+  Cues.put(reg, pos, page, scroll)
+  R.cue_err, R.cue_text = {}, {}
+  Msg.notify(string.format("Scroll point added at %s: page %d, scroll %d%%.", Cues.label(reg, pos), page,
+    math.floor(scroll + 0.5)), false, "cues")
 end
 
 -- Switch beats <-> seconds for this project; every cue keeps its time in the project.
 function Cues.set_unit(unit)
   if unit == P.cue_unit then return end
+  R.cue_undo = nil -- the saved steps are in the old unit
   local old = P.cue_unit
   for key, list in pairs(P.cues) do
     local reg = (key ~= "_project") and Project.region_by_key(key) or nil
@@ -2590,6 +2729,24 @@ function Cues.set_unit(unit)
   end
   P.cue_unit = unit
   Util.mark_pdirty()
+end
+
+-- "Copy markers into cues" (Cues tab > More actions, toolbar menu): all songs, or one song `reg`.
+-- One undo step; the result is a message.
+function Cues.copy_markers(all, reg)
+  Cues.save_undo()
+  local n = 0
+  if all then
+    for _, rg in ipairs(R.regions) do n = n + Cues.convert_markers(rg) end
+    if #R.regions == 0 then n = Cues.convert_markers(nil) end
+  else
+    n = Cues.convert_markers(reg)
+  end
+  if n > 0 then
+    Msg.notify(string.format("%d cue(s) made from markers. You can now remove the PDF markers.", n), false, "cues")
+  else
+    Msg.notify("No PDFPAGE or PDFSCROLL markers found.", false, "cues")
+  end
 end
 
 -- Copies the PDFPAGE / PDFSCROLL markers inside a region (or the whole project) into its cue list.
@@ -2988,7 +3145,11 @@ function UI.heading(ctx, text, help, scope, fold, big)
     ImGui.TextColored(ctx, COL.HEADING, text)
     UI.pop_font(ctx)
   end
-  local _, ty = ImGui.GetItemRectMax(ctx)
+  local tx, ty = ImGui.GetItemRectMax(ctx)
+  -- the title line's free space (between the title and the "?"), for UI.heading_msg
+  local hr = R.heading_row or {}
+  R.heading_row = hr
+  hr.x0, hr.x1, hr.y = tx + 12, sx + full - (help and CFG.HELP_ICON + 8 or 0), sy
   if help then
     ImGui.SameLine(ctx)
     ImGui.SetCursorScreenPos(ctx, sx + full - CFG.HELP_ICON, sy)
@@ -3102,15 +3263,22 @@ function UI.combo(ctx, id, preview, w)
   return open
 end
 
--- Toolbar items: { w = width, draw = function(ctx, w) }. Items are packed into rows that fit the
--- window width, and every row is centred. The order of the items never changes.
+-- Toolbar items: { w = width, g = group, draw = function(ctx, w) }. Groups: 1 navigate,
+-- 2 view (zoom), 3 playback. Whole groups are packed into rows that fit the window width,
+-- with a divider line between groups, and every row is centred. The order never changes.
 function UI.toolbar_items(ctx, perf)
   local items = {}
-  local function add(w, draw) items[#items + 1] = { w = w, draw = draw } end
+  local g = 1
+  local function add(w, draw) items[#items + 1] = { w = w, g = g, draw = draw } end
   local bw = CFG.TB_BTN_W
-  add(bw, function() if UI.button(ctx, "<", bw, 0) then Nav.go_page(S.page - 1) end
+  if R.pdf_name ~= "" then
+    local avail = (ImGui.GetContentRegionAvail(ctx)) - 12
+    local nw = math.min((ImGui.CalcTextSize(ctx, R.pdf_name)), 220, math.max(40, avail))
+    add(nw, function(_, w) UI.row_text(ctx, UI.trunc_text(ctx, R.pdf_name, w), COL.GREY); UI.tip(ctx, S.pdf_path) end)
+  end
+  add(bw, function() if UI.icon_button(ctx, "##prev", bw, "prev") then Nav.go_page(S.page - 1) end
     UI.tip(ctx, "Previous page (Left arrow / Page Up)") end)
-  local ptxt = (R.total > 0) and string.format("Page %d / %d", S.page, R.total) or "No PDF open"
+  local ptxt = (R.total > 0) and string.format("%d / %d", S.page, R.total) or "No PDF open"
   if R.total > 0 then
     -- "go to page": click the page number to type a page
     local pw = UI.btn_w(ctx, ptxt, 0)
@@ -3132,23 +3300,17 @@ function UI.toolbar_items(ctx, perf)
         if UI.row_button(ctx, ptxt .. "##gotobtn", pw, "ghost") then
           R.goto_edit, R.goto_text, R.goto_focus = true, tostring(S.page), false
         end
-        UI.tip(ctx, "Click to go to a page")
+        UI.tip(ctx, "Page. Click to go to a page.")
       end
     end)
   else
     add((ImGui.CalcTextSize(ctx, ptxt)), function() UI.row_text(ctx, ptxt) end)
   end
-  add(bw, function() if UI.button(ctx, ">", bw, 0) then Nav.go_page(S.page + 1) end
+  add(bw, function() if UI.icon_button(ctx, "##next", bw, "next") then Nav.go_page(S.page + 1) end
     UI.tip(ctx, "Next page (Right arrow / Page Down)") end)
-  if R.pdf_name ~= "" then
-    local avail = (ImGui.GetContentRegionAvail(ctx)) - 12
-    local nw = math.min((ImGui.CalcTextSize(ctx, R.pdf_name)), 220, math.max(40, avail))
-    add(nw, function(_, w) UI.row_text(ctx, UI.trunc_text(ctx, R.pdf_name, w), COL.GREY); UI.tip(ctx, S.pdf_path) end)
-  end
-  add(bw, function() if UI.button(ctx, "-", bw, 0) then Nav.zoom_by(1 / CFG.ZOOM_STEP) end
+  g = 2
+  add(bw, function() if UI.icon_button(ctx, "##zoomout", bw, "minus") then Nav.zoom_by(1 / CFG.ZOOM_STEP) end
     UI.tip(ctx, "Zoom out (Ctrl and -, Ctrl + mouse wheel)") end)
-  add(bw, function() if UI.button(ctx, "+", bw, 0) then Nav.zoom_by(CFG.ZOOM_STEP) end
-    UI.tip(ctx, "Zoom in (Ctrl and +, Ctrl + mouse wheel)") end)
   add(CFG.FIT_COMBO_W, function()
     if UI.combo(ctx, "##fit", UI.fit_label(), CFG.FIT_COMBO_W) then
       for _, f in ipairs(FIT_ITEMS) do
@@ -3168,31 +3330,9 @@ function UI.toolbar_items(ctx, perf)
     end
     UI.tip(ctx, "Fit mode (Ctrl and 0: fit the page width). 100% = the real page size.")
   end)
-  -- lock: a square icon button, the same size as < > - +
-  add(bw, function()
-    local nc, nv = UI.push_kind(ctx, R.lock and "primary" or nil)
-    local hit = UI.button(ctx, "##lock", bw, 0)
-    UI.pop_kind(ctx, nc, nv)
-    local x0, y0 = ImGui.GetItemRectMin(ctx)
-    local x1, y1 = ImGui.GetItemRectMax(ctx)
-    UI.draw_lock_icon(ImGui.GetWindowDrawList(ctx), (x0 + x1) / 2, (y0 + y1) / 2, R.lock,
-      R.lock and COL.WHITE or COL.TEXT_MAIN)
-    if hit then UI.toggle_lock() end
-    UI.tip(ctx, "Lock (L): during playback the page ignores the mouse wheel, dragging and the keys.\n"
-      .. "MIDI and autoscroll still work. Click again or press L to unlock.")
-  end)
-  -- record cues: a square icon button, the same size as the lock button (only in the Cue list mode)
-  if Nav.scroll_mode() == "cues" then add(bw, function()
-    local nc, nv = UI.push_kind(ctx, R.rec and "danger" or nil)
-    local hit = UI.button(ctx, "##rec", bw, 0)
-    UI.pop_kind(ctx, nc, nv)
-    local x0, y0 = ImGui.GetItemRectMin(ctx)
-    local x1, y1 = ImGui.GetItemRectMax(ctx)
-    UI.draw_rec_icon(ImGui.GetWindowDrawList(ctx), (x0 + x1) / 2, (y0 + y1) / 2, R.rec)
-    if hit then UI.toggle_rec() end
-    UI.tip(ctx, "Record cues (R): while on, the C and S keys and the MIDI cue buttons add cues.\n"
-      .. "Only in the Cue list autoscroll mode. Lock mode blocks it during playback.")
-  end) end
+  add(bw, function() if UI.icon_button(ctx, "##zoomin", bw, "plus") then Nav.zoom_by(CFG.ZOOM_STEP) end
+    UI.tip(ctx, "Zoom in (Ctrl and +, Ctrl + mouse wheel)") end)
+  g = 3
   if perf then
     local st = "Autoscroll: " .. UI.autoscroll_state_text()
     add((ImGui.CalcTextSize(ctx, st)), function() UI.row_text(ctx, st) end)
@@ -3210,7 +3350,256 @@ function UI.toolbar_items(ctx, perf)
       UI.tip(ctx, AUTOSCROLL_TIP)
     end)
   end
+  -- record cues: a square icon button, the same size as the lock button (only in the Cue list mode)
+  if Nav.scroll_mode() == "cues" then add(bw, function()
+    local nc, nv = UI.push_kind(ctx, R.rec and "danger" or nil)
+    local hit = UI.button(ctx, "##rec", bw, 0)
+    UI.pop_kind(ctx, nc, nv)
+    local x0, y0 = ImGui.GetItemRectMin(ctx)
+    local x1, y1 = ImGui.GetItemRectMax(ctx)
+    UI.draw_rec_icon(ImGui.GetWindowDrawList(ctx), (x0 + x1) / 2, (y0 + y1) / 2, R.rec)
+    if hit then UI.toggle_rec() end
+    UI.tip(ctx, "Record cues (R): while on, the C and S keys and the MIDI cue buttons add cues.\n"
+      .. "Only in the Cue list autoscroll mode. Lock mode blocks it during playback.")
+  end) end
+  -- lock: a square icon button, the same size as the other icon buttons
+  add(bw, function()
+    local nc, nv = UI.push_kind(ctx, R.lock and "primary" or nil)
+    local hit = UI.button(ctx, "##lock", bw, 0)
+    UI.pop_kind(ctx, nc, nv)
+    local x0, y0 = ImGui.GetItemRectMin(ctx)
+    local x1, y1 = ImGui.GetItemRectMax(ctx)
+    UI.draw_lock_icon(ImGui.GetWindowDrawList(ctx), (x0 + x1) / 2, (y0 + y1) / 2, R.lock,
+      R.lock and COL.WHITE or COL.TEXT_MAIN)
+    if hit then UI.toggle_lock() end
+    UI.tip(ctx, "Lock (L): during playback the page ignores the mouse wheel, dragging and the keys.\n"
+      .. "MIDI and autoscroll still work. Click again or press L to unlock.")
+  end)
+  -- hide controls when playing (S.hide_controls_playing, the same as in Settings > Display)
+  add(bw, function()
+    local on = S.hide_controls_playing
+    local nc, nv = UI.push_kind(ctx, on and "primary" or nil)
+    local hit = UI.button(ctx, "##hidectl", bw, 0)
+    UI.pop_kind(ctx, nc, nv)
+    local x0, y0 = ImGui.GetItemRectMin(ctx)
+    local x1, y1 = ImGui.GetItemRectMax(ctx)
+    UI.draw_tb_icon(ImGui.GetWindowDrawList(ctx), math.floor((x0 + x1) / 2) + 0.5, math.floor((y0 + y1) / 2) + 0.5,
+      on and "hide" or "show", on and COL.WHITE or COL.TEXT_MAIN)
+    if hit then S.hide_controls_playing = not on; Util.mark_dirty() end
+    UI.tip(ctx, on and "Hide controls when playing: on. During playback only this toolbar shows.\nClick to keep all controls."
+      or "Hide controls when playing: off. Click to show only this toolbar during playback.")
+  end)
   return items
+end
+
+-- menu texts (built once)
+local MENU_SCROLL_LABELS = { "Off", "Markers", "Cue list" } -- order of SCROLL_MODES
+local MENU_BRIGHTNESS = { { 25, "25%" }, { 50, "50%" }, { 75, "75%" }, { 100, "100%" } }
+
+-- Right-click menus. A right-click only asks for a menu (R.menu_req = { kind = ... }); UI.context_menus
+-- opens and draws it once per frame at the window level, so a menu never depends on where it was asked.
+--   main: toolbar and page;  pdf: a Library row;  region: a Regions row;  cue: a Cues row.
+-- ty: screen y of the toolbar top; call right after UI.draw_centered_toolbar.
+function UI.toolbar_menu(ctx, ty)
+  local _, by = ImGui.GetCursorScreenPos(ctx)
+  local _, my = ImGui.GetMousePos(ctx)
+  if ImGui.IsMouseClicked(ctx, 1) and my >= ty and my < by and ImGui.IsWindowHovered(ctx,
+      ImGui.HoveredFlags_RootAndChildWindows() | ImGui.HoveredFlags_AllowWhenBlockedByPopup()) then
+    R.menu_req = { kind = "main" }
+  end
+end
+
+-- true while the mouse is over the row that starts at screen (sx, sy), `w` wide, one control high.
+function UI.mouse_in_row(ctx, sx, sy, w)
+  local mx, my = ImGui.GetMousePos(ctx)
+  return mx >= sx - 6 and mx < sx + w and my >= sy - 2 and my < sy + UI.h(ctx) + 2
+    and ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_RootAndChildWindows() | ImGui.HoveredFlags_AllowWhenBlockedByPopup())
+end
+
+local function menu_sep(ctx) UI.vgap(ctx, 3); ImGui.Separator(ctx); UI.vgap(ctx, 3) end
+
+-- Opens the asked menu (R.menu_req) and draws the open one. Call once per frame, inside the window.
+function UI.context_menus(ctx)
+  if R.menu_req then
+    R.menu = R.menu_req; R.menu_req = nil; R.menu_frame = R.frames
+    ImGui.OpenPopup(ctx, "##ctxmenu")
+  end
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowPadding(), 0, 4)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_ItemSpacing(), 0, 0)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_PopupRounding(), 0)
+  local open = ImGui.BeginPopup(ctx, "##ctxmenu")
+  ImGui.PopStyleVar(ctx, 3)
+  if not open then R.menu = nil; return end
+  -- a click outside Chart Cue (REAPER's own windows) takes the focus away: close the menu then
+  if R.frames > (R.menu_frame or 0) + 2 and not ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_AnyWindow()) then
+    ImGui.CloseCurrentPopup(ctx)
+  end
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_ItemSpacing(), 0, 0)
+  local m = R.menu or { kind = "main" }
+  if m.kind == "pdf" then UI.pdf_menu(ctx, m.path)
+  elseif m.kind == "region" then UI.region_menu(ctx, m.key)
+  elseif m.kind == "cue" then UI.cue_menu(ctx, m)
+  else UI.main_menu(ctx) end
+  ImGui.PopStyleVar(ctx, 1)
+  ImGui.EndPopup(ctx)
+end
+
+-- Toolbar and page menu.
+function UI.main_menu(ctx)
+  local has_pdf = S.pdf_path ~= "" and R.total > 0
+  if UI.menu_item(ctx, "Add PDF...") then PDF.browse_add_pdf(false) end
+  if UI.menu_item(ctx, "Add PDFs from folder...") then Project.start_folder_pick() end
+  if UI.menu_item(ctx, "Replace PDF...", nil, false, not has_pdf) then Project.replace_pdf(S.pdf_path) end
+  menu_sep(ctx)
+  if UI.menu_item(ctx, "Hide controls when playing", nil, S.hide_controls_playing) then
+    S.hide_controls_playing = not S.hide_controls_playing; Util.mark_dirty()
+  end
+  if UI.menu_item(ctx, "Show panel", nil, S.panel_open) then S.panel_open = not S.panel_open; Util.mark_dirty() end
+  if UI.menu_item(ctx, "Lock", "L", R.lock) then UI.toggle_lock() end
+  if UI.menu_item(ctx, "Performance mode", "F") then UI.toggle_perf() end
+  menu_sep(ctx)
+  local mode = Nav.scroll_mode()
+  if UI.menu_sub(ctx, "Autoscroll") then
+    for i, sm in ipairs(SCROLL_MODES) do
+      if UI.menu_item(ctx, MENU_SCROLL_LABELS[i], nil, mode == sm) then Nav.set_scroll_mode(sm) end
+    end
+    UI.menu_sub_end(ctx)
+  end
+  if UI.menu_item(ctx, "Record cues", "R", R.rec, mode ~= "cues") then UI.toggle_rec() end
+  if UI.menu_item(ctx, "Copy markers into cues", nil, false, #R.page_pts + #R.scroll_pts == 0) then
+    Cues.copy_markers(true)
+  end
+  menu_sep(ctx)
+  if UI.menu_sub(ctx, "Page brightness") then
+    local pct = S.dim_page and math.floor(S.dim_level * 100 + 0.5) or 100
+    for _, b in ipairs(MENU_BRIGHTNESS) do
+      if UI.menu_item(ctx, b[2], nil, pct == b[1]) then
+        S.dim_page, S.dim_level = b[1] < 100, b[1] / 100; Util.mark_dirty()
+      end
+    end
+    UI.menu_sub_end(ctx)
+  end
+  if UI.menu_item(ctx, "Match DPI to current view", nil, false, not PDF.can_match_dpi()) then PDF.match_dpi() end
+  menu_sep(ctx)
+  if UI.menu_item(ctx, "Settings") then S.tab = TAB_FIRST_SETTING; S.panel_open = true; Util.mark_dirty() end
+  if UI.menu_item(ctx, "Help") then S.tab = TAB_HELP; S.panel_open = true; Util.mark_dirty() end
+  menu_sep(ctx)
+  -- like REAPER's own windows: one "Dock ... in Docker" item, ticked while docked
+  if UI.menu_item(ctx, "Dock Chart Cue in Docker", nil, R.last_docked) then
+    R.dock_req = R.last_docked and 0 or (R.last_dock_id or -1) -- the last docker used, else the first
+  end
+  if UI.menu_item(ctx, "Close Chart Cue") then R.quit = true end
+end
+
+-- Library row menu: this PDF.
+function UI.pdf_menu(ctx, path)
+  local missing = (R.libexists[path] == false)
+  if UI.menu_item(ctx, "Open", nil, false, missing) then PDF.open_pdf(path, false) end
+  if UI.menu_item(ctx, "Replace PDF...") then Project.replace_pdf(path) end
+  if UI.menu_item(ctx, "Show in Explorer") then Util.show_in_explorer(path) end
+  menu_sep(ctx)
+  if UI.menu_item(ctx, "Remove from library...") then UI.ask_remove_pdf(path) end
+end
+
+-- Regions row menu: this region.
+function UI.region_menu(ctx, key)
+  local reg = Project.region_by_key(key)
+  if not reg then ImGui.CloseCurrentPopup(ctx); return end
+  if UI.menu_item(ctx, "Go to region start") then r.SetEditCurPos(reg.start, true, false) end
+  menu_sep(ctx)
+  if UI.menu_item(ctx, "Choose PDF file...") then
+    local ok, f = r.GetUserFileNameForRead("", "Select a PDF for region \"" .. reg.name .. "\"", "pdf")
+    if ok and f and f ~= "" then Project.import_for_region(reg, f) end
+  end
+  if UI.menu_item(ctx, "Auto-match by name", nil, not P.assign[key] and not P.ignore[key]) then
+    Project.set_region_choice(reg, "auto"); R.cur_region_key = nil
+  end
+  if UI.menu_item(ctx, "Ignore this region", nil, P.ignore[key] == true) then
+    Project.set_region_choice(reg, P.ignore[key] and "auto" or "ignore"); R.cur_region_key = nil
+  end
+end
+
+-- Cues row menu: this cue (i = 0: the Start row). The row number is looked up again, so the menu
+-- still acts on the right cue when the list changed while it was open.
+function UI.cue_menu(ctx, m)
+  local list, idx = Cues.list(m.reg), 0
+  for j, c in ipairs(list) do if c == m.c then idx = j end end
+  local start = (m.i == 0)
+  if not start and idx == 0 then ImGui.CloseCurrentPopup(ctx); return end
+  if UI.menu_item(ctx, "Go to cue") then r.SetEditCurPos(Cues.to_time(m.reg, m.c.pos), true, false) end
+  if UI.menu_item(ctx, "Use current view", nil, false, R.total == 0) then
+    if start then Cues.save_undo(); Cues.put(m.reg, 0, S.page, Cues.view_scroll())
+    else Cues.use_view(m.c) end
+    R.cue_err, R.cue_text = {}, {}
+  end
+  if UI.menu_item(ctx, "Add scroll point below") then
+    Cues.add_below(m.reg, P.cues[Cues.key(m.reg)] or list, start and 0 or idx); R.cue_err, R.cue_text = {}, {}
+  end
+  menu_sep(ctx)
+  if UI.menu_item(ctx, "Remove cue", nil, false, start) then Cues.remove(m.reg, idx); R.cue_err, R.cue_text = {}, {} end
+end
+
+-- Submenu row ("Label  >"), in the same height and indent as UI.menu_item. Returns true while the
+-- submenu is open; then draw its items and call UI.menu_sub_end. ImGui's menu row is the text height
+-- plus the item spacing, centred on the text: the cursor moves down by `half` first and back after.
+function UI.menu_sub(ctx, label)
+  local fs = ImGui.GetFontSize(ctx)
+  local h = math.floor(fs + 10)
+  local half = math.floor((h - fs) / 2)
+  -- the label is ImGui's own (it stays visible while the submenu is open), moved into the text
+  -- column with leading spaces (measured once)
+  if not R.menu_indent then
+    R.menu_indent = string.rep(" ", math.max(1, math.floor(26 / math.max(1, (ImGui.CalcTextSize(ctx, " "))) + 0.5)))
+  end
+  local sx, sy = ImGui.GetCursorScreenPos(ctx)
+  ImGui.SetCursorScreenPos(ctx, sx, sy + half)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_ItemSpacing(), 0, h - fs)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_WindowPadding(), 0, 4)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_PopupRounding(), 0)
+  ImGui.PushStyleColor(ctx, ImGui.Col_HeaderHovered(), COL.BTN_HOVER)
+  ImGui.PushStyleColor(ctx, ImGui.Col_Header(), COL.BTN_HOVER)
+  local open = ImGui.BeginMenu(ctx, R.menu_indent .. label .. "##sub")
+  ImGui.PopStyleColor(ctx, 2)
+  ImGui.PopStyleVar(ctx, 3)
+  if open then
+    R.menu_sub_half = half
+    ImGui.PushStyleVar(ctx, ImGui.StyleVar_ItemSpacing(), 0, 0)
+  else
+    ImGui.SetCursorPosY(ctx, ImGui.GetCursorPosY(ctx) - half)
+  end
+  return open
+end
+function UI.menu_sub_end(ctx)
+  ImGui.PopStyleVar(ctx, 1)
+  ImGui.EndMenu(ctx)
+  ImGui.SetCursorPosY(ctx, ImGui.GetCursorPosY(ctx) - (R.menu_sub_half or 0)) -- back in the parent menu
+end
+-- One item of a REAPER-style menu: a tick column on the left, the label, the key (grey) on the
+-- right; the whole row highlights on hover. Returns true when clicked (the menu then closes).
+-- disabled: grey text, no hover, no click (like REAPER's unavailable items).
+function UI.menu_item(ctx, label, key, checked, disabled)
+  local LEFT, RIGHT, GAP = 26, 14, 40
+  local h = math.floor(ImGui.GetFontSize(ctx) + 10)
+  local lw = ImGui.CalcTextSize(ctx, label)
+  local kw = key and ImGui.CalcTextSize(ctx, key) or 0
+  local w = math.max(ImGui.GetContentRegionAvail(ctx), LEFT + lw + (key and GAP + kw or 0) + RIGHT, 240)
+  local x, y = ImGui.GetCursorScreenPos(ctx)
+  local hit = ImGui.InvisibleButton(ctx, "##mi" .. label, w, h) and not disabled
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local tc = disabled and COL.TEXT_DIM or COL.TEXT_MAIN
+  if ImGui.IsItemHovered(ctx) and not disabled then ImGui.DrawList_AddRectFilled(dl, x, y, x + w, y + h, COL.BTN_HOVER) end
+  local ty = y + math.floor((h - ImGui.GetFontSize(ctx)) / 2) - CFG.TEXT_LIFT
+  if checked then -- tick: two lines
+    local cx, cy = x + 13, y + h / 2
+    ImGui.DrawList_PathLineTo(dl, cx - 4, cy)
+    ImGui.DrawList_PathLineTo(dl, cx - 1, cy + 3)
+    ImGui.DrawList_PathLineTo(dl, cx + 5, cy - 4)
+    ImGui.DrawList_PathStroke(dl, tc, 0, 1.6)
+  end
+  ImGui.DrawList_AddText(dl, x + LEFT, ty, tc, label)
+  if key then ImGui.DrawList_AddText(dl, x + w - RIGHT - kw, ty, COL.TEXT_DIM, key) end
+  if hit then ImGui.CloseCurrentPopup(ctx) end
+  return hit
 end
 
 function UI.draw_centered_toolbar(ctx, perf)
@@ -3218,19 +3607,41 @@ function UI.draw_centered_toolbar(ctx, perf)
   local items = UI.toolbar_items(ctx, perf)
   local avail = math.max(1, (ImGui.GetContentRegionAvail(ctx)))
   local x0 = ImGui.GetCursorPosX(ctx)
-  local gap = CFG.TB_GAP
-  local rows, row, row_w = {}, {}, 0
+  local gap, ggap = CFG.TB_GAP, CFG.TB_GROUP_GAP
+  local groups = {}
   for _, it in ipairs(items) do
-    local need = (#row == 0) and it.w or (row_w + gap + it.w)
-    if #row > 0 and need > avail then rows[#rows + 1] = { items = row, w = row_w }; row = {}; need = it.w end
-    row[#row + 1] = it; row_w = need
+    local gr = groups[#groups]
+    if not gr or gr.g ~= it.g then gr = { g = it.g, items = {}, w = 0 }; groups[#groups + 1] = gr end
+    gr.w = (#gr.items == 0) and it.w or (gr.w + gap + it.w)
+    gr.items[#gr.items + 1] = it
+  end
+  -- rows of { it, sep }; a whole group moves to the next row, unless it is wider than the window
+  local rows, row, row_w = {}, {}, 0
+  local function put(it, sep, w)
+    row[#row + 1] = { it = it, sep = sep and #row > 0 }; row_w = w
+  end
+  for _, gr in ipairs(groups) do
+    local need = (#row == 0) and gr.w or (row_w + ggap + gr.w)
+    if #row > 0 and need > avail then rows[#rows + 1] = { items = row, w = row_w }; row = {}; row_w = 0 end
+    for j, it in ipairs(gr.items) do
+      local sp = (j == 1) and ggap or gap
+      local w = (#row == 0) and it.w or (row_w + sp + it.w)
+      if #row > 0 and w > avail then rows[#rows + 1] = { items = row, w = row_w }; row = {}; w = it.w end
+      put(it, j == 1, w)
+    end
   end
   if #row > 0 then rows[#rows + 1] = { items = row, w = row_w } end
+  local dl, fh = ImGui.GetWindowDrawList(ctx), ImGui.GetFrameHeight(ctx)
   for _, rw in ipairs(rows) do -- every item is one frame high, so SameLine keeps one top edge
-    for j, it in ipairs(rw.items) do
+    for j, e in ipairs(rw.items) do
       if j == 1 then ImGui.SetCursorPosX(ctx, x0 + math.max(0, math.floor((avail - rw.w) / 2)))
-      else ImGui.SameLine(ctx, 0, gap) end
-      it.draw(ctx, it.w)
+      else ImGui.SameLine(ctx, 0, e.sep and ggap or gap) end
+      if e.sep then
+        local sx, sy = ImGui.GetCursorScreenPos(ctx)
+        local lx = math.floor(sx - ggap / 2) + 0.5
+        ImGui.DrawList_AddLine(dl, lx, sy + 4, lx, sy + fh - 4, COL.TOGGLE_OFF, 1)
+      end
+      e.it.draw(ctx, e.it.w)
     end
   end
   ImGui.PopStyleVar(ctx, 1)
@@ -3362,6 +3773,26 @@ function UI.ask_remove_markers(id, lo, hi, where, key)
   UI.ask(id, string.format("Remove %d PDF marker(s) in %s? Only PDF markers (PDFPAGE / PDFSCROLL) are removed. "
     .. "Regions and other markers are not changed. Edit > Undo (Ctrl+Z) brings them back.", n, where),
     "Yes, remove", function() Project.remove_script_markers(lo, hi, where) end, key)
+end
+
+-- The message of `source` in the free space of the last heading's title line (right aligned, cut
+-- to fit, fading out at the end), so the rows below never move. The full text is its tooltip.
+function UI.heading_msg(ctx, source)
+  local m, hr = Msg.recent(source, true), R.heading_row
+  if not m or not hr then return end
+  local w = hr.x1 - hr.x0
+  if w < 40 then return end
+  local txt = UI.trunc_text(ctx, m.text, w)
+  local tw = ImGui.CalcTextSize(ctx, txt)
+  local left = CFG.MSG_SECONDS - (Util.now() - m.t)
+  local a = math.floor(255 * Util.clamp(left / 0.6, 0, 1))
+  local col = ((m.err and COL.RED or COL.GREEN) & 0xFFFFFF00) | a
+  local x = hr.x1 - tw
+  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), x, UI.text_y(ctx, hr.y), col, txt)
+  local mx, my = ImGui.GetMousePos(ctx)
+  if txt ~= m.text and mx >= x and mx <= hr.x1 and my >= hr.y and my <= hr.y + UI.h(ctx) then
+    ImGui.SetTooltip(ctx, m.text)
+  end
 end
 
 -- The message area of a section: the latest message of `source`, always under its buttons.
@@ -3744,7 +4175,7 @@ function UI.draw_library_tab(ctx)
     end
     R.lib_name_w = { ver = R.lib_ver, w = w }
   end
-  local remove_path, relocate_path
+  local relocate_path
   local shown = 0
   -- measured once, so the buttons are wide enough for their text and the right edge stays aligned
   local BTN_W = UI.h(ctx) -- the round red X (the same as in the cue list)
@@ -3759,6 +4190,7 @@ function UI.draw_library_tab(ctx)
     local missing = (R.libexists[path] == false)
     local x = ImGui.GetCursorPosX(ctx)
     local aw = UI.panel_w(ctx)
+    local rsx, rsy = ImGui.GetCursorScreenPos(ctx)
     local btns_x = x + aw - (EXP_W + BTN_W + 8) - 14
     if active then UI.row_highlight(ctx, aw) end
     -- one line: filename (pages) | path | Show in Explorer / red X (all on the same frame height)
@@ -3789,13 +4221,9 @@ function UI.draw_library_tab(ctx)
     if UI.row_button(ctx, "Show in Explorer", EXP_W, "ghost") then Util.show_in_explorer(path) end
     UI.tip(ctx, "Opens the folder of this PDF in Windows Explorer.")
     ImGui.SameLine(ctx)
-    if UI.remove_x_button(ctx, "##remove", BTN_W) then
-      local n = 0
-      for _, p in pairs(P.assign) do if Util.same_path(p, path) then n = n + 1 end end
-      UI.ask("lib_remove", n > 0 and string.format("Remove this PDF from the library? %d region assignment(s) will be cleared. "
-        .. "The file is not deleted.", n) or "Remove this PDF from the library? The file is not deleted.",
-        "Yes, remove", function() remove_path = path end, path)
-    end
+    if UI.remove_x_button(ctx, "##remove", BTN_W) then UI.ask_remove_pdf(path) end
+    -- right-click anywhere on the row: the PDF menu
+    if ImGui.IsMouseClicked(ctx, 1) and UI.mouse_in_row(ctx, rsx, rsy, aw) then R.menu_req = { kind = "pdf", path = path } end
     UI.tip(ctx, "Remove this PDF from the library (asks first). The file is not deleted.")
     if missing then
       local dir, rel = Project.dir(), P.rel[path]
@@ -3818,16 +4246,6 @@ function UI.draw_library_tab(ctx)
       Msg.notify(string.format("Relocated %s.%s", Util.name_of(relocate_path),
         found > 0 and string.format(" Also found %d other missing PDF(s) in the same folder.", found) or ""), false, "library")
     end
-  end
-  if remove_path then
-    for i, p in ipairs(P.pdfs) do
-      if Util.same_path(p, remove_path) then table.remove(P.pdfs, i); break end
-    end
-    for key, p in pairs(P.assign) do if Util.same_path(p, remove_path) then P.assign[key] = nil end end
-    if Util.same_path(P.active_pdf, remove_path) then P.active_pdf = "" end
-    P.rel[remove_path] = nil; P.view[remove_path] = nil
-    R.libpages[remove_path] = nil; R.libexists[remove_path] = nil
-    Project.resolve_regions(); Util.mark_pdirty()
   end
 
 end
@@ -3863,6 +4281,8 @@ function UI.draw_region_row(ctx, i, reg)
   local COMBO_W, DOT_W = CFG.REGION_COMBO_W, CFG.DOT_W
   local x = ImGui.GetCursorPosX(ctx)
   local aw = UI.panel_w(ctx)
+  local rsx, rsy = ImGui.GetCursorScreenPos(ctx)
+  if ImGui.IsMouseClicked(ctx, 1) and UI.mouse_in_row(ctx, rsx, rsy, aw) then R.menu_req = { kind = "region", key = reg.key } end
   if R.cur_region_key == reg.key then UI.row_highlight(ctx, aw) end
   local preview, dot_col, name_col, word = UI.region_look(reg)
   local inline = (aw - DOT_W - COMBO_W - 24) >= 90
@@ -4006,6 +4426,30 @@ function UI.remove_x_button(ctx, id, size)
   return hit
 end
 
+-- Small square row button with a drawn icon ("plus", or "view": a page with the visible part filled);
+-- a grey background on hover, like the remove button's hover.
+function UI.row_icon_button(ctx, id, size, kind)
+  local hit = ImGui.InvisibleButton(ctx, id, size, size)
+  local hov = ImGui.IsItemHovered(ctx)
+  local x0, y0 = ImGui.GetItemRectMin(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  if hov then
+    ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand())
+    ImGui.DrawList_AddRectFilled(dl, x0 + 2, y0 + 2, x0 + size - 2, y0 + size - 2, COL.BTN_HOVER, 4)
+  end
+  local cx, cy = math.floor(x0 + size / 2) + 0.5, math.floor(y0 + size / 2) + 0.5
+  local col = hov and COL.TEXT_BRIGHT or COL.TEXT_DIM
+  if kind == "view" then
+    ImGui.DrawList_AddRect(dl, cx - 5, cy - 6.5, cx + 5, cy + 6.5, col, 1.5, 0, 1.5)
+    ImGui.DrawList_AddRectFilled(dl, cx - 3, cy - 2, cx + 3, cy + 2, col)
+  else
+    UI.draw_tb_icon(dl, cx, cy, kind, col)
+  end
+  return hit
+end
+
+local CUE_START = { pos = 0, page = 1, scroll = 0 } -- the fixed Start row (never changed)
+
 -- Rows of one cue list (shared by the single-song view and the "(all songs)" view).
 -- first: the number of the first row (in "(all songs)" the numbers run on across the songs);
 -- total: the highest number in the whole view, so every song's "#" column has the same width
@@ -4017,20 +4461,26 @@ function UI.draw_cue_rows(ctx, reg, list, first, total)
   local now_i
   if Util.playing() and Cues.key(Cues.playing_region()) == key then
     local p = Cues.from_time(reg, r.GetPlayPosition())
+    now_i = 0 -- before the first cue: the Start row
     for i, c in ipairs(list) do if c.pos <= p + 1e-6 then now_i = i end end
   end
-  -- columns, like an event list: # | Position | Page | Scroll % | X  (x relative to the row start)
+  -- columns, like an event list: # at the left | Position, Page, Scroll %, view, + centred | X at the right
+  -- (x relative to x0; the rows use the full panel width, like the other lists)
   local IDX_W = math.max(28, (ImGui.CalcTextSize(ctx, tostring(total or (first + #list - 1)))) + 14)
-  local POS_X = IDX_W
+  local fh = UI.h(ctx)
+  local MID_W = POS_W + NUM_W * 2 + 40 + 2 * fh + 2
+  local TABLE_W = math.max(IDX_W + MID_W + fh + 16, UI.panel_w(ctx) - 12)
+  local POS_X = math.max(IDX_W, math.floor((TABLE_W - MID_W) / 2))
   local PAGE_X, SCROLL_X = POS_X + POS_W + 16, POS_X + POS_W + NUM_W + 24
-  local DEL_X = POS_X + POS_W + NUM_W * 2 + 32
+  local VIEW_X = POS_X + POS_W + NUM_W * 2 + 40
+  local ADD_X, DEL_X = VIEW_X + fh + 2, TABLE_W - fh
   local x0 = ImGui.GetCursorPosX(ctx)
   ImGui.TextDisabled(ctx, "#")
   ImGui.SameLine(ctx, x0 + POS_X); ImGui.TextDisabled(ctx, "Position")
   UI.tip(ctx, P.cue_unit == "seconds" and "Time from the song start (m:ss)." or "Bar.beat from the song start.")
   ImGui.SameLine(ctx, x0 + PAGE_X); ImGui.TextDisabled(ctx, "Page")
   ImGui.SameLine(ctx, x0 + SCROLL_X); ImGui.TextDisabled(ctx, "Scroll %")
-  local remove_i, moved
+  local remove_i, below_i, moved
   -- One cue field. `apply(raw)` saves a valid value and returns nil, or returns the reason it is
   -- not accepted: then the typed text stays, with a red border (no silent revert). Esc keeps the old value.
   local function cue_field(k, label, w, shown, apply)
@@ -4040,66 +4490,169 @@ function UI.draw_cue_rows(ctx, reg, list, first, total)
     if ImGui.IsItemDeactivated(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape(), false) then
       R.cue_err[k], R.cue_text[k] = nil, nil
     elseif ImGui.IsItemDeactivatedAfterEdit(ctx) then
+      local snap = Cues.copy()
       local e = apply(Util.trim(R.cue_text[k] or ""))
-      if e then R.cue_err[k] = e else R.cue_err[k], R.cue_text[k] = nil, nil end
+      if e then R.cue_err[k] = e else R.cue_err[k], R.cue_text[k] = nil, nil; Cues.save_undo(snap) end
     end
     if R.cue_err[k] then UI.mark_invalid(ctx, R.cue_err[k]) end
   end
-  UI.push_row_style(ctx)
-  for i, c in ipairs(list) do
+  -- the fixed "Start" row (index 0): page 1 at the top from the song start; shown when no cue is at
+  -- the start. It is not saved; a change in it adds a real cue at the start.
+  local has_start = list[1] and math.abs(list[1].pos) < CFG.CUE_SAME_POS
+  local shift = has_start and 0 or 1 -- the Start row takes number `first`; the cues follow
+  local function row(i, c)
+    local is_start = (i == 0)
     ImGui.PushID(ctx, "cue" .. key .. i)
-    local aw = UI.panel_w(ctx)
-    if i == now_i then UI.row_highlight(ctx, aw) end
-    local id = key .. ":" .. i
-    -- number of the cue in this list
     ImGui.SetCursorPosX(ctx, x0)
-    UI.row_text(ctx, tostring(first + i - 1), COL.TEXT_DIM)
-    -- position
+    if i == now_i then UI.row_highlight(ctx, TABLE_W + 16) end
+    local id = key .. ":" .. i
+    -- the whole row is a click area (under the fields and buttons): moves the edit cursor to the cue
+    do
+      local sx, sy = ImGui.GetCursorScreenPos(ctx)
+      if ImGui.IsMouseClicked(ctx, 1) and UI.mouse_in_row(ctx, sx, sy, TABLE_W) then -- right-click: the cue menu
+        R.menu_req = { kind = "cue", reg = reg, list = list, i = i, c = c }
+      end
+      ImGui.SetNextItemAllowOverlap(ctx)
+      if ImGui.InvisibleButton(ctx, "##rowsel", TABLE_W, fh) then
+        r.SetEditCurPos(Cues.to_time(reg, c.pos), true, false)
+      end
+      if ImGui.IsItemHovered(ctx) then
+        ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), sx - 6, sy - 2, sx + TABLE_W + 6, sy + fh + 2, COL.ROW_HOVER, 4)
+        ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand())
+        ImGui.SetTooltip(ctx, is_start and "Song start: page 1, at the top. Click to move the edit cursor here."
+          or "Click to move the edit cursor to this cue.")
+      end
+      ImGui.SetCursorScreenPos(ctx, sx, sy)
+    end
+    -- number of the row in this list (the Start row is number 1 when it is shown)
+    UI.row_text(ctx, tostring(first + i - 1 + shift), COL.TEXT_DIM)
+    -- position (the Start row: a fixed label)
     ImGui.SameLine(ctx, x0 + POS_X)
-    cue_field(id .. "p", "##pos", POS_W, Cues.label(reg, c.pos), function(raw)
-      local v = Cues.parse_label(reg, raw)
-      if not v then return "Position not understood. Use bar.beat (e.g. 9.1.00) or m:ss (e.g. 0:24.5)." end
-      c.pos = v; Cues.sort(list); Util.mark_pdirty(); moved = true
-    end)
+    if is_start then
+      UI.row_text(ctx, "Start", COL.TEXT_DIM)
+    else
+      cue_field(id .. "p", "##pos", POS_W, Cues.label(reg, c.pos), function(raw)
+        local v = Cues.parse_label(reg, raw)
+        if not v then return "Position not understood. Use bar.beat (e.g. 9.1.00) or m:ss (e.g. 0:24.5)." end
+        c.pos = v; Cues.sort(list); Util.mark_pdirty(); moved = true
+      end)
+    end
     -- page (checked against the page count of this song's PDF)
     ImGui.SameLine(ctx, x0 + PAGE_X)
     cue_field(id .. "g", "##page", NUM_W, c.page and tostring(c.page) or "", function(raw)
-      if raw == "" then c.page = nil; Util.mark_pdirty(); return end
+      if raw == "" then
+        if is_start then return "The start needs a page." end
+        c.page = nil; Util.mark_pdirty(); return
+      end
       local v, maxp = tonumber(raw), Cues.max_page(reg)
       if not v or v < 1 then return "The page must be a number from 1." end
       if maxp and v > maxp then return string.format("This PDF has only %d page(s).", maxp) end
+      if is_start then Cues.put(reg, 0, math.floor(v), c.scroll); moved = true; return end
       c.page = math.floor(v); Util.mark_pdirty()
     end)
-    UI.tip(ctx, "Page to show from this cue. Empty = keep the page.")
+    UI.tip(ctx, is_start and "Page at the song start. Change it to add a cue at the start."
+      or "Page to show from this cue. Empty = keep the page.")
     -- scroll (an empty field removes the scroll point; a wrong value never does)
     ImGui.SameLine(ctx, x0 + SCROLL_X)
     cue_field(id .. "s", "##scroll", NUM_W, c.scroll and string.format("%g", c.scroll) or "", function(raw)
-      if raw == "" then c.scroll = nil; Util.mark_pdirty(); return end
+      if raw == "" then
+        if is_start then return "The start needs a scroll position (0 = top)." end
+        c.scroll = nil; Util.mark_pdirty(); return
+      end
       local v = tonumber((raw:gsub("%%$", "")))
       if not v or v < 0 or v > 100 then return "Scroll must be a number from 0 to 100." end
+      if is_start then Cues.put(reg, 0, c.page, v); moved = true; return end
       c.scroll = v; Util.mark_pdirty()
     end)
     UI.tip(ctx, "Scroll position at this cue: 0 = top, 100 = bottom. Empty = no scroll point.\n"
-      .. "Between two scroll points the page moves smoothly.")
-    -- remove
-    ImGui.SameLine(ctx, x0 + DEL_X)
-    if UI.remove_x_button(ctx, "##del", UI.h(ctx)) then remove_i = i end
-    UI.tip(ctx, "Remove this cue")
+      .. "Between two scroll points the page moves smoothly, or jumps (Settings > Autoscroll > Scroll).")
+    -- use current view | add a scroll point below | remove (not for the Start row)
+    ImGui.SameLine(ctx, x0 + VIEW_X)
+    if UI.row_icon_button(ctx, "##view", fh, "view") then
+      if is_start then
+        if R.total > 0 then Cues.save_undo(); Cues.put(reg, 0, S.page, Cues.view_scroll()); moved = true end
+      else Cues.use_view(c) end
+    end
+    UI.tip(ctx, "Use current view: this cue gets the page and the scroll position shown now.")
+    ImGui.SameLine(ctx, x0 + ADD_X)
+    if UI.row_icon_button(ctx, "##below", fh, "plus") then below_i = i end
+    UI.tip(ctx, "Add a scroll point below: halfway to the next cue, on this cue's page,\n"
+      .. "with the scroll position shown now. Then correct its values if needed.")
+    if not is_start then
+      ImGui.SameLine(ctx, x0 + DEL_X)
+      if UI.remove_x_button(ctx, "##del", fh) then remove_i = i end
+      UI.tip(ctx, "Remove this cue")
+    end
     ImGui.PopID(ctx)
   end
+  UI.push_row_style(ctx)
+  if not has_start then row(0, CUE_START) end
+  for i, c in ipairs(list) do row(i, c) end
   UI.pop_row_style(ctx)
-  if remove_i then Cues.remove(reg, remove_i) end
+  if remove_i then Cues.remove(reg, remove_i)
+  elseif below_i then Cues.add_below(reg, P.cues[key] or list, below_i) end
   -- rows changed place: field states are stored by row number, so they would point to other cues
-  if remove_i or moved then R.cue_err, R.cue_text = {}, {} end
+  if remove_i or below_i or moved then R.cue_err, R.cue_text = {}, {} end
+  return #list + shift -- rows shown
 end
 
--- Cues tab: "Cue settings" (unit, song, recording, tools) and the "Cue list" table.
+-- Bar above the cue list: Record (R) | + Page turn (C) | + Scroll point (S) | Undo, centred.
+-- Only usable in the Cue list mode. Its width is measured once drawn (R.cue_bar_w) for the centring.
+function UI.draw_cue_bar(ctx)
+  local can = Nav.scroll_mode() == "cues"
+  local function tip(t)
+    if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+      ImGui.SetTooltip(ctx, can and t or "Works only in the Cue list mode (toolbar or 'Use Cue list mode' above).")
+    end
+  end
+  local x = ImGui.GetCursorPosX(ctx)
+  ImGui.SetCursorPosX(ctx, x + math.max(0, math.floor((UI.panel_w(ctx) - 12 - (R.cue_bar_w or 0)) / 2)))
+  local sx = ImGui.GetCursorScreenPos(ctx)
+  ImGui.BeginDisabled(ctx, not can)
+  local ch, nv = UI.toggle(ctx, "##cuerec", R.rec)
+  if ch and nv ~= R.rec then UI.toggle_rec() end
+  tip("Record cues: while on, the C and S keys and the MIDI cue buttons add cues.\nNot saved: it is off when Chart Cue starts.")
+  ImGui.SameLine(ctx, 0, 6)
+  UI.row_text(ctx, "Record (R)")
+  if can and ImGui.IsItemClicked(ctx) then UI.toggle_rec() end
+  tip("Record cues: while on, the C and S keys and the MIDI cue buttons add cues.\nNot saved: it is off when Chart Cue starts.")
+  ImGui.EndDisabled(ctx)
+  -- the add buttons: only while Record is on (greyed out otherwise), like the C and S keys
+  local on = can and R.rec
+  ImGui.SameLine(ctx, 0, 16)
+  ImGui.BeginDisabled(ctx, not on)
+  local nc, nv = UI.push_kind(ctx, "primary")
+  if UI.row_button(ctx, "+ Page turn (C)") and on then Cues.add_page_turn() end
+  local function add_tip(t)
+    if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+      ImGui.SetTooltip(ctx, (not can and "Works only in the Cue list mode (toolbar or 'Use Cue list mode' above).")
+        or (not on and "Turn on Record first.") or t)
+    end
+  end
+  add_tip("The next page after the cue before it, at the top. Added at the play cursor, in the current song.")
+  ImGui.SameLine(ctx, 0, 8)
+  if UI.row_button(ctx, "+ Scroll point (S)") and on then Cues.add_scroll_point() end
+  add_tip("The same page as the cue before it, at the current scroll position. Added at the play cursor, in the current song.")
+  UI.pop_kind(ctx, nc, nv)
+  ImGui.EndDisabled(ctx)
+  ImGui.SameLine(ctx, 0, 8)
+  local u = Cues.can_undo()
+  ImGui.BeginDisabled(ctx, not u)
+  if UI.row_button(ctx, "Undo", nil, "ghost") then Cues.undo() end
+  ImGui.EndDisabled(ctx)
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+    ImGui.SetTooltip(ctx, u and "Takes back the last cue change (Ctrl+Z in the Chart Cue window)." or "Nothing to undo.")
+  end
+  R.cue_bar_w = ImGui.GetItemRectMax(ctx) - sx
+end
+
+-- Cues tab: "Cue settings" (unit, song, tools) and the "Cue list" with its bar.
 function UI.draw_cue_list(ctx)
   local ch
-  -- part 1: cue settings (unit, song, recording, tools; can be closed); part 2 below: the cue list itself
+  -- part 1: cue settings (unit, song, tools; can be closed); part 2 below: the cue list itself
   local open = UI.heading(ctx, "Cue settings", "A cue list does the same as PDF markers (PDFPAGE / PDFSCROLL), but it is stored in the project "
     .. "data, not as markers. Use it when another program (for example a setlist program) must not see extra markers.\n\n"
-    .. "Easiest way: turn on 'Record cues' (R), play the song and press 'Add page turn' (C key) at each page turn, and 'Add scroll point' "
+    .. "Easiest way: turn on 'Record' (R), play the song and press '+ Page turn' (C key) at each page turn, and '+ Scroll point' "
     .. "(S key) where the page must move. A MIDI button can do the same (Settings > MIDI).\n\n"
     .. "Each song (region) has its own cues. The times are counted from the region start, so the cues move with the region.\n"
     .. "Beats: a cue stays on its bar and beat when the tempo changes. Seconds: a cue stays at its time.", "project", "cue_settings")
@@ -4165,41 +4718,6 @@ function UI.draw_cue_list(ctx)
     end
   end
   if open then -- fold block 2: recording, tools, questions, messages
-    UI.vgap(ctx, UI.sp("LIST"))
-
-    -- recording: the toggle; while it is on, "Add page turn" and "Add scroll point" in the same row
-    -- (the toggle is only usable in the Cue list mode: disabled otherwise, with the reason)
-    local can = Nav.scroll_mode() == "cues"
-    local _, rec_cx, rec_cw = UI.form(ctx, "Record cues (R)")
-    if not can then ImGui.BeginDisabled(ctx, true) end
-    local rch, rv = UI.checkbox(ctx, "Record cues (R)", R.rec)
-    if not can then ImGui.EndDisabled(ctx) end -- always paired with BeginDisabled above
-    if can and rch and rv ~= R.rec then UI.toggle_rec() end
-    if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
-      ImGui.SetTooltip(ctx, can and ("While on, the C and S keys, the MIDI cue buttons and the two buttons next to it add cues.\n"
-        .. "Not saved: it is off when Chart Cue starts.") or "Works only in the Cue list mode. Click 'Use Cue list mode' above.")
-    end
-    do -- always shown, greyed out while recording is off
-      local on = can and R.rec
-      local off_tip = "Turn on 'Record cues' first."
-      local function tip(t)
-        if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then ImGui.SetTooltip(ctx, on and t or off_tip) end
-      end
-      ImGui.SameLine(ctx, 0, 12)
-      local avail = rec_cx + rec_cw - ImGui.GetCursorPosX(ctx)
-      local bw = math.floor((avail - 8) / 2)
-      local need = math.max((ImGui.CalcTextSize(ctx, "Add page turn (C)")), (ImGui.CalcTextSize(ctx, "Add scroll point (S)"))) + 20
-      if bw < need then ImGui.NewLine(ctx); ImGui.SetCursorPosX(ctx, rec_cx); bw = math.floor((rec_cw - 8) / 2) end
-      if not on then ImGui.BeginDisabled(ctx, true) end
-      local nc, nv = UI.push_kind(ctx, "primary")
-      if UI.button(ctx, "Add page turn (C)", bw, UI.h(ctx)) and on then Cues.add_page_turn() end
-      tip("The next page after the cue before it, at the top. Added at the play cursor, in the current song.")
-      ImGui.SameLine(ctx, 0, 8)
-      if UI.button(ctx, "Add scroll point (S)", bw, UI.h(ctx)) and on then Cues.add_scroll_point() end
-      tip("The same page as the cue before it, at the current scroll position. Added at the play cursor, in the current song.")
-      UI.pop_kind(ctx, nc, nv)
-      if not on then ImGui.EndDisabled(ctx) end -- always paired with BeginDisabled above
-    end
     -- the rare tools in one menu: markers (copy | remove) first, then the most dangerous action last
     local song = all and "_all" or Cues.key(reg) -- an open question closes when the song changes
     local c1, c2, c3
@@ -4218,20 +4736,7 @@ function UI.draw_cue_list(ctx)
       ImGui.PopStyleColor(ctx) -- always paired with PushStyleColor above
       ImGui.EndCombo(ctx)
     end
-    if c1 then
-      local n = 0
-      if all then
-        for _, rg in ipairs(R.regions) do n = n + Cues.convert_markers(rg) end
-        if #R.regions == 0 then n = Cues.convert_markers(nil) end
-      else
-        n = Cues.convert_markers(reg)
-      end
-      if n > 0 then
-        Msg.notify(string.format("%d cue(s) made from markers. You can now remove the PDF markers.", n), false, "cues")
-      else
-        Msg.notify("No PDFPAGE or PDFSCROLL markers found.", false, "cues")
-      end
-    end
+    if c1 then Cues.copy_markers(all, reg) end
     if c2 then
       local key = song
       local count = 0
@@ -4240,7 +4745,7 @@ function UI.draw_cue_list(ctx)
         Msg.notify("There are no cues to remove.", false, "cues")
       else
         local what = all and "all songs" or (reg and ('"' .. reg.name .. '"') or "the whole project")
-        UI.ask("cues_all", string.format("Remove all %d cue(s) of %s? This cannot be undone.", count, what),
+        UI.ask("cues_all", string.format("Remove all %d cue(s) of %s? Undo can bring them back.", count, what),
           "Yes, remove", function()
             Cues.remove_all(key)
             Msg.notify(string.format("%d cue(s) removed.", count), false, "cues")
@@ -4254,23 +4759,35 @@ function UI.draw_cue_list(ctx)
     end
     UI.draw_ask(ctx, "cues_all", song)
     UI.draw_ask(ctx, "cue_markers", song)
-    UI.section_msg(ctx, "cues")
   end -- fold block 2
 
   -- part 2: the cue list, as its own section (more space and its own heading)
   UI.group_sep(ctx)
   -- the cues shown below: this song, or every song for "(all songs)" (only songs that still exist,
   -- so the count matches the rows; cues of a deleted region are not shown)
+  -- (the count includes the Start row of each song that shows one, like the row numbers)
+  local function rows_of(rg, always)
+    local l = Cues.list(rg)
+    if #l == 0 and not always then return 0 end
+    return #l + ((l[1] and math.abs(l[1].pos) < CFG.CUE_SAME_POS) and 0 or 1)
+  end
   local ncues = 0
   if all then
-    for _, rg in ipairs(R.regions) do ncues = ncues + #Cues.list(rg) end
-    ncues = ncues + #Cues.list(nil)
+    for _, rg in ipairs(R.regions) do ncues = ncues + rows_of(rg) end
+    ncues = ncues + rows_of(nil)
   else
-    ncues = #Cues.list(reg)
+    ncues = rows_of(reg, true)
   end
   UI.heading(ctx, string.format("Cue list (%d)", ncues), "Type a new position, page or scroll value to change a cue; click the red X to remove it.\n"
     .. "A red border means the value is not accepted: move the mouse over it to see why, then correct it or press Esc.\n"
-    .. "Blue row = the cue that plays now.", "project")
+    .. "Blue row = the cue that plays now. Click a row to move the edit cursor to its cue.\n"
+    .. "Page icon: the cue gets the page and scroll position shown now. +: adds a scroll point below the cue.\n\n"
+    .. "Record (R): while on, the C and S keys and the MIDI cue buttons add cues.\n"
+    .. "The two add buttons do the same as C and S; they work while Record is on.\n"
+    .. "Undo (Ctrl+Z in the Chart Cue window) takes back the last cue change.\n"
+    .. "Start row: each song starts on page 1 at the top. Change it, and it becomes a cue.", "project")
+  UI.heading_msg(ctx, "cues") -- in the title line, so the list never moves
+  UI.draw_cue_bar(ctx)
   if all then
     local shown, num = 0, 1 -- num: the number of the next cue (runs on across the songs)
     local function block(rg, title)
@@ -4278,72 +4795,86 @@ function UI.draw_cue_list(ctx)
       if #list == 0 then return end
       shown = shown + 1
       UI.song_title(ctx, title, rg)
-      UI.draw_cue_rows(ctx, rg, list, num, ncues)
-      num = num + #list
+      num = num + UI.draw_cue_rows(ctx, rg, list, num, ncues)
     end
     for _, rg in ipairs(R.regions) do block(rg, rg.name ~= "" and rg.name or "(unnamed region)") end
     block(nil, "(whole project, no region)")
     if shown == 0 then
-      UI.note(ctx, "No cues yet. Play a song and press 'Add page turn' (C) at each page turn.", COL.GREY)
+      UI.note(ctx, "No cues yet. Turn on Record, play a song and press '+ Page turn' (C) at each page turn.", COL.GREY)
     end
     return
   end
   local list = Cues.list(reg)
   UI.song_title(ctx, reg and (reg.name ~= "" and reg.name or "(unnamed region)") or "(whole project, no region)", reg)
+  UI.draw_cue_rows(ctx, reg, list) -- also without cues: the Start row
   if #list == 0 then
-    UI.note(ctx, "No cues yet. Play the song and press 'Add page turn' (C) at each page turn, "
-      .. "and 'Add scroll point' (S) where the page must move.", COL.GREY)
-    return
+    UI.note(ctx, "No cues yet. Turn on Record, play the song and press '+ Page turn' (C) at each page turn, "
+      .. "and '+ Scroll point' (S) where the page must move.", COL.GREY)
   end
-  UI.draw_cue_rows(ctx, reg, list)
 end
 function UI.draw_autoscroll_tab(ctx)
   local ch
   UI.heading(ctx, "Mode", "The autoscroll mode is in the toolbar ('Scroll: ...'). It is saved in this project, "
-    .. "like Turn pages.\n"
+    .. "like Turn pages and Scroll.\n"
     .. "Default for new projects: saved on this computer (the mode of a project where you have not chosen one).\n\n"
     .. "Turn pages: show the next page a little before its page turn (PDFPAGE marker or page-turn cue), "
-    .. "so you can read ahead.\n\n"
+    .. "so you can read ahead.\n"
+    .. "Scroll: Smooth moves the page slowly from one scroll point to the next; Jump goes to each scroll point at its time.\n\n"
     .. "Markers mode: PDFPAGE n turns to page n, at the top. PDFSCROLL 0..100 sets the scroll position "
-    .. "(0 = top, 100 = bottom); between two PDFSCROLL markers the page moves smoothly. "
+    .. "(0 = top, 100 = bottom). "
     .. "At the same time, PDFSCROLL wins. Marker names are case-insensitive. "
     .. "The markers inside a region work from the region start to the region end.")
-  -- the mode itself is chosen in the toolbar; here: the rows of that mode
+  -- the mode itself is chosen in the toolbar
   local mode = Nav.scroll_mode()
-  if mode == "off" then
-    UI.note(ctx, "Autoscroll is off. Choose a mode in the toolbar ('Scroll: Off').", COL.GREY)
-  elseif mode == "cues" then
-    if UI.full_button(ctx, "Edit the cues in the Cues tab") then
-      S.tab = TAB_CUES; S.panel_open = true; Util.mark_dirty()
-    end
-  else
-    local nwarn = #R.marker_warns
-    UI.note(ctx, string.format("%d PDFSCROLL markers, %d PDFPAGE markers, %d invalid.", #R.scroll_pts, #R.page_pts, nwarn),
-      nwarn == 0 and COL.GREEN or COL.YELLOW)
-    for i, w in ipairs(R.marker_warns) do
-      if i > 5 then UI.note(ctx, string.format("... and %d more invalid markers", nwarn - 5), COL.YELLOW); break end
-      UI.note(ctx, w, COL.YELLOW)
-    end
-  end
-  -- turn pages early (Markers and Cue list), saved in this project like the mode
-  if mode ~= "off" then
-    local EARLY = { 0, 0.5, 1, 2 }
-    local ei = 0
-    for i, v in ipairs(EARLY) do if math.abs(P.turn_early - v) < 1e-6 then ei = i - 1 end end
-    UI.field(ctx, "Turn pages")
-    local ech
-    ech, ei = ImGui.Combo(ctx, "##turnearly", ei, "On time\0Half a beat early\0One beat early\0Two beats early\0")
-    if ech then P.turn_early = EARLY[ei + 1]; Util.mark_pdirty() end
-    UI.tip(ctx, "Shows the next page a little before its page turn, so you can read ahead.\n"
-      .. "The new page starts at the top. Saved in this project.")
-  end
-  -- default for projects that have no mode of their own (S.scroll_mode): last, it is saved on this computer
+  -- default for projects that have no mode of their own (S.scroll_mode), saved on this computer
   local di = 0
   for i, m in ipairs(SCROLL_MODES) do if m == S.scroll_mode then di = i - 1 end end
   UI.field(ctx, "Default for new projects")
   ch, di = ImGui.Combo(ctx, "##ascrolldef", di, SCROLL_ITEMS)
   if ch then S.scroll_mode = SCROLL_MODES[di + 1]; Util.mark_dirty() end
   UI.tip(ctx, "The mode of a project where you have not chosen a mode yet.")
+  -- turn pages early (Markers and Cue list), saved in this project like the mode; greyed out when off
+  local EARLY = { 0, 0.5, 1, 2 }
+  local ei = 0
+  for i, v in ipairs(EARLY) do if math.abs(P.turn_early - v) < 1e-6 then ei = i - 1 end end
+  ImGui.BeginDisabled(ctx, mode == "off")
+  UI.field(ctx, "Turn pages")
+  local ech
+  ech, ei = ImGui.Combo(ctx, "##turnearly", ei, "On time\0Half a beat early\0One beat early\0Two beats early\0")
+  if ech then P.turn_early = EARLY[ei + 1]; Util.mark_pdirty() end
+  ImGui.EndDisabled(ctx)
+  local off_tip = (mode == "off") and "Autoscroll is off: choose a mode in the toolbar first.\n" or ""
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+    ImGui.SetTooltip(ctx, off_tip .. "Shows the next page a little before its page turn, so you can read ahead.\n"
+      .. "The new page starts at the top. Saved in this project.")
+  end
+  -- scroll between scroll points: smooth (default) or a jump at each point; saved in this project
+  ImGui.BeginDisabled(ctx, mode == "off")
+  UI.field(ctx, "Scroll")
+  local si = P.scroll_jump and 1 or 0
+  local sch
+  sch, si = ImGui.Combo(ctx, "##scrolljump", si, "Smooth, between scroll points\0Jump at each scroll point\0")
+  if sch then P.scroll_jump = (si == 1); Util.mark_pdirty() end
+  ImGui.EndDisabled(ctx)
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+    ImGui.SetTooltip(ctx, off_tip .. "Smooth: the page moves slowly from one scroll point to the next.\n"
+      .. "Jump: the page goes to the scroll position at the time of each scroll point and stays there.\n"
+      .. "For PDFSCROLL markers and cues. Saved in this project.")
+  end
+  -- status of the mode
+  if mode == "off" then
+    UI.value(ctx, "Status", "Off. Choose a mode in the toolbar.")
+  elseif mode == "marker" then
+    local nwarn = #R.marker_warns
+    UI.value(ctx, "Markers found", string.format("%d PDFPAGE, %d PDFSCROLL", #R.page_pts, #R.scroll_pts), COL.TEXT_MAIN)
+    if nwarn > 0 then
+      UI.value(ctx, "Invalid markers", tostring(nwarn), COL.YELLOW)
+      for i, w in ipairs(R.marker_warns) do
+        if i > 5 then UI.note(ctx, string.format("... and %d more invalid markers", nwarn - 5), COL.YELLOW); break end
+        UI.note(ctx, w, COL.YELLOW)
+      end
+    end
+  end
 end
 
 function UI.draw_midi_tab(ctx)
@@ -4380,7 +4911,7 @@ function UI.draw_midi_tab(ctx)
     end
     ch, S.midi_add_cue = UI.checkbox(ctx, "Add cues with MIDI", S.midi_add_cue)
     if ch then Util.mark_dirty() end
-    UI.tip(ctx, "Same as 'Add page turn' and 'Add scroll point' in the Cues tab.\n"
+    UI.tip(ctx, "Same as '+ Page turn' and '+ Scroll point' in the Cues tab.\n"
       .. "A value of 64 or more counts as a press.")
     if S.midi_add_cue then
       S.cc_add_cue = cc_row("Page turn CC #", "##ccaddcue", S.cc_add_cue)
@@ -4457,6 +4988,21 @@ function UI.draw_poppler_settings(ctx)
   else UI.note(ctx, "OK - pdftoppm.exe and pdfinfo.exe found.", COL.GREEN) end
 end
 
+-- "Match DPI to current view" (Settings > Display and the toolbar menu): the DPI that fits the zoom.
+-- Only possible while a page is shown (R.last_ratio) and below the largest page size (R.scale_to).
+function PDF.can_match_dpi() return R.last_ratio ~= nil and not R.scale_to end
+function PDF.match_dpi()
+  if not PDF.can_match_dpi() then return end
+  local target = Util.clamp(math.floor(S.dpi * R.last_ratio * 1.25 / 10 + 0.5) * 10, 72, 600)
+  if target ~= S.dpi then
+    S.dpi = target; R.dpi_edit = target; Util.mark_dirty()
+    if S.pdf_path ~= "" then PDF.open_pdf(S.pdf_path, true) end
+    Msg.notify(string.format("Page sharpness set to %d DPI.", target), false, "display")
+  else
+    Msg.notify(string.format("Page sharpness already fits the view (%d DPI).", S.dpi), false, "display")
+  end
+end
+
 -- "Reset all settings": back to the defaults copied before settings.ini was read (asked first, inline).
 function UI.reset_all_settings()
   for k, v in pairs(CFG.S_DEFAULTS) do
@@ -4478,7 +5024,7 @@ function UI.draw_display_tab(ctx)
   -- one slider: 100% = not dimmed (S.dim_page stays in settings.ini, set from the slider)
   UI.field(ctx, "Page brightness")
   local pct = S.dim_page and math.floor(S.dim_level * 100 + 0.5) or 100
-  ch, pct = ImGui.SliderInt(ctx, "##dimlevel", pct, 30, 100, "%d%%")
+  ch, pct = ImGui.SliderInt(ctx, "##dimlevel", pct, 25, 100, "%d%%")
   if ch then S.dim_page = pct < 100; S.dim_level = pct / 100; Util.mark_dirty() end
   UI.tip(ctx, "Lower than 100% makes the white paper darker for dark stages.")
   ch, S.turn_flash = UI.checkbox(ctx, "Page-turn flash", S.turn_flash)
@@ -4527,14 +5073,7 @@ function UI.draw_display_tab(ctx)
       UI.note(ctx, "Maximum page size reached.", COL.GREY)
       UI.tip(ctx, string.format("This PDF already has the largest page size (%d px). A higher DPI does not make it sharper.", R.scale_to))
     elseif UI.full_button(ctx, "Match DPI to current view", "primary") then
-      local target = Util.clamp(math.floor(S.dpi * R.last_ratio * 1.25 / 10 + 0.5) * 10, 72, 600)
-      if target ~= S.dpi then
-        S.dpi = target; R.dpi_edit = target; Util.mark_dirty()
-        if S.pdf_path ~= "" then PDF.open_pdf(S.pdf_path, true) end
-        Msg.notify(string.format("Page sharpness set to %d DPI.", target), false, "display")
-      else
-        Msg.notify(string.format("Page sharpness already fits the view (%d DPI).", S.dpi), false, "display")
-      end
+      PDF.match_dpi()
     end
   end
 
@@ -4614,7 +5153,7 @@ end
 
 -- Path row: label | path (cut at the left) | "Show in Explorer" right-aligned, across the full panel width.
 -- An empty path shows `empty` with the tooltip `empty_tip`, and the button is disabled.
--- Used by Settings > General > Project file and Help > About > Installed in.
+-- Used by Settings > General > Current project (Project file) and Help > About > Installed in.
 function UI.path_row(ctx, label, path, empty, empty_tip)
   local x0 = ImGui.GetCursorPosX(ctx)
   local aw = UI.panel_w(ctx)
@@ -4675,9 +5214,9 @@ Chart Cue shows your sheet music or chord charts (PDF files) inside REAPER. It c
 
 1. Click the Library tab, then click "Add PDF..." and pick a PDF file.
 2. Click the PDF in the list. The first page appears.
-3. Use the < and > buttons at the top to go to the previous or next page. Use - and + to make the page smaller or bigger.
+3. Use the arrow buttons at the top to go to the previous or next page. Use the minus and plus buttons to make the page smaller or bigger.
 4. Optional: in REAPER, make a region with the same name as the PDF. For example, a region named "Song One" for the file "Song One.pdf". Chart Cue then opens that PDF by itself when the song plays.
-5. Optional: choose an autoscroll mode at the top right, so the page moves by itself while REAPER plays.
+5. Optional: choose an autoscroll mode in the toolbar ("Scroll: Off"), so the page moves by itself while REAPER plays.
 
 Click a tab to open it. Click the same tab again to hide it and get more space for the music. The Settings tab (the gear icon) has 4 sections: Autoscroll, MIDI, Display, and General. Click a section name to open or close it. Only one section is open at a time. The first section of the Library, Regions and Cues tabs can also be closed with the arrow before its name.]==],
     more = [==[
@@ -4694,6 +5233,7 @@ The Library is the list of PDFs in this project.
 - Click a PDF in the list to show it. "Show in Explorer" opens its folder. The red X takes it off the list (it asks first); the file itself is not deleted.
 - The blue row is the PDF that is on the screen now.
 - A red name means that the file cannot be found. Click "Relocate..." and pick the file again.
+- Right-click a PDF for: Open, Replace PDF..., Show in Explorer and Remove from library.... "Replace PDF..." swaps the file (for example a new version of the chart) and keeps the region choices, the zoom and the cues. If the new file has fewer pages, a message tells you how many cues use a missing page.
 - Use the search box and the sort menu above the list to find a PDF quickly.]==],
     more = [==[
 - "Include subfolders" makes "Add PDFs from folder..." also look in all folders inside the chosen folder.
@@ -4713,7 +5253,7 @@ If your project contains several songs, each song can have its own PDF. Mark eac
 - You can also choose the PDF for a region in the menu on the right of the region.
 - The symbol shows the state: green filled circle = has a PDF, yellow ring = needs a PDF, grey dash = ignored.
 - The blue row is the region where the play cursor is now.
-- Click a region row to move the edit cursor to the start of that region.
+- Click a region row to move the edit cursor to the start of that region. Right-click it for: Go to region start, Choose PDF file..., Auto-match by name and Ignore this region.
 - When the play cursor enters a region without a PDF, the page area shows buttons: add a PDF, choose a PDF from the list, or ignore the region.
 - "Keep last page" (Regions tab, on by default): when a song has no PDF, during playback the last page stays on screen with a yellow note at the top. The buttons show when playback stops.
 - "Switch PDF at regions" turns this whole function on or off.]==],
@@ -4737,14 +5277,15 @@ Autoscroll moves the page while REAPER plays. Choose the mode in the toolbar ("S
 
 Marker names for the "Markers" mode:
 - PDFPAGE 2 means: from here, show page 2.
-- PDFSCROLL 50 means: here, show the middle of the page. 0 is the top, 100 is the bottom. Between two PDFSCROLL markers, the page moves smoothly.
+- PDFSCROLL 50 means: here, show the middle of the page. 0 is the top, 100 is the bottom. Between two PDFSCROLL markers, the page moves smoothly, or jumps (Settings > Autoscroll > Scroll).
 
 How to make a cue list (Cues tab):
 1. Choose "Cue list" as the autoscroll mode, or click "Use Cue list mode" in the Cues tab.
-2. Turn on "Record cues" (or press R), then play the song.
-3. At each page turn, click "Add page turn" or press the C key. Chart Cue chooses the next page by itself.
-4. Where the page must move down, scroll it by hand and click "Add scroll point" or press the S key.
+2. Turn on "Record" (or press R), then play the song.
+3. At each page turn, click "+ Page turn" or press the C key. Chart Cue chooses the next page by itself.
+4. Where the page must move down, scroll it by hand and click "+ Scroll point" or press the S key.
 5. To change a cue, type a new position, page or scroll value in the list. To delete it, click the red X at the end of its row. A red border means the value is not accepted: move the mouse over it to see why, then correct it or press Esc.
+6. Click "Undo" (or press Ctrl+Z in the Chart Cue window) to take back the last cue change.
 
 If you scroll by hand during playback, autoscroll waits a moment and then continues.]==],
     more = [==[
@@ -4757,12 +5298,14 @@ If you scroll by hand during playback, autoscroll waits a moment and then contin
 - Manual scrolling (wheel, drag, MIDI) pauses autoscroll for 1.5 seconds.
 - Cue list: each song (region) has its own cues, counted from the region start. If you move a region, its cues move with it. Without regions, the cues count from the project start ("whole project").
 - Cue list: "Count time in" is chosen per project. Beats: a cue stays on its bar and beat when the tempo changes. Seconds: a cue stays at the same time. Switching keeps every cue at its current place.
-- Cue list: a cue has a page, a scroll position, or both. Between two scroll points the page moves smoothly. A new cue at the same place replaces the old one.
-- "Add page turn" uses the page after the cue before it (the first page turn gives page 2), at the top of the page. If you add a page turn between existing cues, the following page numbers go up by one.
-- "Add scroll point" uses the page of the cue before it and the current scroll position.
+- Cue list: a cue has a page, a scroll position, or both. Between two scroll points the page moves smoothly, or jumps (Settings > Autoscroll > Scroll). A new cue at the same place replaces the old one.
+- Cue list: the first row ("Start") shows that each song starts on page 1 at the top. Change it, and it becomes a cue.
+- Cue list: click a row to move the edit cursor to its cue. The page icon gives the cue the page and scroll position shown now. The + adds a scroll point halfway to the next cue. Right-click a row for: Go to cue, Use current view, Add scroll point below and Remove cue.
+- "+ Page turn" uses the page after the cue before it (the first page turn gives page 2), at the top of the page. If you add a page turn between existing cues, the following page numbers go up by one.
+- "+ Scroll point" uses the page of the cue before it and the current scroll position.
 - A page number higher than the last page of the song's PDF is not accepted.
 - "(current song)" in the Song menu is the song at the play cursor during playback, or at the edit cursor when REAPER is stopped.
-- "(all songs)" in the Song menu shows the cues of every song, with the song name above each list. "Remove all cues..." asks before it deletes.
+- "(all songs)" in the Song menu shows the cues of every song, with the song name above each list. "Remove all cues..." asks before it deletes, and Undo brings the cues back.
 - "(whole project, no region)" is only for projects without regions. Its times count from the project start.
 - "More actions" > "Copy markers into cues" copies the PDF markers (PDFPAGE / PDFSCROLL) of the song into its cue list. The markers stay.
 - "Remove PDF markers..." then removes them (for this song, or for all songs with "(all songs)" in the Song menu). Only PDF markers are removed; regions and other markers are not changed. It is one undo step, so Edit > Undo (Ctrl+Z) brings them back.
@@ -4792,7 +5335,7 @@ You can scroll the page with a knob, fader or endless encoder on a MIDI controll
 - Page-turn flash (PDF viewer): a short blue frame when the page turns during playback.
 - Page sharpness (DPI): a higher number gives sharper pages, but the first preparation takes longer. "Page quality" tells you if the page looks sharp.
 - PDF engine: "Windows (built in)" needs no extra software. "Poppler" is an optional alternative.
-- Hide controls when playing (Window): while REAPER plays, only a small toolbar is shown, so the music gets more space. If there is an error, one red line is shown.
+- Hide controls when playing (Window, or the button at the right of the toolbar): while REAPER plays, only a small toolbar is shown, so the music gets more space. If there is an error, one red line is shown.
 - Comfortable layout (Window): more empty space between rows and sections; buttons, fields and tabs keep their size.
 - Page cache (Page quality): Chart Cue keeps the pages on your disk, so PDFs open fast. Its size is shown next to "Clear...", which clears it at any time. It is filled again when needed.]==],
     more = [==[
@@ -4825,21 +5368,24 @@ The round "?" next to a heading tells you where its settings are saved: in this 
 - Home: go to the top of the page
 - F: performance mode (only the page is shown). F or Esc goes back.
 - L: lock (during playback the page ignores the mouse and the keys; MIDI and autoscroll still work). The lock button is in the toolbar.
-- R: record cues on / off (Cue list mode only; the red dot button in the toolbar does the same). REC shows on the page while it is on.
+- R: record cues on / off (Cue list mode only; the red dot button in the toolbar and "Record" in the Cues tab do the same). REC shows on the page while it is on.
 - C: add a page turn at the play cursor (only while Record cues is on)
 - S: add a scroll point at the play cursor (only while Record cues is on)
 - Ctrl and +: zoom in. Ctrl and -: zoom out. Ctrl and 0: fit the page width.
+- Ctrl and Z: undo the last cue change (while the Cues tab is open).
 - Mouse wheel: scroll the page. Ctrl and mouse wheel: zoom.
+- Right-click the toolbar or the page for a menu with the most used options: Add PDF, Replace PDF (the PDF on screen), hide controls, show the panel, lock, performance mode, the autoscroll mode, Record cues, Copy markers into cues (all songs), page brightness, Match DPI, Settings, Help, Dock Chart Cue in Docker (ticked while docked) and Close Chart Cue. Grey items are not available now. In lock mode during playback, a right-click on the page does nothing.
+- Right-click a row in the Library, Regions or Cues list for the options of that PDF, region or cue.
 - Drag the page with the mouse to move it.
 - Drag the bar on the right of the page to scroll.
-- Drag the thin line under the settings panel to change its height.
+- Drag the thin line under the settings panel to change its height. Double-click it for a larger panel, or to go back to the default height.
 
 The keys work when the Chart Cue window is active. Click on it first.
 
 To turn pages when the Chart Cue window is not active (for example with a foot pedal, or a key while you work in REAPER), use these actions in REAPER's Action List: "Chart Cue - Next page", "Chart Cue - Previous page" and "Chart Cue - Toggle performance mode". Load them once with "New action > Load ReaScript...", then give them a shortcut. They also work in lock mode.]==],
     more = [==[
 - The fit menu at the top has: Fit width, Fit height, Fit page and 100% (the real size of the page). Each PDF remembers its own fit and zoom (saved in the project).
-- Click "Page 3 / 12" in the toolbar to type a page number, then press Enter.
+- Click the page number ("3 / 12") in the toolbar to type a page number, then press Enter.
 - In performance mode, move the mouse to the top-right corner of the page for an exit button.
 - A horizontal mouse wheel or tilt wheel moves the page left and right when it is wider than the window.
 - There is no key to close Chart Cue, so it cannot close by mistake during a performance. Use the X of the window, run the Chart Cue action again, or close the project.]==] },
@@ -5174,8 +5720,12 @@ function UI.draw_panel(ctx, status_h)
     local _, dy = ImGui.GetMouseDelta(ctx)
     if dy ~= 0 then S.panel_h = Util.clamp(ph + dy, CFG.PANEL_MIN_H, max_h); Util.mark_dirty() end
   end
-  if hov and ImGui.IsMouseDoubleClicked(ctx, 0) then S.panel_h = 0; Util.mark_dirty() end -- 0 = default height
-  if hov and not act then ImGui.SetTooltip(ctx, "Drag to change the panel height.\nDouble-click: default height.") end
+  -- double-click: default height -> large; any other height -> default (0 = default height)
+  if hov and ImGui.IsMouseDoubleClicked(ctx, 0) then
+    S.panel_h = (S.panel_h == 0) and Util.clamp(math.floor((free_h - status_h) * CFG.PANEL_LARGE_FRAC), CFG.PANEL_MIN_H, max_h) or 0
+    Util.mark_dirty()
+  end
+  if hov and not act then ImGui.SetTooltip(ctx, "Drag to change the panel height.\nDouble-click: larger panel, or back to the default height.") end
   local dl = ImGui.GetWindowDrawList(ctx)
   local cx = gx + aw / 2
   local cy = gy + CFG.SPLIT_H / 2
@@ -5345,6 +5895,39 @@ function UI.draw_rec_icon(dl, cx, cy, armed)
   ImGui.DrawList_AddCircleFilled(dl, cx, cy, 5.5, armed and COL.RED or ((COL.RED & 0xFFFFFF00) | 0x80))
 end
 
+-- Toolbar icons (drawn, the same line weight as the lock): "prev", "next", "minus", "plus",
+-- "hide" / "show" (a window with a top bar and a chevron: up = controls fold away when playing, down = they stay).
+function UI.draw_tb_icon(dl, cx, cy, kind, col)
+  if kind == "hide" or kind == "show" then
+    ImGui.DrawList_AddRect(dl, cx - 7, cy - 6, cx + 7, cy + 6, col, 2, 0, 1.5)
+    ImGui.DrawList_AddLine(dl, cx - 7, cy - 2.5, cx + 7, cy - 2.5, col, 1.5)
+    local d = (kind == "hide") and 1.5 or -1.5 -- up or down
+    ImGui.DrawList_PathLineTo(dl, cx - 3, cy + 1.5 + d)
+    ImGui.DrawList_PathLineTo(dl, cx, cy + 1.5 - d)
+    ImGui.DrawList_PathLineTo(dl, cx + 3, cy + 1.5 + d)
+    ImGui.DrawList_PathStroke(dl, col, 0, 1.5)
+  elseif kind == "prev" or kind == "next" then
+    local d = (kind == "prev") and 1 or -1
+    ImGui.DrawList_PathLineTo(dl, cx + d * 2.5, cy - 5)
+    ImGui.DrawList_PathLineTo(dl, cx - d * 2.5, cy)
+    ImGui.DrawList_PathLineTo(dl, cx + d * 2.5, cy + 5)
+    ImGui.DrawList_PathStroke(dl, col, 0, 2)
+  else
+    ImGui.DrawList_AddLine(dl, cx - 5.5, cy, cx + 5.5, cy, col, 2)
+    if kind == "plus" then ImGui.DrawList_AddLine(dl, cx, cy - 5.5, cx, cy + 5.5, col, 2) end
+  end
+end
+
+-- Square toolbar button with a drawn icon; returns true when clicked.
+function UI.icon_button(ctx, id, w, kind)
+  local hit = UI.button(ctx, id, w, 0)
+  local x0, y0 = ImGui.GetItemRectMin(ctx)
+  local x1, y1 = ImGui.GetItemRectMax(ctx)
+  UI.draw_tb_icon(ImGui.GetWindowDrawList(ctx), math.floor((x0 + x1) / 2) + 0.5,
+    math.floor((y0 + y1) / 2) + 0.5, kind, COL.TEXT_MAIN)
+  return hit
+end
+
 -- Gear icon (the Settings tab): a ring with 8 teeth.
 function UI.draw_gear_icon(dl, cx, cy, col)
   for k = 0, 7 do
@@ -5383,6 +5966,7 @@ function UI.handle_keys(ctx)
     if ImGui.IsKeyPressed(ctx, K("Equal")) then Nav.zoom_by(CFG.ZOOM_STEP) end
     if ImGui.IsKeyPressed(ctx, K("Minus")) then Nav.zoom_by(1 / CFG.ZOOM_STEP) end
     if ImGui.IsKeyPressed(ctx, K("0"), false) then Nav.fit_width() end
+    if ImGui.IsKeyPressed(ctx, K("Z"), false) and S.tab == TAB_CUES and S.panel_open then Cues.undo() end
   end
 end
 
@@ -5559,7 +6143,7 @@ end
 -- Page tint: white, or grey in dim mode (ImGui multiplies the image colours by this value).
 function UI.page_tint()
   if not S.dim_page then return COL.WHITE end
-  local v = math.floor(255 * Util.clamp(S.dim_level, 0.3, 1) + 0.5)
+  local v = math.floor(255 * Util.clamp(S.dim_level, 0.25, 1) + 0.5)
   return (v << 24) | (v << 16) | (v << 8) | 0xFF
 end
 
@@ -5631,7 +6215,11 @@ function UI.draw_view(ctx, view_w, view_h)
   if img then
     ImGui.InvisibleButton(ctx, "##pageview", area_w, view_h)
     hovered, active = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
-    if locked then hovered, active = false, false end -- lock mode: no wheel, no dragging
+    if locked then hovered, active = false, false end -- lock mode: no wheel, no dragging, no menu
+    -- the toolbar menu (also when a menu is open: a second right-click opens it again at the mouse)
+    if not locked and ImGui.IsMouseClicked(ctx, 1) and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenBlockedByPopup()) then
+      R.menu_req = { kind = "main" }
+    end
   else
     -- No page image (empty states): a plain Dummy keeps the layout but, unlike an InvisibleButton,
     -- it does not capture hover/clicks, so the empty-state buttons drawn on top are clickable.
@@ -5792,6 +6380,7 @@ function Dock.track(ctx)
     local did = 0
     if docked then
       did = ImGui.GetWindowDockID(ctx)
+      R.last_dock_id = did -- for "Dock in REAPER docker" in the toolbar menu
     end
     if did ~= S.dock_id then S.dock_id = did; Util.mark_dirty() end
   end
@@ -5802,6 +6391,62 @@ function Dock.track(ctx)
       S.win_x, S.win_y, S.win_w, S.win_h = wx, wy, ww, wh; Util.mark_dirty()
     end
   end
+end
+
+-- Floating window: Chart Cue's own resize edges and corner grip (ImGui's are about 1 px wide; the
+-- window uses WindowFlags_NoResize). R.rs = the running resize: edge flags + start mouse / window.
+-- Called before Begin: applies a running resize, and keeps the full size while the window is collapsed
+-- (so it always opens again at its full size).
+function Dock.pre_begin(ctx)
+  local rs = R.rs
+  if rs then
+    if not ImGui.IsMouseDown(ctx, 0) then R.rs = nil; return end
+    local mx, my = ImGui.GetMousePos(ctx)
+    local dx, dy = mx - rs.mx, my - rs.my
+    local x, w, h = rs.x, rs.w, rs.h
+    if rs.l then w = math.max(CFG.WIN_MIN_W, rs.w - dx); x = rs.x + rs.w - w end
+    if rs.r then w = math.max(CFG.WIN_MIN_W, rs.w + dx) end
+    if rs.b then h = math.max(CFG.WIN_MIN_H, rs.h + dy) end
+    ImGui.SetNextWindowPos(ctx, x, rs.y, ImGui.Cond_Always())
+    ImGui.SetNextWindowSize(ctx, w, h, ImGui.Cond_Always())
+  elseif R.collapsed then
+    ImGui.SetNextWindowSize(ctx, S.win_w, S.win_h, ImGui.Cond_Always())
+  end
+end
+
+-- Called between Begin and End of the floating window: hover zones, cursor, grip, start of a resize.
+function Dock.edges(ctx)
+  local wx, wy = ImGui.GetWindowPos(ctx)
+  local ww, wh = ImGui.GetWindowSize(ctx)
+  local E, G = CFG.WIN_EDGE, CFG.WIN_GRIP
+  local mx, my = ImGui.GetMousePos(ctx)
+  local zone
+  if not R.rs and ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_RootAndChildWindows())
+      and not ImGui.IsAnyItemActive(ctx) and my > wy + ImGui.GetFrameHeight(ctx) then
+    local l, rr, b = mx < wx + E, mx > wx + ww - E, my > wy + wh - E
+    if mx > wx + ww - G and my > wy + wh - G then rr, b = true, true end
+    if l or rr or b then zone = { l = l, r = rr and not l, b = b } end
+  end
+  local z = R.rs or zone
+  if z then
+    ImGui.SetMouseCursor(ctx, (z.b and (z.l or z.r)) and (z.l and ImGui.MouseCursor_ResizeNESW() or ImGui.MouseCursor_ResizeNWSE())
+      or (z.b and ImGui.MouseCursor_ResizeNS()) or ImGui.MouseCursor_ResizeEW())
+  end
+  if zone and ImGui.IsMouseClicked(ctx, 0) then
+    zone.mx, zone.my, zone.x, zone.y, zone.w, zone.h = mx, my, wx, wy, ww, wh
+    R.rs = zone
+  end
+  -- corner grip: 3 diagonal lines, brighter on hover / while resizing (drawn over the window edge)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local x1, y1 = wx + ww, wy + wh
+  ImGui.DrawList_PushClipRect(dl, wx, wy, x1, y1, false)
+  local hot = z and z.r and z.b
+  local col = hot and COL.ACCENT or COL.TOGGLE_OFF
+  for k = 1, 3 do
+    local d = k * 5
+    ImGui.DrawList_AddLine(dl, x1 - 3 - d, y1 - 3, x1 - 3, y1 - 3 - d, col, 2)
+  end
+  ImGui.DrawList_PopClipRect(dl)
 end
 
 ---------------------------------------------------------------------------
@@ -5832,12 +6477,32 @@ function UI.frame()
     Dock.apply(ctx)
     ImGui.SetNextWindowPos(ctx, S.win_x, S.win_y, ImGui.Cond_FirstUseEver())
     ImGui.SetNextWindowSize(ctx, S.win_w, S.win_h, ImGui.Cond_FirstUseEver())
+    if R.dock_req then -- toolbar menu: Dock in REAPER docker / Undock (at the last floating place)
+      ImGui.SetNextWindowDockID(ctx, R.dock_req, ImGui.Cond_Always())
+      if R.dock_req == 0 then
+        ImGui.SetNextWindowPos(ctx, S.win_x, S.win_y, ImGui.Cond_Always())
+        ImGui.SetNextWindowSize(ctx, S.win_w, S.win_h, ImGui.Cond_Always())
+      end
+      R.dock_req = nil
+    end
+    Dock.pre_begin(ctx)
   end
 
   -- ReaImGui rule (differs from Dear ImGui C++): call End() ONLY when Begin() returned true.
   -- Begin() returns false when the window is in an inactive dock tab or collapsed.
   UI.push_theme(ctx) -- popped after End() below (and by UI.loop after an error)
-  local visible, open = ImGui.Begin(ctx, CFG.TITLE, true)
+  -- docked: ImGui's small corner triangle (show the dock tab bar) uses the button colours: accent here
+  local tri = R.last_docked and 3 or 0
+  if tri > 0 then
+    ImGui.PushStyleColor(ctx, ImGui.Col_Button(), COL.ACCENT)
+    ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered(), COL.ACCENT_HOVER)
+    ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive(), COL.ACCENT_ACTIVE)
+  end
+  local visible, open = ImGui.Begin(ctx, CFG.TITLE, true, ImGui.WindowFlags_NoResize())
+  if tri > 0 then ImGui.PopStyleColor(ctx, tri) end
+  -- floating and Begin() false = collapsed (docked and false = an inactive dock tab)
+  R.collapsed = not visible and R.last_docked == false
+  if R.collapsed then R.rs = nil end
   if visible ~= R.was_visible then
     Msg.diag(visible and "Chart Cue is visible." or "Chart Cue is hidden.")
     R.was_visible = visible
@@ -5855,10 +6520,14 @@ function UI.frame()
     if perf then
       -- nothing above the page
     elseif hide then
+      local _, ty = ImGui.GetCursorScreenPos(ctx)
       UI.draw_centered_toolbar(ctx, true)  -- minimal toolbar while playing
+      UI.toolbar_menu(ctx, ty)
       UI.vgap(ctx, UI.sp("EDGE"))
     else
+      local _, ty = ImGui.GetCursorScreenPos(ctx)
       UI.draw_centered_toolbar(ctx, false)
+      UI.toolbar_menu(ctx, ty)
       UI.vgap(ctx, UI.sp("EDGE")) -- same gap below the toolbar as above it
       UI.draw_tab_strip(ctx)
       if S.panel_open then UI.draw_panel(ctx, status_h) end
@@ -5874,6 +6543,8 @@ function UI.frame()
       -- draw_view ends with SetCursorScreenPos(); ImGui requires an item after it before End()
       ImGui.Dummy(ctx, 0, 0)
     end
+    UI.context_menus(ctx) -- right-click menus (toolbar, page, list rows)
+    if not R.last_docked then Dock.edges(ctx) else R.rs = nil end -- resize edges: floating only
     R.in_window = false
     ImGui.End(ctx)
   end
@@ -5934,6 +6605,8 @@ function UI.init()
   end
   S.tab = Util.clamp(math.floor(S.tab), 1, TAB_HELP)
   R.ctx = r.ImGui_CreateContext(CFG.TITLE)
+  -- the window moves only by its title bar, so a drag on Chart Cue's resize edges never moves it
+  r.ImGui_SetConfigVar(R.ctx, r.ImGui_ConfigVar_WindowsMoveFromTitleBarOnly(), 1)
   UI.init_fonts(R.ctx)
   R.dpi_edit = S.dpi
   if r.MIDI_GetRecentInputEvent then R.last_midi_seq = (r.MIDI_GetRecentInputEvent(0)) or 0 end
