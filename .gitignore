@@ -11,4 +11,5 @@ desktop.ini
 ~$*
 # test output (test.ps1)
 tests/result.txt
+tests/result_segue.txt
 tests/shots/

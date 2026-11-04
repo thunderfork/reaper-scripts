@@ -1,18 +1,25 @@
-# Chart Cue development
-
-Chart Cue is a Windows-only REAPER Lua/ReaImGui script for displaying and
-scrolling PDF charts during playback.
+# Thunderfork REAPER scripts: development
 
 Repository: `thunderfork/reaper-scripts` (https://github.com/thunderfork/reaper-scripts), shown in
-ReaPack as "Thunderfork Scripts". It is meant for all my REAPER scripts; today it holds only Chart Cue.
-When a second script arrives, split this file into general rules and per-script rules.
+ReaPack as "Thunderfork Scripts". It holds 2 separate scripts, each in its own folder (the folder is the
+ReaPack category; keep each script's files there):
 
-Main file: `Chart Cue/Chart Cue.lua` (the `Chart Cue` folder is the ReaPack category; keep the scripts there).
+- **Chart Cue** (`Chart Cue/Chart Cue.lua`): a Windows-only REAPER Lua/ReaImGui script for displaying and
+  scrolling PDF charts during playback.
+- **Segue** (`Segue/Segue.lua`): a setlist-only script (no PDFs). It has no link to Chart Cue: no
+  shared code, no shared data. See "Segue" at the end of this file.
+
+The general rules (Working with me, Editing, Patch, Saved data, REAPER/Lua, Performance, Verification,
+Git) apply to both scripts. Where they name Chart Cue, read "the script being changed". The sections
+Architecture, Deployment and Releasing describe Chart Cue; the "Segue" section has its own.
 
 ## Working with me
 
 - I do not read code. I decide what Chart Cue looks like and how it behaves (GUI and taste);
   you decide the technical details.
+- Chart Cue is the UI style guide for every script: a new script copies Chart Cue's look and behaviour
+  (theme, title bar, docked-tab triangle, resize edges and grip, spacing, headings, toggles, rows, buttons).
+  After a change to Chart Cue's UI, list the same change for each other script and ask me before you make it.
 - Before a change, explain in plain words what I will see or notice, and ask me only about
   visible behaviour, layout and wording. Do not show diffs or code unless I ask.
 - Ask me before any change to what is saved in my projects or settings, or before removing
@@ -171,3 +178,22 @@ Every time I ask to commit and push:
   the zip) without asking again.
 - If only other files changed (CLAUDE.md, PLAN.md, README.md, tools, tests), commit and push without
   a new version or release, and say so.
+
+## Segue
+
+- File: `Segue/Segue.lua`, and the action `Segue/Segue - Next song.lua` (`@provides`).
+  Version: `@version` and `CFG.VERSION` together (started at 0.1); its own `@changelog`.
+- Modules: `CFG`, `COL`, `S` (settings of this computer, REAPER ExtState "Segue", persistent), `R`
+  (runtime), `P` (project data, ProjExtState "Segue"/"cfg"), `Util`, `Project`, `Setlist`, `UI`.
+- Project data: the same rules as Chart Cue (new keys only, written only when they differ from the
+  default). It never writes Chart Cue's data, and Chart Cue never reads Segue's. The 1 exception, for
+  the conflict check (`Setlist.conflict`): Segue reads Chart Cue's heartbeat and the `setlist_on` line of
+  its project data, and "Use Segue" sends Chart Cue the `setlistoff` command (its `cmd_q`).
+- The setlist logic came from Chart Cue's `Setlist`; a fix in one is not copied to the other unless I ask.
+- It uses only `reaper.*` and ReaImGui (no `io` / `os`, no files of its own), so it is not Windows-only.
+- Checks: `check.ps1` checks both folders. Tests: `tests\segue.lua` (run by `test.ps1` after
+  `tests\run.lua`; it ends with "0 failed" in `tests\result_segue.txt`).
+- Deploy: `deploy.ps1` also copies Segue, to `Scripts\Thunderfork Scripts\Segue\` when ReaPack
+  installed it, else to `Scripts\Segue\`.
+- Release: a change in `Segue/` is a new Segue version (raise its version, changelog). A GitHub
+  Release is made only when I ask (the zip in `release.ps1` is Chart Cue only).

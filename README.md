@@ -7,6 +7,7 @@ Windows only. **Needs the free ReaImGui extension** (install it once with ReaPac
 ## What it does
 
 - **One PDF for each song.** Give a REAPER region the same name as a PDF, and Chart Cue opens that PDF when the song plays.
+- **Images too:** a PNG or JPG file (for example a photo of a chart from your phone), added with "Add PDF...", works like a PDF with 1 page. "Add from folder" takes only PDFs.
 - **2 PDFs for one song** (for example lyrics and a bass part): both are shown together, top and bottom or side by side, and each one turns and scrolls with its own cues.
 - **Page turns and scrolling during playback**, in one of 2 ways:
   - **Cue list:** play the song and press C at each page turn and S where the page must move. The cues are saved in the project, and no markers are added.
@@ -75,6 +76,22 @@ The round "?" next to each heading explains its settings. The "?" at the end of 
 
 - **Your settings** are saved in `Data\Chart Cue\settings.ini` in the REAPER resource folder (Options > Show REAPER resource path). The page cache is in `Data\Chart Cue\cache`; it keeps at most 1 GB (Settings > Appearance > Page quality > Cache limit).
 - **The library, the region choices, the cues, the notes and the setlists** are saved inside the REAPER project. Save the project after changes.
+
+# Segue
+
+Segue is a separate, small script for a setlist only (no PDFs). It has no link to Chart Cue: it has its own window and its own data.
+
+- Plays the songs (regions) of your project in the order of your show. The timeline does not change.
+- At the end of each song: Stop (press Play to go on) or Continue (the next song plays at once). Pauses between songs count down, then play the next song. Untick a song to skip it.
+- More than 1 setlist in each project, Lock setlist, Undo (Ctrl+Z), and the play buttons.
+- A large "now playing" area: the current song, the time left in it, the next song and the time left in the set.
+- REAPER stops at the exact end of a song with Stop (Segue sets the loop points to the song while it plays, and puts yours back after it).
+- The "Segue - Next song" action, for a key or a foot pedal.
+- Needs ReaImGui 0.9.3 or newer, like Chart Cue. It uses only REAPER and ReaImGui, so it can also work on macOS and Linux (not tested there).
+
+Install with ReaPack: Extensions > ReaPack > Browse packages, search "Segue", right-click it > Install. Then run "Script: Segue.lua" in the Action List and click "Make a setlist". The gear button at the top right has the settings and the help.
+
+Segue saves the setlists in the REAPER project, and its settings in REAPER's own settings (the window, the divider and the gear-menu options).
 
 ## License
 

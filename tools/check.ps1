@@ -20,7 +20,8 @@ $known = @('reaper', 'string', 'math', 'table', 'utf8', 'io', 'os', 'package', '
   'tostring', 'tonumber', 'type', 'pcall', 'xpcall', 'setmetatable', 'getmetatable', 'dofile',
   'next', 'select', 'error', 'print', 'assert', 'rawget', 'rawset', 'require', '_G')
 
-$files = Get-ChildItem -Path (Join-Path $root "Chart Cue") -Filter "*.lua"
+$files = @("Chart Cue", "Segue") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } |
+  ForEach-Object { Get-ChildItem -Path $_ -Filter "*.lua" }
 Write-Host "== 1. Syntax ==" -ForegroundColor Cyan
 foreach ($f in $files) {
   $out = & $luac -p $f.FullName 2>&1
@@ -45,11 +46,25 @@ $exe = if ($ls) { Join-Path $ls.FullName "server\bin\lua-language-server.exe" } 
 if ($exe -and (Test-Path $exe)) {
   $log = Join-Path $env:TEMP "chartcue_luals"
   New-Item -ItemType Directory -Force $log | Out-Null
-  $out = & $exe --check (Join-Path $root "Chart Cue")--checklevel=Warning --configpath="$root\.luarc.json" --logpath=$log --check_format=pretty 2>&1
-  # one line per warning (the tool prints its list twice)
-  $warn = $out | Select-String '^\S.*\.lua:\d+:\d+ \[' | ForEach-Object { $_.Line.Replace("$root\Chart Cue\", "") } | Sort-Object -Unique
-  if ($warn) { $warn | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow } } else { Write-Host "  no warnings" }
-  Write-Host "  $(@($warn).Count) warning(s). Check new ones; most 'Need check nil' warnings are false alarms."
+  # each script folder; the warnings come from the JSON file of the tool (its screen format changes between versions)
+  foreach ($dir in @("Chart Cue", "Segue")) {
+    $src = Join-Path $root $dir
+    if (-not (Test-Path $src)) { continue }
+    $json = Join-Path $log "result.json"
+    Remove-Item $json -ErrorAction SilentlyContinue
+    & $exe --check $src --checklevel=Warning --configpath="$root\.luarc.json" --logpath=$log --check_out_path=$json 2>&1 | Out-Null
+    $warn = @()
+    if (Test-Path $json) {
+      $res = Get-Content $json -Raw | ConvertFrom-Json
+      $props = if ($res -is [array]) { @() } else { $res.PSObject.Properties } # [] = no warnings
+      foreach ($f in $props) {
+        $name = [uri]::UnescapeDataString(($f.Name -split '/')[-1])
+        foreach ($d in $f.Value) { $warn += "${name}:$($d.range.start.line + 1) [$($d.code)] $(($d.message -split "`n")[0])" }
+      }
+    } else { Write-Host "  $dir`: the Language Server wrote no result" -ForegroundColor Red }
+    $warn | Sort-Object | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+    Write-Host "  ${dir}: $($warn.Count) warning(s). Check new ones; most 'Need check nil' warnings are false alarms."
+  }
 } else {
   Write-Host "  skipped (VS Code extension 'Lua' by sumneko not found)"
 }

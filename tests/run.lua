@@ -111,11 +111,12 @@ end)
 -- Pretend that REAPER plays at time `pos` (seconds) while fn runs.
 -- Chart Cue uses the same reaper table, so it sees these replacements.
 local function at_play(pos, fn)
-  local gps, gst = r.GetPlayPosition, r.GetPlayState
+  local gps, gps2, gst = r.GetPlayPosition, r.GetPlayPosition2, r.GetPlayState
   r.GetPlayPosition = function() return pos end
+  r.GetPlayPosition2 = function() return pos end
   r.GetPlayState = function() return 1 end
   local good, e = pcall(fn)
-  r.GetPlayPosition, r.GetPlayState = gps, gst
+  r.GetPlayPosition, r.GetPlayPosition2, r.GetPlayState = gps, gps2, gst
   if not good then error(e, 0) end
 end
 
@@ -219,7 +220,13 @@ test("setlist: stop or continue at the end of a song; a skipped song is passed",
     eq(R.sl_pos, 3)
     R.sl_guard = nil; seek = nil
     at_play(9.99, function() Setlist.tick() end)
-    ok(stopped, "Stop at the end of the last song")
+    ok(R.arm and R.arm.stop == 10, "the stop at the end of the last song is armed")
+    local ls, le = r.GetSet_LoopTimeRange2(0, false, true, 0, 0, false)
+    eq(ls, 0, "loop start = the song"); eq(le, 10, "loop end = the song end")
+    eq(r.GetToggleCommandState(41834), 1, "REAPER stops at the end of the loop")
+    Setlist.tick() -- REAPER has stopped (the test REAPER does not play)
+    ok(not R.arm, "disarmed after the stop")
+    eq(r.GetToggleCommandState(41834), 0, "the option is off again")
   end)
   r.SetEditCurPos, r.OnStopButton = sep, sob
   R.regions, P.setlists, P.setlist_on, R.sl_pos, R.sl_guard = keep_regs, keep_sl, keep_on, nil, nil
@@ -241,7 +248,9 @@ test("setlist: a pause stops at the song end; a timed pause plays on; pauses are
   local good, e = pcall(function()
     at_play(5, function() Setlist.tick() end)
     at_play(9.99, function() Setlist.tick() end)
-    ok(stopped, "the pause after A stops REAPER (A has Continue)")
+    ok(R.arm and R.arm.stop == 10, "the pause after A arms the stop (A has Continue)")
+    r.GetPlayState = function() return 0 end
+    Setlist.tick() -- REAPER stopped at the end of A
     eq(seek, 20, "the edit cursor is at B"); eq(R.sl_pos, 3)
     ok(R.sl_hold and R.sl_hold.t_end, "a timed pause runs")
     r.GetPlayState = function() return 0 end
@@ -610,6 +619,83 @@ test("library: unused PDFs; the folders of 'Add from folder' are saved", functio
 end)
 
 -- page cache --------------------------------------------------------------------
+test("images: PNG and JPG are charts; their names match regions like PDFs", function()
+  local U = C.Util
+  ok(U.is_chart_file("Song A.pdf") and U.is_chart_file("x.PNG") and U.is_chart_file("y.Jpeg"), "PDF, PNG, JPEG")
+  ok(not U.is_chart_file("photo.heic") and not U.is_chart_file("notes.txt"), "other files are not charts")
+  eq(U.norm_name("Song One.JPG"), U.norm_name("Song One.pdf"), "the same name as a PDF")
+  eq(U.match_name("01 Song One (Bb).png"), U.match_name("01 Song One (Bb).pdf"), "the same match words")
+  ok(C.PDF.is_image("C:\\x\\a.jpg") and not C.PDF.is_image("C:\\x\\a.pdf"), "is_image")
+end)
+
+test("markers: copy cues into markers; change and remove a marker", function()
+  local R, P, Project = C.R, C.get_P(), C.Project
+  local keep_unit, keep_proj = P.cue_unit, R.proj
+  R.proj = r.EnumProjects(-1)
+  P.cue_unit = "seconds"
+  local id = r.AddProjectMarker2(0, true, 100, 130, "Marker test song", -1, 0)
+  Project.scan_project()
+  local reg
+  for _, rg in ipairs(R.regions) do if rg.name == "Marker test song" then reg = rg end end
+  ok(reg, "the region")
+  local good, e = pcall(function()
+    P.cues[reg.key] = { { pos = 5, page = 2, scroll = 0 }, { pos = 10, scroll = 40 }, { pos = 20, page = 3, scroll = 25 } }
+    Project.cues_to_markers(false, reg)
+    local rows = C.UI.marker_rows(reg)
+    eq(#rows, 4, "PDFPAGE 2, PDFSCROLL 40, PDFPAGE 3 + PDFSCROLL 25")
+    eq(rows[1].name, "PDFPAGE 2"); eq(rows[2].name, "PDFSCROLL 40")
+    ok(math.abs(rows[3].t - 120) < 1e-6, "the time: region start + 20 s")
+    Project.edit_marker(rows[1], rows[1].t, "PDFPAGE 4")
+    rows = C.UI.marker_rows(reg)
+    eq(rows[1].name, "PDFPAGE 4", "changed")
+    Project.delete_marker(rows[2])
+    eq(#C.UI.marker_rows(reg), 3, "removed")
+    Project.cues_to_markers(false, reg) -- again: the markers of the song are replaced, not doubled
+    eq(#C.UI.marker_rows(reg), 4, "replaced")
+    -- the add buttons: at the edit cursor (REAPER is stopped)
+    local keep_cur = r.GetCursorPosition()
+    r.SetEditCurPos(127, false, false)
+    Project.add_scroll_marker()
+    local rows2 = C.UI.marker_rows(reg)
+    eq(#rows2, 5, "a scroll marker added")
+    ok(rows2[5].name:find("^PDFSCROLL %d+$") and math.abs(rows2[5].t - 127) < 1e-6, "PDFSCROLL at the edit cursor")
+    Project.add_scroll_marker() -- again at the same time: changed, not doubled
+    eq(#C.UI.marker_rows(reg), 5, "not doubled")
+    r.SetEditCurPos(keep_cur, false, false)
+  end)
+  for _, i in ipairs(Project.script_markers(100, 130)) do r.DeleteProjectMarkerByIndex(0, i) end
+  r.DeleteProjectMarker(0, id, true)
+  P.cues[reg and reg.key or "x"] = nil
+  P.cue_unit, R.proj = keep_unit, keep_proj
+  Project.scan_project()
+  if not good then error(e, 0) end
+end)
+
+test("record: works in the Cue list and the Markers mode, not with autoscroll off", function()
+  local R, P, UI = C.R, C.get_P(), C.UI
+  local keep_mode, keep_rec, keep_lock = P.scroll_mode, R.rec, R.lock
+  R.lock = false
+  local good, e = pcall(function()
+    C.Nav.set_scroll_mode("marker"); R.rec = false
+    UI.toggle_rec()
+    ok(R.rec and UI.can_record(), "Markers mode: Record on")
+    C.Nav.set_scroll_mode("cues")
+    ok(not R.rec, "another mode: Record starts off")
+    UI.toggle_rec()
+    ok(UI.can_record(), "Cue list mode: Record on")
+    C.Nav.set_scroll_mode("off"); UI.toggle_rec()
+    ok(not R.rec and not UI.can_record(), "autoscroll off: no Record")
+  end)
+  P.scroll_mode, R.rec, R.lock = keep_mode, keep_rec, keep_lock
+  if not good then error(e, 0) end
+end)
+
+test("keys: the numpad zoom keys exist in ReaImGui", function()
+  for _, k in ipairs({ "KeypadAdd", "KeypadSubtract", "Keypad0", "Equal", "Minus", "0" }) do
+    ok(type(r["ImGui_Key_" .. k]) == "function", "ImGui_Key_" .. k)
+  end
+end)
+
 test("cache folder: one per file and sharpness", function()
   local S = C.S
   local f = tmp .. "\\cache_test.pdf"
@@ -674,6 +760,15 @@ test("project: another project does not get the data", function()
   C.Project.check_project(false)
   ok(R.quit, "Chart Cue closes")
   R.quit = false
+end)
+
+test("setlist: Segue's 'Use Segue' command turns Play in setlist order off", function()
+  local P = C.get_P()
+  P.setlist_on = true
+  r.SetExtState(C.CFG.EXT, "cmd_q", "setlistoff,", false)
+  C.Midi.poll_forwarded_midi()
+  eq(P.setlist_on, false, "setlist order off")
+  eq(r.GetExtState(C.CFG.EXT, "cmd_q"), "", "queue read")
 end)
 
 ---------------------------------------------------------------------------
