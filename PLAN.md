@@ -62,8 +62,8 @@
   progress bar, large list with Stop / Continue icons); the armed stop (loop points + REAPER's "stop at end
   of loop", action 41834: no part of the next song is heard); outside the setlist songs the last song stays
   current. Segue locks itself while Chart Cue plays in setlist order ("Use Segue" / "Use Chart Cue").
-- To test in REAPER: is the project marked as changed after an armed stop? With Continue to a song that is
-  not next on the timeline, is a part of the following region heard (render-ahead)?
+- Tested in REAPER (5 November 2026): an armed stop does not mark the project as changed; a Continue jump
+  plays no part of the following region.
 - Tests: tests\segue.lua (7). Checks and deploy include Segue.
 - Before the first release: a test in REAPER (the manual tests of steps 1-3), then the ReaPack package
   (the push builds index.xml; the package name is "Segue").
