@@ -7,8 +7,10 @@ $result = Join-Path $root "tests\result.txt"
 if (-not (Test-Path $reaper)) { Write-Host "Test REAPER not found: $reaper" -ForegroundColor Red; exit 2 }
 Remove-Item $result -ErrorAction SilentlyContinue
 
-$p = Start-Process $reaper -ArgumentList "-newinst", "-nosplash", "`"$(Join-Path $root 'tests\run.lua')`"" -PassThru
-if (-not $p.WaitForExit(120000)) { $p.Kill(); Write-Host "Timeout: the test REAPER did not close." -ForegroundColor Red }
+. (Join-Path $PSScriptRoot "background.ps1") # in the background: your window keeps the focus
+$p = Start-BackgroundReaper $reaper @("-newinst", "-nosplash", "`"$(Join-Path $root 'tests\run.lua')`"")
+if (-not $p) { Write-Host "Could not start the test REAPER." -ForegroundColor Red; exit 2 }
+if (-not (Wait-BackgroundReaper $p 120)) { $p.Kill(); Write-Host "Timeout: the test REAPER did not close." -ForegroundColor Red }
 
 if (-not (Test-Path $result)) { Write-Host "No tests\result.txt: the tests did not run." -ForegroundColor Red; exit 1 }
 $text = Get-Content $result

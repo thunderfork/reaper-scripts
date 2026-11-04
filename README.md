@@ -2,16 +2,18 @@
 
 Chart Cue shows your sheet music or chord charts (PDF files) inside REAPER, and turns and scrolls the pages for you while the song plays.
 
-Windows only.
+Windows only. **Needs the free ReaImGui extension** (install it once with ReaPack, see below).
 
 ## What it does
 
 - **One PDF for each song.** Give a REAPER region the same name as a PDF, and Chart Cue opens that PDF when the song plays.
+- **2 PDFs for one song** (for example lyrics and a bass part): both are shown together, top and bottom or side by side, and each one turns and scrolls with its own cues.
 - **Page turns and scrolling during playback**, in one of 2 ways:
   - **Cue list:** play the song and press C at each page turn and S where the page must move. The cues are saved in the project, and no markers are added.
   - **Markers:** put `PDFPAGE 2` and `PDFSCROLL 50` markers in your project.
 - **Turn pages early**, for example 1 beat before the page turn, so you can read ahead.
 - **Smooth or jump scrolling:** the page moves slowly between scroll points, or jumps to each one.
+- **Pages on screen:** 1 page, 2 pages side by side (turn by 1 page or by 2, like a book), or continuous: scroll through the whole PDF without jumps. The next page can slide in at a page turn.
 - **Stage-ready:**
   - Performance mode (only the page).
   - Lock mode (the page ignores the mouse and the keys during playback).
@@ -24,11 +26,16 @@ Windows only.
   - MIDI buttons for page turns and cues.
   - REAPER actions for foot pedals or keys, which work when the Chart Cue window is not active.
 - **Portable projects:** the PDFs can be copied into the project folder, and the library, regions and cues are saved in the project.
+- **Folder sync:** Chart Cue remembers the folders you add PDFs from; one click adds new charts and updates changed ones.
 
 ## What you need
 
 - REAPER 7 on Windows 10 or 11.
-- **ReaImGui 0.9.3 or newer.** Install it with ReaPack: Extensions > ReaPack > Browse packages > search "ReaImGui" > Install, then restart REAPER.
+- **ReaImGui 0.9.3 or newer** (free, from the ReaTeam Extensions repository that ReaPack already includes):
+  1. Extensions > ReaPack > Browse packages.
+  2. Search "ReaImGui", right-click it > Install, and click OK.
+  3. Restart REAPER.
+  If it is missing, Chart Cue says so at start and can open ReaPack on the ReaImGui package for you.
 - Nothing else. Chart Cue uses the PDF engine built into Windows. Poppler (`pdftoppm.exe`) is an optional second engine.
 
 ## Install with ReaPack (recommended: you get updates)

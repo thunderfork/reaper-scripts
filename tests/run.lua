@@ -170,6 +170,111 @@ test("scroll: jump at each scroll point", function()
   eq(S.scroll_y, 200, "stays at 20 % until the next point")
 end)
 
+test("panes: a swap in and out restores the global state", function()
+  local S, R = setup_view()
+  S.page, S.scroll_y, R.total = 2, 123, 3
+  local p = C.Pane.new()
+  C.Pane.swap(p)
+  eq(S.page, 1, "pane 2 starts on page 1"); eq(R.total, 0, "pane 2 has no PDF")
+  C.Pane.swap(p)
+  eq(S.page, 2); eq(S.scroll_y, 123); eq(R.total, 3)
+end)
+
+test("panes: a page turn in pane 2 does not change pane 1", function()
+  local S, R = setup_view()
+  S.page, R.total = 1, 3
+  local p = C.Pane.new()
+  p.r.total = 5
+  C.Pane.run(p, function() C.Nav.go_page(4) end)
+  eq(p.s.page, 4, "pane 2 turned"); eq(S.page, 1, "pane 1 kept its page")
+  local ok = pcall(C.Pane.run, p, function() error("x") end)
+  eq(ok, false); eq(S.page, 1, "restored after an error"); eq(R.total, 3)
+end)
+
+test("2 pages: pairs and page turns (rolling and book)", function()
+  local S, R = setup_view()
+  R.total = 5; S.page = 1
+  local keep = { S.page_layout, S.page_turn }
+  S.page_layout, S.page_turn = "side", "rolling"
+  local a, b = C.Nav.spread(); eq(a, 1); eq(b, 2)
+  C.Nav.step(1); eq(S.page, 2, "rolling: by 1"); a, b = C.Nav.spread(); eq(a, 2); eq(b, 3)
+  S.page = 5; a, b = C.Nav.spread(); eq(a, 5); eq(b, nil, "no page after the last")
+  S.page_turn = "book"; S.page = 4
+  a, b = C.Nav.spread(); eq(a, 3, "book: the pair that contains page 4"); eq(b, 4)
+  C.Nav.step(1); eq(S.page, 5, "book: by 2"); C.Nav.step(1); eq(S.page, 5, "no pair after the last")
+  C.Nav.step(-1); eq(S.page, 3)
+  R.flash_t = 0; C.Nav.go_page(4); eq(S.page, 4); eq(C.Nav.changes_view(5), true, "pair 5 is a new view")
+  local was = R.flash_t; S.page = 3; C.Nav.go_page(4); eq(R.flash_t, was, "book: page 4 of pair 3-4 is no page turn")
+  S.page = 3
+  local w, h = C.Nav.content_dims(100, 140); eq(w, 202, "side: 2 pages + 2% gap"); eq(h, 140)
+  S.page_layout = "stack"; w, h = C.Nav.content_dims(100, 140); eq(w, 100, "continuous: one page"); eq(h, 140)
+  S.page_layout = "single"; C.Nav.step(1); eq(S.page, 4, "1 page: by 1")
+  S.page_layout, S.page_turn = keep[1], keep[2]
+end)
+
+test("continuous pages: scrolling goes on across pages; smooth page turn", function()
+  local S, R = setup_view()
+  local keep = { S.page_layout, S.cont_turn }
+  R.total, R.max_y, R.cont_step, R.view_h = 3, 40, 150, 100 -- page 140 px + gap 10, view 100 px
+  S.page_layout, S.cont_turn, S.page, S.scroll_y = "stack", "smooth", 1, 0
+  C.Nav.scroll_by(160); eq(S.page, 2, "down into page 2"); eq(S.scroll_y, 10)
+  C.Nav.scroll_by(-20); eq(S.page, 1, "back up into page 1"); eq(S.scroll_y, 140)
+  C.Nav.scroll_by(-500); eq(S.page, 1); eq(S.scroll_y, 0, "stops at the top of page 1")
+  S.page = 3; C.Nav.scroll_by(500); eq(S.page, 3); eq(S.scroll_y, 40, "stops at the end of the last page")
+  S.page, S.scroll_y = 1, 30; C.Nav.go_page(2)
+  eq(S.page, 2); eq(S.scroll_y, 0); eq(R.cont_off, -100, "smooth: from where page 2 was, at most one view")
+  S.page, S.scroll_y = 1, 120; C.Nav.update_motion(); eq(S.scroll_y, 120, "the frame clamp lets the scroll into page 2")
+  S.cont_turn = "jump"; C.Nav.go_page(3); eq(R.cont_off, nil, "jump: no move")
+  S.page_layout, S.cont_turn, S.page, S.scroll_y = "single", "smooth", 1, 0; C.Nav.go_page(2)
+  eq(R.cont_off, -100, "1 page: the next page slides in too")
+  S.page_layout, S.cont_turn, R.cont_step = keep[1], keep[2], nil
+end)
+
+test("part 2: opening a PDF there does not change the project's PDF or part 1", function()
+  local S, R = setup_view()
+  local P = C.get_P()
+  local keep_active, keep_page = P.active_pdf, S.page
+  P.active_pdf = "C:\\part1.pdf"; S.page = 2; R.total = 4
+  R.part2 = C.Pane.new()
+  C.Pane.part2(C.PDF.finish_open, tmp .. "\\part2.pdf", false, 7, "Page size: 595 x 842")
+  eq(P.active_pdf, "C:\\part1.pdf", "the project keeps its PDF")
+  eq(S.page, 2, "part 1 keeps its page"); eq(R.total, 4, "part 1 keeps its page count")
+  eq(R.part2.r.total, 7, "part 2 has its own page count"); eq(R.in_part2, false)
+  R.active_part = 2
+  C.Pane.active(function() C.Nav.go_page(5) end)
+  eq(R.part2.s.page, 5, "the active part turned"); eq(S.page, 2)
+  R.part2, R.active_part = nil, 1
+  P.active_pdf, S.page = keep_active, keep_page
+end)
+
+test("PDF 2: 2 matching PDFs become PDF 1 + PDF 2; choices are saved", function()
+  local _, R = setup_view()
+  local P = C.get_P()
+  local keep = { P.pdfs, P.assign, P.assign2, P.no2, P.pair_off, R.regions }
+  local lyr, bass, gtr = "C:\\x\\Song A lyrics.pdf", "C:\\x\\Song A bass.pdf", "C:\\x\\Song A guitar.pdf"
+  P.pdfs, P.assign, P.assign2, P.no2, P.pair_off = { lyr, bass }, {}, {}, {}, false
+  local reg = { key = "k1", name = "Song A", norm = C.Util.norm_name("Song A"), match = C.Util.match_name("Song A") }
+  R.regions = { reg }
+  C.Project.resolve_regions()
+  eq(reg.status, "auto"); eq(reg.pdf, bass, "PDF 1: first by name"); eq(reg.pdf2, lyr)
+  P.assign.k1 = lyr; C.Project.resolve_regions()
+  eq(reg.pdf, lyr, "PDF 1 chosen"); eq(reg.pdf2, bass, "the other match is PDF 2")
+  C.Project.set_pdf2(reg, nil); eq(reg.pdf2, nil, "x removes PDF 2"); eq(P.no2.k1, true)
+  C.Project.set_pdf2(reg, bass); eq(reg.pdf2, bass, "chosen by hand"); eq(P.no2.k1, nil)
+  P.pdfs[3] = gtr; P.assign, P.assign2, P.no2 = {}, {}, {}; C.Project.resolve_regions()
+  eq(reg.status, "ambiguous", "3 matches: choose"); eq(reg.pdf2, nil)
+  P.pdfs, P.assign, P.assign2, P.no2 = { "C:\\x\\Song A.pdf", lyr }, {}, {}, {}; C.Project.resolve_regions()
+  eq(reg.status, "auto"); eq(reg.pdf, "C:\\x\\Song A.pdf", "the exact name is the main chart"); eq(reg.pdf2, nil, "no automatic pair with it")
+  P.pdfs = { lyr, bass }; P.pair_off = true; C.Project.resolve_regions()
+  eq(reg.status, "ambiguous", "pairs off: 2 matches are a choice again")
+  -- saved and read back
+  P.pair_off, P.assign, P.assign2, P.no2, P.names = true, { k1 = lyr }, { k1 = bass }, { k2 = true }, { k1 = "Song A", k2 = "B" }
+  local txt = C.Project.serialize_cfg()
+  local p2 = C.Project.parse_cfg((txt .. "\n"):gmatch("([^\n]*)\n"))
+  eq(p2.pair_off, true); eq(p2.assign2.k1, bass); eq(p2.no2.k2, true)
+  P.pdfs, P.assign, P.assign2, P.no2, P.pair_off, R.regions = keep[1], keep[2], keep[3], keep[4], keep[5], keep[6]
+end)
+
 test("page turns stay inside the region", function()
   local S, R = setup_view()
   R.active_region = { start = 30, stop = 40, key = "r1" }
@@ -289,6 +394,9 @@ test("cues: + below adds a scroll point halfway, undo takes it back", function()
   C.Cues.undo(); eq(#P.cues["_project"], 3)
   C.Cues.undo(); eq(#P.cues["_project"], 2)
   eq(C.Cues.can_undo(), false)
+  C.Cues.redo(); eq(#P.cues["_project"], 3, "redo brings back the first change")
+  C.Cues.redo(); eq(#P.cues["_project"], 4); eq(C.Cues.can_redo(), false)
+  C.Cues.undo(); C.Cues.add_below(nil, P.cues["_project"], 1); eq(C.Cues.can_redo(), false, "a new change ends redo")
 end)
 
 test("cues: + on the Start row", function()
@@ -313,6 +421,43 @@ test("cues: beats <-> seconds keeps the time", function()
   P.cues["_project"] = { { pos = 8, page = 2 } }
   C.Cues.set_unit("seconds"); eq(P.cue_unit, "seconds"); eq(P.cues["_project"][1].pos, 4)
   C.Cues.set_unit("beats"); eq(P.cues["_project"][1].pos, 8)
+end)
+
+test("PDF 2 cues: their own list; used for part 2, the Cues tab and unit switches", function()
+  local _, R, P = setup_cues()
+  local reg = { key = "rk", name = "Song", start = 0, stop = 100 }
+  local keep = R.regions
+  R.regions = { reg }
+  P.cues = { rk = { { pos = 0, page = 1, scroll = 0 } }, ["rk#2"] = { { pos = 8, page = 3, scroll = 0 } } }
+  eq(C.Cues.key(reg), "rk", "part 1")
+  R.part2 = C.Pane.new(); R.part2.r.total = 5
+  eq(C.Pane.part2(C.Cues.key, reg), "rk#2", "part 2 runs: its own list")
+  local pp = C.Pane.part2(function() return (C.Cues.points(reg)) end)
+  eq(#pp, 1); eq(pp[1].page, 3, "part 2 page turns come from its list")
+  R.cue_part_ctx = 2; eq(#C.Cues.list(reg), 1); eq(C.Cues.list(reg)[1].page, 3, "the Cues tab shows PDF 2")
+  R.cue_part_ctx = 1; eq(C.Pane.part2(C.Cues.key, reg), "rk", "the Cues tab choice wins")
+  R.cue_part_ctx = nil
+  C.Cues.set_unit("seconds"); eq(P.cues["rk#2"][1].pos, 4, "the PDF 2 list is converted too")
+  C.Cues.set_unit("beats"); eq(P.cues["rk#2"][1].pos, 8)
+  R.part2, R.regions = nil, keep
+end)
+
+test("library: unused PDFs; the folders of 'Add from folder' are saved", function()
+  local S, R = setup_view()
+  local P = C.get_P()
+  local keep = { P.pdfs, R.regions, S.pdf_path, P.folders }
+  local a, b, c = "C:\\x\\Song A.pdf", "C:\\x\\Song B.pdf", "C:\\x\\Extra.pdf"
+  P.pdfs = { a, b, c }; S.pdf_path = c
+  R.regions = { { key = "k", pdf = a, pdf2 = nil } }
+  local un = C.Project.unused_pdfs()
+  eq(un[a], nil, "used by a region"); eq(un[c], nil, "on screen"); eq(un[b], true, "unused")
+  R.regions[1].pdf2 = b; C.Util.bump_lib(); un = C.Project.unused_pdfs()
+  eq(un[b], nil, "used as PDF 2")
+  P.folders = { { path = "C:\\charts", sub = true } }
+  local txt = C.Project.serialize_cfg()
+  local p2 = C.Project.parse_cfg((txt .. "\n"):gmatch("([^\n]*)\n"))
+  eq(#p2.folders, 1); eq(p2.folders[1].path, "C:\\charts"); eq(p2.folders[1].sub, true)
+  P.pdfs, R.regions, S.pdf_path, P.folders = keep[1], keep[2], keep[3], keep[4]
 end)
 
 -- page cache --------------------------------------------------------------------

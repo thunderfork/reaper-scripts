@@ -85,14 +85,16 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
   1. syntax (`luac -p`, Lua 5.4.6 from winget DEVCOM.Lua),
   2. undefined globals (from the `luac -l` listing; allowed: standard Lua and `reaper`),
   3. Lua Language Server warnings (information only).
-- Compare Language Server warnings with the known false alarms (19 "Need check nil" /
-  "unknown|nil" warnings on 2026-11-02); look at every new one.
+- Compare Language Server warnings with the known false alarms (17 "Need check nil" /
+  "unknown|nil" warnings on 2026-11-04); look at every new one.
 - For logic changes (navigation, autoscroll, project data, cache), also run `.\tools\test.ps1`. It runs
   `tests\run.lua` in the portable test REAPER `C:\REAPERtest` (never the normal REAPER) and must
   end with "0 failed". Add a test for each fixed bug when practical. The test REAPER can run while
-  my normal REAPER is open; never close or save my REAPER.
+  my normal REAPER is open; never close or save my REAPER. test.ps1 starts it in the background
+  (tools\background.ps1), so my window keeps the focus.
 - For UI code that the tests do not reach (menus, popups, new windows), run it once in the test
-  REAPER with a small script that opens it and logs console errors, before deploying.
+  REAPER with a small script that opens it and logs console errors, before deploying. That test needs
+  a visible Chart Cue window and takes the focus for about a minute: ask me first, in one line.
 - These checks do not replace a test in REAPER.
 - Ensure ReaImGui calls remain valid in their intended UI/deferred-loop context.
 - Do not claim a change is tested unless I have tested it in REAPER.
