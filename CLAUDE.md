@@ -32,6 +32,16 @@ Main file: `Chart Cue/Chart Cue.lua` (the `Chart Cue` folder is the ReaPack cate
 - Keep the files' LF line endings (core.autocrlf can turn them into CRLF). Check for CRLF after
   writing a file with PowerShell.
 
+## Patch rules (large edits to Chart Cue.lua)
+
+- Write a patch script (Python: exact text -> new text, each must match exactly once, else stop without
+  writing) with the Write tool into the scratchpad, then run it. Never inline it in a shell heredoc or a
+  `python -c` string: the shell changes `\n`, `\t` and backslashes (this broke tests and Windows paths).
+- Use raw strings (r'''...''') for Lua text with backslashes or `\0`; check the result for real tab or
+  newline characters where `\t` / `\n` were meant.
+- Copy the old text from a fresh Read: code inside a block that was indented later has more spaces.
+- A small change: the Edit tool, not a script.
+
 ## Saved data (compatibility)
 
 - Do not change the format of the project data (ExtState "ChartCue"/"cfg") or existing
@@ -94,9 +104,10 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
   end with "0 failed". Add a test for each fixed bug when practical. The test REAPER can run while
   my normal REAPER is open; never close or save my REAPER. test.ps1 starts it in the background
   (tools\background.ps1), so my window keeps the focus.
-- For UI code that the tests do not reach (menus, popups, new windows), run it once in the test
-  REAPER with a small script that opens it and logs console errors, before deploying. That test needs
-  a visible Chart Cue window and takes the focus for about a minute: ask me first, in one line.
+- For UI code that the tests do not reach (menus, popups, tabs, Settings sections, views), run the UI
+  test (`.\tools\ui-test.ps1`, steps in `tools\ui-test.lua`; add a step for each new thing), before
+  deploying when practical. It needs a visible Chart Cue window and takes the focus for about a minute:
+  ask me first, in one line.
 - These checks do not replace a test in REAPER.
 - Ensure ReaImGui calls remain valid in their intended UI/deferred-loop context.
 - Do not claim a change is tested unless I have tested it in REAPER.
@@ -126,10 +137,12 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 ## Other files
 
 - `PLAN.md`: done work, open items and the release checklist.
-- `.claude/skills/debug-time`: the review round for "debug time" (senior developer, UI/UX designer, cross-review,
-  feedback, fixes, final full-code pass, then the commit / push question).
+- `.claude/skills/`: `debug-time` (the review round: senior developer, UI/UX designer, cross-review, feedback,
+  fixes, final full-code pass, then the commit / push question), `release` (version, commit, push, ReaPack
+  workflow, GitHub Release), `ui-test` (run and extend the UI test), `new-feature` (plan and questions before
+  code), `help-sync` (every text that names a changed feature).
 - `README.md`: for other users. `tools\`: check.ps1 (with `.luarc.json`: the static checks), test.ps1,
-  deploy.ps1, release.ps1, shots.ps1. `tests\`: run.lua (logic tests), shots.lua, test.pdf.
+  deploy.ps1, release.ps1, shots.ps1, ui-test.ps1 (with ui-test.lua: the UI test). `tests\`: run.lua (logic tests), shots.lua, test.pdf.
 - `LICENSE` (MIT). `tools\release.ps1`: makes `release\Chart-Cue-<version>.zip` (git-ignored).
 - `.github/workflows/reapack-index.yml`: GitHub builds `index.xml` (the ReaPack repository
   file) after each push to main. Do not edit `index.xml` by hand.

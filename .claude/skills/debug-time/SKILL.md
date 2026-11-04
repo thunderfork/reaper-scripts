@@ -13,8 +13,8 @@ PLAN.md, README.md). The user does not read code: report in plain words, with wh
 - `git diff --stat` and `git log` since the last release tag: what changed since then. Look at it first,
   but the passes below cover the whole file.
 - `.\tools\check.ps1` and `.\tools\test.ps1`: note any new Language Server warning or test failure.
-- Grep for names and texts that may be old: every "Settings > ..." path (compare with the section and
-  heading names), tab names, Help topic titles, removed features, renamed controls, old setting keys.
+- Run the `help-sync` search: every "Settings > ..." path (compare with the section and heading names),
+  tab names, Help topic titles, removed features, renamed controls, old setting keys.
 
 ## 2. Pass 1: senior developer (read the FULL code, in parts)
 
@@ -48,8 +48,9 @@ Bugs, texts and internal clean-ups can be fixed after the user says go.
 
 ## 6. Fix
 
-Follow CLAUDE.md: small changes, checks, tests (add a test for each fixed bug when practical), deploy.
-Ask before the UI test (it takes the focus), and recommend it when menus, popups or new windows changed.
+Follow CLAUDE.md and its patch rules: small changes, checks, tests (add a test for each fixed bug when
+practical), deploy. Then the `ui-test` skill (ask first; it takes the focus) when menus, popups, tabs or
+views changed.
 
 ## 7. Final full-code pass
 
@@ -59,5 +60,5 @@ broken pairs). Run check.ps1 and test.ps1 again. Update CLAUDE.md (architecture,
 
 ## 8. Ask for the commit
 
-Show a short summary of the round, then ask in one question: commit, push, or both (CLAUDE.md:
-a commit of the scripts is a new version and a release).
+Show a short summary of the round, then ask in one question (AskUserQuestion): UI test first, commit
+and push (a release), commit only, or not yet. Then follow the `release` skill for what was chosen.
