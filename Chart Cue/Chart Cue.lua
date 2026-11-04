@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 1.3
+-- @version 1.4
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -11,10 +11,12 @@
 --   [main] Chart Cue - Next page.lua
 --   [main] Chart Cue - Previous page.lua
 --   [main] Chart Cue - Toggle performance mode.lua
+--   [main] Chart Cue - Next song.lua
 -- @changelog
---   2 PDFs per song (for example lyrics and a bass part), shown together, each with its own cues.
---   2 pages side by side or continuous pages, with a slide-in page turn; folder sync and unused PDFs in the Library.
---   Cleaner Settings and buttons, Redo for cues, right-click menus everywhere, and many fixes.
+--   Setlist tab: your show order with Stop / Continue, pauses, several setlists, play buttons and a Next song action;
+--   the page area can show the setlist, the PDF, or both.
+--   Notes on the pages, a page-turn countdown, a brightness button, hideable toolbar items and tabs, Settings in 5 sections,
+--   shortcut assignment for the actions, a page cache limit, and many fixes.
 
 -- MIT License
 --
@@ -99,12 +101,16 @@ CFG.WIN_MIN_W, CFG.WIN_MIN_H = 300, 200 -- smallest window size when resizing
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.3"      -- keep equal to @version in the header
+CFG.VERSION = "1.4"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.FEEDBACK_URL = "https://github.com/thunderfork/reaper-scripts/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
 CFG.BASE_DIR = CFG.RES .. SEP .. "Data" .. SEP .. "Chart Cue" -- REAPER's data folder: settings, cache, helper files
 CFG.CACHE_ROOT = CFG.BASE_DIR .. SEP .. "cache"
+CFG.CACHE_LIMITS = { 500, 1024, 2048, 5120, 0 } -- "Cache limit" choices in MB (0 = no limit)
+CFG.SL_EARLY = 0.02         -- setlist: act this many seconds before the region end (a frame later would be late)
+CFG.SL_GUARD = 0.25         -- setlist: after a jump, wait this long for the play position to follow
+CFG.CACHE_KEEP = 0.9        -- over the limit: remove old PDFs until the cache is 90% of the limit
 CFG.TMP_DIR = CFG.BASE_DIR .. SEP .. "tmp"
 CFG.SETTINGS_FILE = CFG.BASE_DIR .. SEP .. "settings.ini"
 -- Files and folders
@@ -139,7 +145,7 @@ CFG.FONT_SIZE = 14
 CFG.FONT_SIZE_BOLD = 15
 CFG.TEXT_LIFT = 1            -- px Segoe UI text is raised above true centre, the same in every control (0 = exact centre)
 -- Spacing (pixels): { comfortable, compact }. Compact is the default; "Comfortable layout" in
--- Settings > Display > Window uses the first value. Only empty space changes; controls keep their size.
+-- Settings > Appearance > Layout uses the first value. Only empty space changes; controls keep their size.
 CFG.SP = {
   ROW = { 7, 4 },             -- between rows (ImGui item spacing)
   EDGE = { 8, 4 },            -- window edge, top and bottom (= gap below the toolbar)
@@ -200,6 +206,7 @@ local COL = {
   TRANSPARENT = 0x00000000,
   ROW_HOVER = 0xFFFFFF12,      -- clickable list row under the mouse
   DANGER_HOVER = 0xF26D6D2E, DANGER_ACTIVE = 0xF26D6D50,  -- red outline buttons (remove all, reset, clear)
+  NOTE_TEXT = 0x1A1A1AFF, -- notes on the page (dark text; the label colours: NOTE_COLORS)
 }
 
 -- Module tables (declared up front so every function can reference them)
@@ -214,6 +221,8 @@ local Autostart = {} -- open Chart Cue with projects (__startup.lua watcher)
 local Msg = {}       -- user messages, errors and the diagnostic log
 local Cues = {}      -- cue list: page / scroll changes per region, stored in the project (no markers)
 local Pane = {}      -- parts of the page area (pane 1 = the global state; others are swapped in)
+local Notes = {}     -- text notes on the pages (P.notes), drawn over the page
+local Setlist = {}   -- the show order of the songs (P.setlists) and its playback (stop / continue)
 
 ---------------------------------------------------------------------------
 -- SINGLE-INSTANCE / MIDI FORWARDING
@@ -297,13 +306,26 @@ local S = {
   close_with_project = true,   -- close Chart Cue when its project closes or is replaced in the same tab
   import_copy = true,          -- copy imported PDFs into <project folder>\PDFs (else link the original)
   tab = 1, panel_open = true,
-  tab_ver = 1,                 -- 2 = tab numbers include the Cues tab; 3 = one Settings tab (before 1.0)
-  settings_open = "1000",      -- Settings tab sections open (1) or closed (0): Autoscroll, MIDI, Display, General
+  tab_ver = 1,                 -- 2 = tab numbers include the Cues tab; 3 = one Settings tab (before 1.0); 4 = the Setlist tab
+  settings_open = "10000",     -- Settings tab sections open (1) or closed (0): Viewer, Playback, Control, Appearance, General
   folded = ",",                -- closed foldable headings (first section of Library, Regions, Cues): ",id,id,"
   panel_h = 0,                 -- 0 = automatic (~40% of free height); otherwise the user's dragged height
   win_x = CFG.DEFAULT_WIN[1], win_y = CFG.DEFAULT_WIN[2], win_w = CFG.DEFAULT_WIN[3], win_h = CFG.DEFAULT_WIN[4],
   dock_id = 0,
   log_diag = false,            -- "Write diagnostic log" (Settings > General > Troubleshooting)
+  show_notes = true,           -- "Show notes": the notes on the pages (Settings > Viewer > Notes)
+  sl_view = false,             -- (before "Page area": true = the setlist instead of the PDF; read once, see UI.init)
+  page_area = "pdf",           -- "Page area" (Setlist tab): "pdf", "setlist" (instead of the PDF) or "both" (setlist on top)
+  sl_split = 0.5,              -- "Setlist and PDF": the share of the setlist (the divider position, 0.15 .. 0.85)
+  sl_next_label = true,        -- setlist: the "Next: <song>" label on the page during playback and pauses
+  sl_next_sec = 10,            -- the label shows in the last this many seconds of a song (0 = always)
+  turn_warn = true,            -- "Page-turn countdown": a thin line fills up before an automatic page turn
+  warn_sec = 2,                -- the countdown's length in seconds (1 - 4)
+  note_size = "medium",        -- notes: "small", "medium" or "large"
+  note_color = "yellow",       -- notes: "yellow", "green", "blue", "pink" or "white"
+  tab_hide = ",",              -- tabs that are hidden (Settings > Appearance > Tabs): ",library,setlist,"
+  tb_hide = ",",               -- toolbar items that are hidden (Settings > Appearance > Toolbar): ",lock,rec,"
+  cache_limit_mb = 1024,       -- page cache limit in MB (0 = no limit); the PDFs used longest ago are removed first
 }
 CFG.S_DEFAULTS = {}   -- copy of the defaults (before settings.ini is read), for "Reset all settings"
 for k, v in pairs(S) do CFG.S_DEFAULTS[k] = v end
@@ -346,6 +368,13 @@ function Util.validate_settings()
   num("sensitivity", 1, 200); num("dim_level", 0.25, 1); num("zoom", CFG.MIN_ZOOM, CFG.MAX_ZOOM)
   num("scroll_y", 0, math.huge); num("scroll_x", 0, math.huge); num("panel_h", 0, 10000)
   num("win_w", 200, 20000); num("win_h", 150, 20000)
+  one_of("cache_limit_mb", table.unpack(CFG.CACHE_LIMITS))
+  one_of("warn_sec", 1, 2, 3, 4)
+  one_of("sl_next_sec", 5, 10, 20, 30, 0)
+  one_of("page_area", "pdf", "setlist", "both")
+  num("sl_split", 0.15, 0.85)
+  one_of("note_size", "small", "medium", "large")
+  one_of("note_color", "yellow", "green", "blue", "pink", "white")
   one_of("engine", "windows", "poppler")
   one_of("mode", "absolute", "relative")
   one_of("scroll_mode", "off", "marker", "cues", "fixed") -- "fixed" (older settings) means off
@@ -480,6 +509,12 @@ function Project.default_project()
     folders = {},         -- the folders of "Add from folder" (for "Sync folders"): { path, sub = subfolders }; written only when used
     fixed_start = 0,      -- not used any more (the Fixed speed mode was removed before 1.0); still read and written, so the saved text stays the same
     view = {},            -- pdf path -> { fit = fit mode, zoom = manual zoom } (per-PDF zoom)
+    notes = {},           -- pdf path -> list of { page, x, y (0..1 of the page), text, color, size }; written only when used
+    setlists = {},        -- list of { name, items }; an item: a song { key = region key, name, ending = "stop"|"continue", skip },
+                          -- or a timed pause { kind = "pause", sec, skip }; written only when used
+    setlist_cur = 1,      -- the setlist in use (index in setlists)
+    setlist_on = false,   -- "Play in setlist order"; written only when true
+    setlist_lock = false, -- "Lock setlist": no song changes from clicks, no edits; written only when true
   }
 end
 local P = Project.default_project()
@@ -636,7 +671,7 @@ end
 
 function PDF.poppler_help()
   return "pdftoppm.exe not found. Install Poppler for Windows (e.g. https://github.com/oschwartz10612/poppler-windows/releases), "
-      .. "unzip it, then use Settings > Display > PDF engine = Poppler > 'Browse...' to select  <poppler>\\Library\\bin\\pdftoppm.exe."
+      .. "unzip it, then use Settings > Appearance > Page quality > PDF engine = Poppler > 'Browse...' to select  <poppler>\\Library\\bin\\pdftoppm.exe."
 end
 
 local POPPLER_PDFINFO_WARN = "pdftoppm.exe was found, but pdfinfo.exe was not found in the same folder. "
@@ -705,7 +740,7 @@ end
 ---------------------------------------------------------------------------
 -- PDF ENGINES
 --   windows: Windows 10/11 built-in PDF renderer (Windows.Data.Pdf) through PowerShell. No install.
---   poppler: pdftoppm.exe + pdfinfo.exe (optional, selectable in Settings > Display).
+--   poppler: pdftoppm.exe + pdfinfo.exe (optional, selectable in Settings > Appearance > Page quality).
 -- Both write the same files: <cache>\p-<page>.png, job.done (exit code), job.err (message).
 -- Page count + page size are cached in <cache root>\<content key>\info.txt, so a PDF that was
 -- opened once opens at once (PowerShell needs about 1 s to start).
@@ -884,7 +919,7 @@ function PDF.info_tick()
       R.info_job = nil
       local engine = (job.kind == "ps") and "Windows PDF engine" or "pdfinfo"
       if err == "timeout" then
-        Msg.set_error(engine .. " did not answer. Try again, or select the other PDF engine in Settings > Display."
+        Msg.set_error(engine .. " did not answer. Try again, or select the other PDF engine in Settings > Appearance > Page quality."
           .. (job.kind == "ps" and " Antivirus or a company policy can block PowerShell." or ""))
       else
         local n, msg = PDF.parse_info(out, err)
@@ -892,7 +927,7 @@ function PDF.info_tick()
           PDF.write_info_cache(job.path, out)
           if Util.same_path(job.path, S.pdf_path) then PDF.finish_open(job.path, job.keep, n, out) end
         else
-          Msg.set_error(engine .. ": " .. msg .. " (You can select the other PDF engine in Settings > Display.)")
+          Msg.set_error(engine .. ": " .. msg .. " (You can select the other PDF engine in Settings > Appearance > Page quality.)")
         end
       end
     end
@@ -965,7 +1000,7 @@ function PDF.start_batch(b)
       prefix = R.prefix, dpi = S.dpi, maxdim = R.scale_to or 0, done = done_f, err = err_f })
     if not ok then
       Msg.set_error("Could not start the Windows PDF engine (PowerShell). Antivirus or a company policy can block it. "
-        .. "Select Poppler in Settings > Display.")
+        .. "Select Poppler in Settings > Appearance > Page quality.")
       R.bstate[b] = "failed"; return
     end
     R.job = { batch = b, started = Util.now(), done_f = done_f, err_f = err_f }
@@ -1098,6 +1133,31 @@ function Project.parse_cfg(lines_iter)
         p.cues[key] = p.cues[key] or {}
         table.insert(p.cues[key], { pos = pos, page = tonumber(pg), scroll = tonumber(sc) })
       end
+    elseif k == "note" then
+      local path, pg, x, y, txt = v:match("^(.-)\t(.-)\t(.-)\t(.-)\t(.*)$")
+      pg, x, y = tonumber(pg), tonumber(x), tonumber(y)
+      local body, col, size = (txt or ""):match("^(.*)\t(%a+)\t(%a+)$") -- the colour and size come last
+      if body then txt = body end
+      if path and pg and x and y and txt ~= "" then
+        p.notes[path] = p.notes[path] or {}
+        table.insert(p.notes[path], { page = pg, x = Util.clamp(x, 0, 1), y = Util.clamp(y, 0, 1), text = txt,
+          color = col or S.note_color, size = size or S.note_size })
+      end
+    elseif k == "setlist" then
+      p.setlists[#p.setlists + 1] = { name = v, items = {} }
+    elseif k == "sl_song" and #p.setlists > 0 then
+      local key, ending, skip, nm = v:match("^(.-)\t(.-)\t(.-)\t(.*)$")
+      if key and key ~= "" then
+        local items = p.setlists[#p.setlists].items
+        items[#items + 1] = { key = key, ending = (ending == "continue") and "continue" or "stop", skip = (skip == "1"), name = nm }
+      end
+    elseif k == "sl_pause" and #p.setlists > 0 then
+      local sec, skip = v:match("^(.-)\t(.*)$")
+      local items = p.setlists[#p.setlists].items
+      items[#items + 1] = { kind = "pause", sec = Util.clamp(math.floor(tonumber(sec) or 10), 1, 3600), skip = (skip == "1") }
+    elseif k == "setlist_cur" then p.setlist_cur = math.max(1, math.floor(tonumber(v) or 1))
+    elseif k == "setlist_on" then p.setlist_on = (v == "1")
+    elseif k == "setlist_lock" then p.setlist_lock = (v == "1")
     elseif k == "prel" then
       local path, rel = v:match("^(.-)\t(.*)$")
       if path and rel ~= "" then p.rel[path] = rel end
@@ -1146,6 +1206,25 @@ function Project.serialize_cfg()
   for _, path in ipairs(sorted(P.view)) do
     w("view", string.format("%s\t%s\t%.3f", path, P.view[path].fit, P.view[path].zoom))
   end
+  for _, path in ipairs(sorted(P.notes)) do -- only when used
+    for _, n in ipairs(P.notes[path]) do
+      w("note", string.format("%s\t%d\t%.4f\t%.4f\t%s\t%s\t%s", path, n.page, n.x, n.y, (n.text:gsub("\t", " ")),
+        n.color or S.note_color, n.size or S.note_size))
+    end
+  end
+  for _, sl in ipairs(P.setlists) do -- only when used; in their own order (the order is the setlist)
+    w("setlist", sl.name)
+    for _, it in ipairs(sl.items) do
+      if it.kind then
+        w("sl_pause", string.format("%d\t%d", it.sec or 10, it.skip and 1 or 0))
+      else
+        w("sl_song", string.format("%s\t%s\t%d\t%s", it.key, it.ending, it.skip and 1 or 0, (it.name or ""):gsub("\t", " ")))
+      end
+    end
+  end
+  if #P.setlists > 0 and P.setlist_cur ~= 1 then w("setlist_cur", P.setlist_cur) end
+  if P.setlist_on then w("setlist_on", 1) end
+  if P.setlist_lock then w("setlist_lock", 1) end
   for _, key in ipairs(sorted(P.cues)) do
     for _, c in ipairs(P.cues[key]) do
       w("cue", string.format("%s\t%.4f\t%s\t%s", key, c.pos, c.page and tostring(c.page) or "",
@@ -1380,7 +1459,7 @@ function PDF.open_pdf(path, keep_position)
   if n then return PDF.finish_open(path, keep_position, n, info) end
   R.info_job = PDF.start_info(path, keep_position)
   if not R.info_job then
-    Msg.set_error("Could not start the PDF engine. Select the other PDF engine in Settings > Display.")
+    Msg.set_error("Could not start the PDF engine. Select the other PDF engine in Settings > Appearance > Page quality.")
   end
 end
 
@@ -1403,6 +1482,7 @@ function PDF.finish_open(path, keep_position, n, info)
 
   R.cache_dir = PDF.compute_cache_dir(path)
   Util.ensure_dir(R.cache_dir)
+  PDF.mark_used(Util.dir_of(R.cache_dir))
   R.prefix = R.cache_dir .. SEP .. "p"
   if not keep_position then S.page = 1; S.scroll_y = 0; S.scroll_x = 0 end
   S.page = Util.clamp(S.page, 1, R.total)
@@ -1447,6 +1527,7 @@ function Project.remap_pdf(old, new)
   R.libexists[new] = Util.file_exists(new)
   if Util.same_path(S.pdf_path, old) then S.pdf_path = new end
   if P.view[old] then P.view[new] = P.view[new] or P.view[old]; P.view[old] = nil end
+  if P.notes[old] then P.notes[new] = P.notes[new] or P.notes[old]; P.notes[old] = nil end
   Util.mark_pdirty()
 end
 
@@ -1585,7 +1666,7 @@ function Project.remove_from_library(path)
   end
   for key, p in pairs(P.assign) do if Util.same_path(p, path) then P.assign[key] = nil end end
   if Util.same_path(P.active_pdf, path) then P.active_pdf = "" end
-  P.rel[path] = nil; P.view[path] = nil
+  P.rel[path] = nil; P.view[path] = nil; P.notes[path] = nil
   R.libpages[path] = nil; R.libexists[path] = nil
   Project.resolve_regions(); Util.mark_pdirty()
 end
@@ -2020,7 +2101,7 @@ function Nav.go_page(p)
   Util.mark_dirty()
 end
 
--- "Pages on screen" (Settings > Display): "side" = 2 pages side by side, one spread;
+-- "Pages on screen" (Settings > Viewer): "side" = 2 pages side by side, one spread;
 -- "stack" = continuous: the pages are one long strip, S.page is the page at the top of the view and
 -- S.scroll_y the position on it (the same values as with 1 page, so cues and markers do not change).
 function Nav.two_pages() return S.page_layout == "side" and R.total > 1 and not R.part2 end
@@ -2134,12 +2215,65 @@ function Midi.poll_forwarded_midi()
     for c in cq:gmatch("(%a+),") do
       if c == "next" then Nav.step(1)
       elseif c == "prev" then Nav.step(-1)
-      elseif c == "perf" then UI.toggle_perf() end
+      elseif c == "perf" then UI.toggle_perf()
+      elseif c == "nextsong" then Setlist.next_cmd() end
     end
   end
   if r.GetExtState(CFG.EXT, "quit") == "1" then
     r.SetExtState(CFG.EXT, "quit", "", false); R.quit = true
   end
+end
+
+-- The small action scripts, for Settings > Control > "Shortcuts and external controls".
+Midi.ACTIONS = {
+  { "Next page", "Chart Cue - Next page.lua" },
+  { "Previous page", "Chart Cue - Previous page.lua" },
+  { "Performance mode on/off", "Chart Cue - Toggle performance mode.lua" },
+  { "Next song (setlist)", "Chart Cue - Next song.lua" },
+}
+
+-- The command ID of action script i (0 when its file is missing). AddRemoveReaScript gives the ID of a
+-- loaded script and loads it into the Action List when it is not (a manual install). Asked once.
+function Midi.action_cmd(i)
+  R.act_cmd = R.act_cmd or {}
+  if R.act_cmd[i] then return R.act_cmd[i] end
+  local dir = script_file:match("^(.*)[\\/]") or ""
+  local path = dir .. SEP .. Midi.ACTIONS[i][2]
+  local cmd = 0
+  if dir ~= "" and Util.file_exists(path) then cmd = r.AddRemoveReaScript(true, 0, path, true) or 0 end
+  R.act_cmd[i] = cmd
+  return cmd
+end
+
+-- The shortcuts of action script i as one text ("" = none). Read again at most every second
+-- (REAPER changes them in its own window).
+function Midi.action_desc(i)
+  local now = r.time_precise()
+  if not R.act_desc or now - (R.act_desc_t or 0) > 1 then
+    R.act_desc, R.act_desc_t = {}, now
+    for j = 1, #Midi.ACTIONS do
+      local cmd, t = Midi.action_cmd(j), {}
+      if cmd ~= 0 then
+        for k = 0, (r.CountActionShortcuts(0, cmd) or 0) - 1 do
+          local ok, d = r.GetActionShortcutDesc(0, cmd, k, "")
+          if ok and d ~= "" then t[#t + 1] = d end
+        end
+      end
+      R.act_desc[j] = table.concat(t, ", ")
+    end
+  end
+  return R.act_desc[i]
+end
+
+-- Opens REAPER's window that adds a shortcut (key, MIDI, OSC) to action script i. It is a modal window:
+-- it opens after the frame (deferred), not inside the ImGui frame.
+function Midi.assign_action(i)
+  local cmd = Midi.action_cmd(i)
+  if cmd == 0 then return end
+  r.defer(function()
+    r.DoActionShortcutDialog(r.GetMainHwnd(), 0, cmd, r.CountActionShortcuts(0, cmd) or 0)
+    R.act_desc_t = 0 -- show the new shortcut at once
+  end)
 end
 
 function Midi.poll_direct_midi()
@@ -2180,6 +2314,7 @@ end
 function Nav.timeline_tick(is_play, overriding, page_pts, scroll_pts)
   page_pts, scroll_pts = page_pts or R.page_pts, scroll_pts or R.scroll_pts
   R.autoscroll_active = false
+  R.turn_in = nil
   if not is_play then return end
   local pos = r.GetPlayPosition()
   local reg = R.active_region
@@ -2196,13 +2331,19 @@ function Nav.timeline_tick(is_play, overriding, page_pts, scroll_pts)
   -- its time, so you can read ahead. The new page starts at the top until its scroll points come.
   local pos_page = pos
   if P.turn_early > 0 then pos_page = r.TimeMap2_QNToTime(0, r.TimeMap2_timeToQN(0, pos) + P.turn_early) end
+  local next_pp
   for _, pp in ipairs(page_pts) do
     if pp.t >= lo and pp.t < hi then
       if pp.t <= pos_page then page = pp.page; seg_lo = pp.t
-      else seg_hi = math.min(seg_hi, pp.t); break end
+      else seg_hi = math.min(seg_hi, pp.t); next_pp = pp; break end
     end
   end
   if page == nil and reg then page = 1 end
+  -- seconds to the next page turn (for the page-turn countdown); only a turn to another page counts
+  if next_pp and next_pp.page ~= page and next_pp.page <= R.total then R.turn_in = next_pp.t - pos_page
+  elseif reg and not next_pp and not R.in_part2 and Setlist.song_follows(reg) then
+    R.turn_in = hi - pos -- no page turn left: the countdown runs to the next song
+  end
   if page ~= R.mpage_last then
     R.mpage_last = page
     if page and page <= R.total and page ~= S.page then Nav.go_page(page) end
@@ -2249,6 +2390,7 @@ function Nav.update_motion()
   if is_play and not R.was_playing then R.mpage_last = nil; R.jump_prev = false end
   R.was_playing = is_play
   R.autoscroll_active = false
+  R.turn_in = nil
   local mode = Nav.scroll_mode()
   -- no PDF for the current region: every autoscroll mode is disabled
   if R.empty_region or R.total == 0 then mode = "off" end
@@ -2415,6 +2557,7 @@ function Project.check_project(force)
   Project.resolve_paths() -- find PDFs relative to the (possibly moved) project folder
   R.cur_region_key = nil; R.active_region = nil
   R.mpage_last = nil; R.warn = nil; R.import = nil; R.ask = nil
+  R.sl_pos, R.sl_hold, R.sl_cursor, R.sl_undo = nil, nil, nil, nil -- the setlist position belongs to the old project
   if R.part2 then UI.close_part2() end -- part 2 belongs to the project we left
   R.empty_region = nil; R.stash_pdf = nil; R.cleared_key = nil; R.choose_existing = false
   Project.cancel_copies() -- pending copies belong to the project we left
@@ -2461,8 +2604,9 @@ function Util.list_subdirs(d)
 end
 
 -- Cache size, calculated over several frames (CFG.IMPORT_FRAME_BUDGET per frame): R.size_job.
+-- It also adds up the size of each folder directly under `root` (one per PDF: j.tops), for the cache limit.
 function Util.start_dir_size(root, depth)
-  R.size_job = { dirs = { { d = root, depth = depth } }, files = nil, fi = 0, cur = nil, total = 0 }
+  R.size_job = { dirs = { { d = root, depth = depth } }, files = nil, fi = 0, cur = nil, total = 0, tops = {}, top = nil }
 end
 
 function Util.dir_size_tick()
@@ -2472,17 +2616,73 @@ function Util.dir_size_tick()
   while Util.now() < deadline do
     if not j.files then
       local e = table.remove(j.dirs)
-      if not e then R.cache_size, R.size_job = j.total, nil; return end
-      j.cur, j.files, j.fi = e.d, Util.list_files(e.d), 0
+      if not e then R.cache_size, R.size_job = j.total, nil; PDF.limit_cache(j.tops, j.total); return end
+      j.cur, j.top, j.files, j.fi = e.d, e.top, Util.list_files(e.d), 0
       if e.depth > 0 then
-        for _, sd in ipairs(Util.list_subdirs(e.d)) do j.dirs[#j.dirs + 1] = { d = e.d .. SEP .. sd, depth = e.depth - 1 } end
+        for _, sd in ipairs(Util.list_subdirs(e.d)) do
+          local full = e.d .. SEP .. sd
+          j.dirs[#j.dirs + 1] = { d = full, depth = e.depth - 1, top = e.top or full }
+        end
       end
     else
       j.fi = j.fi + 1
       local f = j.files[j.fi]
-      if f then j.total = j.total + Util.file_size(j.cur .. SEP .. f) else j.files = nil end
+      if f then
+        local n = Util.file_size(j.cur .. SEP .. f)
+        j.total = j.total + n
+        if j.top then j.tops[j.top] = (j.tops[j.top] or 0) + n end
+      else j.files = nil end
     end
   end
+end
+
+-- The cache folder of a PDF remembers when it was last opened (file "used": os.time()), for the limit.
+function PDF.mark_used(folder)
+  local f = io.open(folder .. SEP .. "used", "wb")
+  if f then f:write(tostring(os.time())); f:close() end
+  R.limit_due = true -- check the cache limit again (after the next size calculation)
+end
+
+function PDF.last_used(folder)
+  local f = io.open(folder .. SEP .. "used", "rb")
+  if not f then return 0 end -- older cache folders: removed first
+  local t = tonumber(f:read("a")) or 0
+  f:close()
+  return t
+end
+
+-- Cache limit: when the cache is larger than S.cache_limit_mb, the folders of the PDFs used longest ago
+-- are removed, until it is CFG.CACHE_KEEP of the limit. The PDFs on screen (PDF 1 and PDF 2) are kept.
+function PDF.limit_cache(tops, total)
+  local limit = S.cache_limit_mb * 1048576
+  if limit <= 0 or total <= limit or R.job then return end
+  local keep = {}
+  if R.cache_dir then keep[Util.dir_of(R.cache_dir)] = true end
+  local c2 = R.part2 and R.part2.r.cache_dir
+  if c2 then keep[Util.dir_of(c2)] = true end
+  local list = {}
+  for d, n in pairs(tops) do
+    if not keep[d] then list[#list + 1] = { d = d, n = n, t = PDF.last_used(d) } end
+  end
+  table.sort(list, function(a, b) return a.t < b.t end)
+  local folders, target = {}, limit * CFG.CACHE_KEEP
+  for _, e in ipairs(list) do
+    if total <= target then break end
+    folders[#folders + 1] = e.d
+    total = total - e.n
+  end
+  if #folders == 0 then return end
+  PDF.rmdir_all(folders)
+  R.cache_size = total
+  Msg.diag(string.format("Cache limit: removed the pages of %d PDF(s); cache now %s", #folders, Util.fmt_bytes(total)))
+end
+
+-- Runs the size calculation (and with it the limit) after a PDF opens, while REAPER does not play.
+function PDF.limit_tick()
+  if not R.limit_due or R.size_job or R.job or Util.playing() then return end
+  if R.limit_t and Util.now() - R.limit_t < 60 then return end -- (the scan reads the whole cache folder)
+  R.limit_due, R.limit_t = false, Util.now()
+  if S.cache_limit_mb > 0 then Util.start_dir_size(CFG.CACHE_ROOT, 3) end
 end
 
 -- Deletes all `folders` with ONE cmd.exe (one .bat, started without waiting; the .bat deletes itself).
@@ -2505,7 +2705,19 @@ function PDF.rmdir_all(folders)
   r.ExecProcess('cmd.exe /C "' .. bat .. '"', CFG.EXEC_NOWAIT)
 end
 
+-- "1 GB", "500 MB", "No limit" (the Cache limit choices)
+local CACHE_LIMIT_LABELS = {}
+function UI.cache_limit_label(mb)
+  local s = CACHE_LIMIT_LABELS[mb]
+  if not s then
+    s = (mb <= 0) and "No limit" or (mb >= 1024) and string.format("%d GB", mb // 1024) or (mb .. " MB")
+    CACHE_LIMIT_LABELS[mb] = s
+  end
+  return s
+end
+
 function Util.fmt_bytes(n)
+  if n >= 1073741824 then return string.format("%.2f GB", n / 1073741824) end
   if n >= 1048576 then return string.format("%.1f MB", n / 1048576) end
   return string.format("%.0f KB", n / 1024)
 end
@@ -3084,7 +3296,8 @@ end
 Pane.R_FIELDS = { "total", "cache_dir", "prefix", "scale_to", "force_scale", "bstate", "job", "batches_done",
   "page_paths", "images", "image_order", "max_x", "max_y", "view_w", "view_h", "last_ratio", "abs_target",
   "override_until", "pdf_name", "info_job", "page_w_pt", "marks_cache", "mpage_last", "autoscroll_active",
-  "jump_prev", "flash_t", "active_region", "cont_off", "side_off", "turn_t", "side_step", "cont_step", "cue_cache" }
+  "jump_prev", "flash_t", "active_region", "cont_off", "side_off", "turn_t", "side_step", "cont_step", "cue_cache",
+  "turn_in", "prects", "prect_n", "note_hover", "note_hover_w", "note_hover_h" }
 Pane.S_FIELDS = { "pdf_path", "page", "zoom", "fit_mode", "scroll_y", "scroll_x" }
 
 -- A new pane with nothing open (the same start values as R and S).
@@ -3181,11 +3394,14 @@ local AUTOSCROLL_TIP = "Autoscroll mode (saved in this project)\n"
 local FIT_ITEMS = { { "width", "Fit width" }, { "height", "Fit height" }, { "page", "Fit page" }, { "100", "100%" } }
 local SCROLL_MODES = { "off", "marker", "cues" }
 local SORT_ITEMS = "Sort: Name\0Sort: Page count\0Sort: Recently added\0Sort: Unused first\0"
-local TAB_NAMES = { "Library", "Regions", "Cues", "Settings" }
+local TAB_NAMES = { "Library", "Regions", "Cues", "Setlist", "Settings" }
 local TAB_REGIONS = 2
 local TAB_CUES = 3
-local TAB_FIRST_SETTING = 4      -- the Settings tab (Autoscroll, MIDI, Display, General sections)
+local TAB_SETLIST = 4
+local TAB_FIRST_SETTING = 5      -- the Settings tab (Viewer, Playback, Control, Appearance, General sections)
 local TAB_HELP = #TAB_NAMES + 1   -- the "?" button at the end of the tab strip
+local TAB_IDS = { "library", "regions", "cues", "setlist" } -- the text tabs that can be hidden
+function UI.tab_shown(i) return not (TAB_IDS[i] and S.tab_hide:find("," .. TAB_IDS[i] .. ",", 1, true)) end
 
 function Nav.effective_scale(iw, ih, view_w, view_h)
   iw, ih = Nav.content_dims(iw, ih) -- 2 pages: the fit modes fit the whole spread
@@ -3674,6 +3890,62 @@ function UI.tb_combo_w(ctx, kind)
   return w
 end
 
+-- Note look (Settings > Viewer > Notes): label colour (normal, under the mouse) and text size factor.
+local NOTE_COLORS = {
+  yellow = { 0xFFE27AF0, 0xFFEFAAFF }, green = { 0xA8E6A1F0, 0xC6F2C0FF }, blue = { 0x9CCBFFF0, 0xC2DFFFFF },
+  pink = { 0xFFB3D1F0, 0xFFD1E3FF }, white = { 0xF2F2F2F0, 0xFFFFFFFF },
+}
+local NOTE_SIZES = { small = 0.85, medium = 1.0, large = 1.4 }
+local NOTE_COLOR_IDS = { "yellow", "green", "blue", "pink", "white" }
+local NOTE_COLOR_ITEMS = "Yellow\0Green\0Blue\0Pink\0White\0"
+local NOTE_COLOR_NAMES = { "Yellow", "Green", "Blue", "Pink", "White" }
+local NOTE_SIZE_NAMES = { "Small", "Medium", "Large" }
+local NOTE_SIZE_IDS = { "small", "medium", "large" }
+local NOTE_SIZE_ITEMS = "Small\0Medium\0Large\0"
+local SL_NEXT_SECS = { 5, 10, 20, 30, 0 }
+local SL_NEXT_ITEMS = "Last 5 seconds\0Last 10 seconds\0Last 20 seconds\0Last 30 seconds\0Always\0"
+local WARN_SEC_ITEMS = "1 second\0" .. "2 seconds\0" .. "3 seconds\0" .. "4 seconds\0"
+
+-- The toolbar items that can be hidden (Settings > Appearance > Toolbar): id, label. Page buttons always show.
+-- "Page area" (Settings > Viewer and the right-click menu)
+local PAGE_AREAS = { "pdf", "setlist", "both" }
+local PAGE_AREA_INDEX = { pdf = 0, setlist = 1, both = 2 }
+local PAGE_AREA_ITEMS = "PDF\0Setlist\0Setlist and PDF\0"
+local PAGE_AREA_LABELS = { "PDF", "Setlist", "Setlist and PDF" }
+
+local TB_ITEMS = {
+  { "name", "PDF name" }, { "zoom", "Zoom buttons (- and +)" }, { "fit", "Fit menu" }, { "bright", "Brightness button" },
+  { "scroll", "Autoscroll menu" }, { "rec", "Record cues button" }, { "lock", "Lock button" },
+  { "hide", "Hide panel button" },
+}
+-- the brightness button's tooltips (built once): the level now and the next one
+local BRIGHT_TIPS = {
+  [25] = "Page brightness: 25%. Click for 50%.", [50] = "Page brightness: 50%. Click for 75%.",
+  [75] = "Page brightness: 75%. Click for 100%.", [100] = "Page brightness: 100%. Click for 25% (dark stages).",
+  [0] = "Page brightness. Click for the next level (25, 50, 75, 100%).",
+}
+
+-- Sun icon for the brightness button: the disc is fuller and the rays are longer when the page is brighter.
+function UI.draw_sun_icon(dl, cx, cy, pct)
+  local k = Util.clamp(pct / 100, 0.25, 1)
+  local col = COL.TEXT_MAIN
+  ImGui.DrawList_AddCircle(dl, cx, cy, 4.5, col, 16, 1.5)
+  ImGui.DrawList_AddCircleFilled(dl, cx, cy, 4.5 * k, col, 16)
+  local r0, r1 = 6.5, 6.5 + 3.5 * k
+  for i = 0, 7 do
+    local a = i * math.pi / 4
+    local c, s = math.cos(a), math.sin(a)
+    ImGui.DrawList_AddLine(dl, cx + c * r0, cy + s * r0, cx + c * r1, cy + s * r1, col, 1.5)
+  end
+end
+
+function UI.tb_shown(id) return not S.tb_hide:find("," .. id .. ",", 1, true) end
+function UI.set_tb_shown(id, on)
+  local s = S.tb_hide:gsub("," .. id .. ",", ",")
+  if not on then s = s .. id .. "," end
+  S.tb_hide = s; Util.mark_dirty()
+end
+
 -- Toolbar items: { w = width, g = group, draw = function(ctx, w) }. Groups: 1 navigate,
 -- 2 view (zoom), 3 playback. Whole groups are packed into rows that fit the window width,
 -- with a divider line between groups, and every row is centred. The order never changes.
@@ -3683,125 +3955,151 @@ function UI.toolbar_items(ctx)
   local name_item -- the grey PDF name (it gives way first in a narrow window)
   local function add(w, draw) items[#items + 1] = { w = w, g = g, draw = draw } end
   local bw = CFG.TB_BTN_W
-  if R.pdf_name ~= "" then
-    local avail = (ImGui.GetContentRegionAvail(ctx)) - 12
-    local nw = math.min((ImGui.CalcTextSize(ctx, R.pdf_name)), 220, math.max(40, avail))
-    add(nw, function(_, w) UI.row_text(ctx, UI.trunc_text(ctx, R.pdf_name, w), COL.GREY); UI.tip(ctx, S.pdf_path) end)
-    name_item = items[#items]
-  end
-  add(bw, function() if UI.icon_button(ctx, "##prev", bw, "prev") then Nav.step(-1) end
-    UI.tip(ctx, "Previous page (Left arrow / Page Up)") end)
-  local p1, p2 = Nav.spread()
-  local ptxt = (R.total == 0) and "No PDF open"
-    or (p2 and string.format("%d-%d / %d", p1, p2, R.total)) or string.format("%d / %d", p1, R.total)
-  if R.total > 0 then
-    -- "go to page": click the page number to type a page
-    UI.push_font(ctx, R.label_font) -- the page number is bold (measured in that font)
-    local pw = UI.btn_w(ctx, ptxt, 0)
-    UI.pop_font(ctx)
-    add(pw, function()
-      if R.goto_edit then
-        ImGui.SetNextItemWidth(ctx, pw)
-        if not R.goto_focus then ImGui.SetKeyboardFocusHere(ctx); R.goto_focus = true end
-        local enter
-        enter, R.goto_text = ImGui.InputText(ctx, "##goto", R.goto_text,
-          ImGui.InputTextFlags_EnterReturnsTrue() | ImGui.InputTextFlags_AutoSelectAll() | ImGui.InputTextFlags_CharsDecimal())
-        if enter then
-          local n = tonumber(R.goto_text)
-          if n then Nav.go_page(math.floor(n)) end
-          R.goto_edit = false
-        elseif ImGui.IsItemDeactivated(ctx) then
-          R.goto_edit = false -- Esc or click elsewhere
-        end
-      else
-        UI.push_font(ctx, R.label_font)
-        local go = UI.row_button(ctx, ptxt .. "##gotobtn", pw, "ghost")
-        UI.pop_font(ctx)
-        if go then R.goto_edit, R.goto_text, R.goto_focus = true, tostring(S.page), false end
-        UI.tip(ctx, "Page. Click to go to a page.")
-      end
-    end)
+  if UI.setlist_view_on() then
+    -- Page area "Setlist": the transport buttons instead of the page and view items
+    add(4 * bw + 3 * CFG.TB_GAP, function() UI.transport_buttons(ctx, Setlist.cur(), bw, 0, CFG.TB_GAP) end)
+    g = 3
   else
-    add((ImGui.CalcTextSize(ctx, ptxt)), function() UI.row_text(ctx, ptxt) end)
-  end
-  add(bw, function() if UI.icon_button(ctx, "##next", bw, "next") then Nav.step(1) end
-    UI.tip(ctx, "Next page (Right arrow / Page Down)") end)
-  g = 2
-  add(bw, function() if UI.icon_button(ctx, "##zoomout", bw, "minus") then Nav.zoom_by(1 / CFG.ZOOM_STEP) end
-    UI.tip(ctx, "Zoom out (Ctrl and -, Ctrl + mouse wheel)") end)
-  local fit_w = UI.tb_combo_w(ctx, "fit")
-  add(fit_w, function()
-    if UI.combo(ctx, "##fit", UI.fit_label(), fit_w) then
-      for _, f in ipairs(FIT_ITEMS) do
-        local sel = (f[1] == S.fit_mode)
-        if f[1] == "100" then
-          local pct = Nav.zoom_pct()
-          sel = (S.fit_mode == "manual" and pct ~= nil and math.abs(pct - 100) < 0.5)
-        end
-        if ImGui.Selectable(ctx, f[2], sel) then
-          if f[1] == "width" then Nav.fit_width()
-          elseif f[1] == "height" then Nav.fit_height()
-          elseif f[1] == "page" then Nav.fit_page()
-          else Nav.zoom_100() end
-        end
-      end
-      ImGui.EndCombo(ctx)
+    if UI.setlist_both_on() then -- "Setlist and PDF": the transport buttons first, then the PDF toolbar
+      g = 0
+      add(4 * bw + 3 * CFG.TB_GAP, function() UI.transport_buttons(ctx, Setlist.cur(), bw, 0, CFG.TB_GAP) end)
+      g = 1
     end
-    UI.tip(ctx, "Fit mode (Ctrl and 0: fit the page width). 100% = the real page size.")
-  end)
-  add(bw, function() if UI.icon_button(ctx, "##zoomin", bw, "plus") then Nav.zoom_by(CFG.ZOOM_STEP) end
-    UI.tip(ctx, "Zoom in (Ctrl and +, Ctrl + mouse wheel)") end)
-  g = 3
-  -- autoscroll: during playback (full and small toolbar) the state as text, since the mode is locked
-  -- then (the page would jump); when stopped, the dropdown
-  if Util.playing() then
-    local st = "Autoscroll: " .. UI.autoscroll_state_text()
-    add((ImGui.CalcTextSize(ctx, st)), function()
-      UI.row_text(ctx, st)
-      UI.tip(ctx, MODE_LOCKED_TIP .. "\n\n" .. AUTOSCROLL_TIP)
-    end)
-  else
-    local scroll_w = UI.tb_combo_w(ctx, "scroll")
-    add(scroll_w, function()
-      local labels = SCROLL_TOOLBAR_LABELS
-      local cur = 1
-      for i, m in ipairs(SCROLL_MODES) do if m == Nav.scroll_mode() then cur = i end end
-      if UI.combo(ctx, "##scrollmode", labels[cur] or "", scroll_w) then
-        for i, m in ipairs(SCROLL_MODES) do
-          if ImGui.Selectable(ctx, labels[i], i == cur) then Nav.set_scroll_mode(m) end
+    if R.pdf_name ~= "" and UI.tb_shown("name") then
+      local avail = (ImGui.GetContentRegionAvail(ctx)) - 12
+      local nw = math.min((ImGui.CalcTextSize(ctx, R.pdf_name)), 220, math.max(40, avail))
+      add(nw, function(_, w) UI.row_text(ctx, UI.trunc_text(ctx, R.pdf_name, w), COL.GREY); UI.tip(ctx, S.pdf_path) end)
+      name_item = items[#items]
+    end
+    add(bw, function() if UI.icon_button(ctx, "##prev", bw, "prev") then Nav.step(-1) end
+      UI.tip(ctx, "Previous page (Left arrow / Page Up)") end)
+    local p1, p2 = Nav.spread()
+    local ptxt = (R.total == 0) and "No PDF open"
+      or (p2 and string.format("%d-%d / %d", p1, p2, R.total)) or string.format("%d / %d", p1, R.total)
+    if R.total > 0 then
+      -- "go to page": click the page number to type a page
+      UI.push_font(ctx, R.label_font) -- the page number is bold (measured in that font)
+      local pw = UI.btn_w(ctx, ptxt, 0)
+      UI.pop_font(ctx)
+      add(pw, function()
+        if R.goto_edit then
+          ImGui.SetNextItemWidth(ctx, pw)
+          if not R.goto_focus then ImGui.SetKeyboardFocusHere(ctx); R.goto_focus = true end
+          local enter
+          enter, R.goto_text = ImGui.InputText(ctx, "##goto", R.goto_text,
+            ImGui.InputTextFlags_EnterReturnsTrue() | ImGui.InputTextFlags_AutoSelectAll() | ImGui.InputTextFlags_CharsDecimal())
+          if enter then
+            local n = tonumber(R.goto_text)
+            if n then Nav.go_page(math.floor(n)) end
+            R.goto_edit = false
+          elseif ImGui.IsItemDeactivated(ctx) then
+            R.goto_edit = false -- Esc or click elsewhere
+          end
+        else
+          UI.push_font(ctx, R.label_font)
+          local go = UI.row_button(ctx, ptxt .. "##gotobtn", pw, "ghost")
+          UI.pop_font(ctx)
+          if go then R.goto_edit, R.goto_text, R.goto_focus = true, tostring(S.page), false end
+          UI.tip(ctx, "Page. Click to go to a page.")
+        end
+      end)
+    else
+      add((ImGui.CalcTextSize(ctx, ptxt)), function() UI.row_text(ctx, ptxt) end)
+    end
+    add(bw, function() if UI.icon_button(ctx, "##next", bw, "next") then Nav.step(1) end
+      UI.tip(ctx, "Next page (Right arrow / Page Down)") end)
+    g = 2
+    local zoom_on, fit_on = UI.tb_shown("zoom"), UI.tb_shown("fit")
+    if zoom_on then add(bw, function() if UI.icon_button(ctx, "##zoomout", bw, "minus") then Nav.zoom_by(1 / CFG.ZOOM_STEP) end
+      UI.tip(ctx, "Zoom out (Ctrl and -, Ctrl + mouse wheel)") end) end
+    local fit_w = UI.tb_combo_w(ctx, "fit")
+    if fit_on then add(fit_w, function()
+      if UI.combo(ctx, "##fit", UI.fit_label(), fit_w) then
+        for _, f in ipairs(FIT_ITEMS) do
+          local sel = (f[1] == S.fit_mode)
+          if f[1] == "100" then
+            local pct = Nav.zoom_pct()
+            sel = (S.fit_mode == "manual" and pct ~= nil and math.abs(pct - 100) < 0.5)
+          end
+          if ImGui.Selectable(ctx, f[2], sel) then
+            if f[1] == "width" then Nav.fit_width()
+            elseif f[1] == "height" then Nav.fit_height()
+            elseif f[1] == "page" then Nav.fit_page()
+            else Nav.zoom_100() end
+          end
         end
         ImGui.EndCombo(ctx)
       end
-      UI.tip(ctx, AUTOSCROLL_TIP)
-    end)
+      UI.tip(ctx, "Fit mode (Ctrl and 0: fit the page width). 100% = the real page size.")
+    end) end
+    if zoom_on then add(bw, function() if UI.icon_button(ctx, "##zoomin", bw, "plus") then Nav.zoom_by(CFG.ZOOM_STEP) end
+      UI.tip(ctx, "Zoom in (Ctrl and +, Ctrl + mouse wheel)") end) end
+    -- page brightness: each click goes up by 25% (25, 50, 75, 100), and from 100% back to 25%
+    if UI.tb_shown("bright") then add(bw, function()
+      local pct = S.dim_page and math.floor(S.dim_level * 100 + 0.5) or 100
+      local hit = UI.button(ctx, "##bright", bw, 0)
+      local x0, y0 = ImGui.GetItemRectMin(ctx)
+      local x1, y1 = ImGui.GetItemRectMax(ctx)
+      UI.draw_sun_icon(ImGui.GetWindowDrawList(ctx), (x0 + x1) / 2, (y0 + y1) / 2, pct)
+      if hit then
+        local nxt = (pct >= 100) and 25 or math.min(100, (pct // 25 + 1) * 25)
+        S.dim_page, S.dim_level = nxt < 100, nxt / 100; Util.mark_dirty()
+      end
+      UI.tip(ctx, BRIGHT_TIPS[pct] or BRIGHT_TIPS[0])
+    end) end
+    g = 3
+    -- autoscroll: during playback (full and small toolbar) the state as text, since the mode is locked
+    -- then (the page would jump); when stopped, the dropdown
+    if not UI.tb_shown("scroll") then -- (hidden: the mode is in Settings > Playback)
+    elseif Util.playing() then
+      local st = "Autoscroll: " .. UI.autoscroll_state_text()
+      add((ImGui.CalcTextSize(ctx, st)), function()
+        UI.row_text(ctx, st)
+        UI.tip(ctx, MODE_LOCKED_TIP .. "\n\n" .. AUTOSCROLL_TIP)
+      end)
+    else
+      local scroll_w = UI.tb_combo_w(ctx, "scroll")
+      add(scroll_w, function()
+        local labels = SCROLL_TOOLBAR_LABELS
+        local cur = 1
+        for i, m in ipairs(SCROLL_MODES) do if m == Nav.scroll_mode() then cur = i end end
+        if UI.combo(ctx, "##scrollmode", labels[cur] or "", scroll_w) then
+          for i, m in ipairs(SCROLL_MODES) do
+            if ImGui.Selectable(ctx, labels[i], i == cur) then Nav.set_scroll_mode(m) end
+          end
+          ImGui.EndCombo(ctx)
+        end
+        UI.tip(ctx, AUTOSCROLL_TIP)
+      end)
+    end
+    -- record cues: a square icon button, the same size as the lock button (only in the Cue list mode)
+    if Nav.scroll_mode() == "cues" and UI.tb_shown("rec") then add(bw, function()
+      local nc, nv = UI.push_kind(ctx, R.rec and "danger" or nil)
+      local hit = UI.button(ctx, "##rec", bw, 0)
+      UI.pop_kind(ctx, nc, nv)
+      local x0, y0 = ImGui.GetItemRectMin(ctx)
+      local x1, y1 = ImGui.GetItemRectMax(ctx)
+      UI.draw_rec_icon(ImGui.GetWindowDrawList(ctx), (x0 + x1) / 2, (y0 + y1) / 2, R.rec)
+      if hit then UI.toggle_rec() end
+      UI.tip(ctx, "Record cues (R): while on, the C and S keys and the MIDI cue buttons add cues.\n"
+        .. "Only in the Cue list autoscroll mode. Lock mode blocks it during playback.")
+    end) end
+    -- lock: a square icon button, the same size as the other icon buttons
+    if UI.tb_shown("lock") then add(bw, function()
+      local nc, nv = UI.push_kind(ctx, R.lock and "primary" or nil)
+      local hit = UI.button(ctx, "##lock", bw, 0)
+      UI.pop_kind(ctx, nc, nv)
+      local x0, y0 = ImGui.GetItemRectMin(ctx)
+      local x1, y1 = ImGui.GetItemRectMax(ctx)
+      UI.draw_lock_icon(ImGui.GetWindowDrawList(ctx), (x0 + x1) / 2, (y0 + y1) / 2, R.lock,
+        R.lock and COL.WHITE or COL.TEXT_MAIN)
+      if hit then UI.toggle_lock() end
+      UI.tip(ctx, "Lock (L): during playback the page ignores the mouse wheel, dragging and the keys.\n"
+        .. "MIDI and autoscroll still work. Click again or press L to unlock.")
+    end) end
   end
-  -- record cues: a square icon button, the same size as the lock button (only in the Cue list mode)
-  if Nav.scroll_mode() == "cues" then add(bw, function()
-    local nc, nv = UI.push_kind(ctx, R.rec and "danger" or nil)
-    local hit = UI.button(ctx, "##rec", bw, 0)
-    UI.pop_kind(ctx, nc, nv)
-    local x0, y0 = ImGui.GetItemRectMin(ctx)
-    local x1, y1 = ImGui.GetItemRectMax(ctx)
-    UI.draw_rec_icon(ImGui.GetWindowDrawList(ctx), (x0 + x1) / 2, (y0 + y1) / 2, R.rec)
-    if hit then UI.toggle_rec() end
-    UI.tip(ctx, "Record cues (R): while on, the C and S keys and the MIDI cue buttons add cues.\n"
-      .. "Only in the Cue list autoscroll mode. Lock mode blocks it during playback.")
-  end) end
-  -- lock: a square icon button, the same size as the other icon buttons
-  add(bw, function()
-    local nc, nv = UI.push_kind(ctx, R.lock and "primary" or nil)
-    local hit = UI.button(ctx, "##lock", bw, 0)
-    UI.pop_kind(ctx, nc, nv)
-    local x0, y0 = ImGui.GetItemRectMin(ctx)
-    local x1, y1 = ImGui.GetItemRectMax(ctx)
-    UI.draw_lock_icon(ImGui.GetWindowDrawList(ctx), (x0 + x1) / 2, (y0 + y1) / 2, R.lock,
-      R.lock and COL.WHITE or COL.TEXT_MAIN)
-    if hit then UI.toggle_lock() end
-    UI.tip(ctx, "Lock (L): during playback the page ignores the mouse wheel, dragging and the keys.\n"
-      .. "MIDI and autoscroll still work. Click again or press L to unlock.")
-  end)
-  -- hide panel when playing (S.hide_controls_playing, the same as in Settings > Display)
-  add(bw, function()
+  -- hide panel when playing (S.hide_controls_playing, the same as in Settings > Playback)
+  if UI.tb_shown("hide") then add(bw, function()
     local on = S.hide_controls_playing
     local nc, nv = UI.push_kind(ctx, on and "primary" or nil)
     local hit = UI.button(ctx, "##hidectl", bw, 0)
@@ -3813,7 +4111,7 @@ function UI.toolbar_items(ctx)
     if hit then S.hide_controls_playing = not on; Util.mark_dirty() end
     UI.tip(ctx, on and "Hide panel when playing: on. During playback the tabs and the panel are hidden.\nClick to keep them."
       or "Hide panel when playing: off. Click to hide the tabs and the panel during playback.")
-  end)
+  end) end
   -- a narrow window: the grey PDF name gets shorter, and then goes, before anything else wraps
   if name_item then
     local avail = math.max(1, (ImGui.GetContentRegionAvail(ctx)))
@@ -3845,7 +4143,7 @@ function UI.toolbar_menu(ctx, ty)
   local _, my = ImGui.GetMousePos(ctx)
   if ImGui.IsMouseClicked(ctx, 1) and my >= ty and my < by and ImGui.IsWindowHovered(ctx,
       ImGui.HoveredFlags_RootAndChildWindows() | ImGui.HoveredFlags_AllowWhenBlockedByPopup()) then
-    R.menu_req = { kind = "main" }
+    R.menu_req = { kind = "main" }; R.note_click = nil -- (no page point: no "Add note here")
   end
 end
 
@@ -3878,17 +4176,22 @@ function UI.context_menus(ctx)
   local m = R.menu or { kind = "main" }
   if m.kind == "pdf" then UI.pdf_menu(ctx, m.path)
   elseif m.kind == "region" then UI.region_menu(ctx, m.key)
+  elseif m.kind == "note" then UI.note_menu(ctx, m)
+  elseif m.kind == "setlist" then UI.setlist_menu(ctx, m.i)
   elseif m.kind == "cue" then
     R.cue_part_ctx = m.part -- the list of the row (PDF 1 or PDF 2)
     local ok, err = pcall(UI.cue_menu, ctx, m)
     R.cue_part_ctx = nil
     if not ok then error(err, 0) end
   else UI.main_menu(ctx) end
+  -- a menu can end with a submenu, whose label sets the cursor itself: one empty item ends the menu
+  -- cleanly (ImGui stops with an error when the cursor was moved after the last item)
+  ImGui.Dummy(ctx, 0, 0)
   ImGui.PopStyleVar(ctx, 1)
   ImGui.EndPopup(ctx)
 end
 
--- "Pages on screen" (Settings > Display and the menu); the view starts at the top of the page.
+-- "Pages on screen" (Settings > Viewer and the menu); the view starts at the top of the page.
 function UI.set_page_layout(l)
   if l == S.page_layout then return end
   S.page_layout = l; S.scroll_x, S.scroll_y = 0, 0; R.cont_off, R.side_off = nil, nil; Util.mark_dirty()
@@ -3896,12 +4199,12 @@ end
 
 -- Toolbar and page menu.
 function UI.main_menu(ctx)
-  local has_pdf = S.pdf_path ~= "" and R.total > 0
   if UI.menu_item(ctx, "Add PDF...") then PDF.browse_add_pdf(false) end
   if UI.menu_item(ctx, "Add from folder...") then Project.start_folder_pick() end
   if UI.menu_item(ctx, "Sync folders", nil, false, #P.folders == 0 or R.import ~= nil) then Project.sync_folders() end
-  if UI.menu_item(ctx, "Replace PDF...", nil, false, not has_pdf or Util.playing()) then Project.replace_pdf(S.pdf_path) end
   if R.part2 and UI.menu_item(ctx, "Close PDF 2", nil, false, Util.playing()) then UI.close_part2() end
+  menu_sep(ctx)
+  if UI.menu_item(ctx, "Add note here...", nil, false, not R.note_click or not S.show_notes) then Notes.edit(R.note_click.path, nil) end
   menu_sep(ctx)
   if UI.menu_item(ctx, "Hide panel when playing", nil, S.hide_controls_playing) then
     S.hide_controls_playing = not S.hide_controls_playing; Util.mark_dirty()
@@ -3931,6 +4234,14 @@ function UI.main_menu(ctx)
     end
     UI.menu_sub_end(ctx)
   end
+  if UI.menu_sub(ctx, "Page area") then
+    for i, a in ipairs(PAGE_AREAS) do
+      if UI.menu_item(ctx, PAGE_AREA_LABELS[i], nil, S.page_area == a, a ~= "pdf" and not Setlist.cur()) then
+        S.page_area = a; Util.mark_dirty()
+      end
+    end
+    UI.menu_sub_end(ctx)
+  end
   if UI.menu_sub(ctx, "Pages on screen") then
     for i, l in ipairs(PAGE_LAYOUTS) do
       if UI.menu_item(ctx, PAGE_LAYOUT_LABELS[i], nil, S.page_layout == l) then UI.set_page_layout(l) end
@@ -3939,14 +4250,50 @@ function UI.main_menu(ctx)
   end
   if UI.menu_item(ctx, "Match DPI to current view", nil, false, not PDF.can_match_dpi()) then PDF.match_dpi() end
   menu_sep(ctx)
-  if UI.menu_item(ctx, "Settings") then S.tab = TAB_FIRST_SETTING; S.panel_open = true; Util.mark_dirty() end
-  if UI.menu_item(ctx, "Help") then S.tab = TAB_HELP; S.panel_open = true; Util.mark_dirty() end
-  menu_sep(ctx)
   -- like REAPER's own windows: one "Dock ... in Docker" item, ticked while docked
   if UI.menu_item(ctx, "Dock Chart Cue in Docker", nil, R.last_docked) then
     R.dock_req = R.last_docked and 0 or (R.last_dock_id or -1) -- the last docker used, else the first
   end
   if UI.menu_item(ctx, "Close Chart Cue") then R.quit = true end
+end
+
+-- Setlist row menu: this row. Locked (Lock setlist, or playback): only "Go to song" (not with Lock setlist).
+function UI.setlist_menu(ctx, i)
+  local l = Setlist.cur()
+  local it = l and l.items[i]
+  if not it then ImGui.CloseCurrentPopup(ctx); return end
+  local locked = P.setlist_lock or Util.playing()
+  if UI.menu_item(ctx, "Go to song", nil, false, it.kind ~= nil or P.setlist_lock) then Setlist.go(l, i) end
+  menu_sep(ctx)
+  if UI.menu_item(ctx, it.skip and "Play this row" or "Skip this row", nil, false, locked) then
+    Setlist.save_undo(l); it.skip = not it.skip; Util.mark_pdirty()
+  end
+  if UI.menu_item(ctx, "Move to top", nil, false, locked or i == 1) then R.sl_move = { from = i, to = 1 } end
+  if UI.menu_item(ctx, "Move to bottom", nil, false, locked or i == #l.items) then R.sl_move = { from = i, to = #l.items } end
+  menu_sep(ctx)
+  if UI.menu_item(ctx, "Remove from setlist", nil, false, locked) then R.sl_remove = i end
+  -- (the move / remove runs in the Setlist tab, after its rows are drawn)
+  if R.sl_move or R.sl_remove then R.sl_menu_change = { move = R.sl_move, remove = R.sl_remove } end
+end
+
+-- Note menu: the note under the mouse.
+function UI.note_menu(ctx, m)
+  if UI.menu_item(ctx, "Edit note...") then Notes.edit(m.path, m.note) end
+  if UI.menu_item(ctx, "Delete note") then Notes.delete(m.path, m.note) end
+  menu_sep(ctx)
+  local n = m.note
+  if UI.menu_sub(ctx, "Colour") then
+    for i, id in ipairs(NOTE_COLOR_IDS) do
+      if UI.menu_item(ctx, NOTE_COLOR_NAMES[i], nil, n.color == id) then n.color = id; Util.mark_pdirty() end
+    end
+    UI.menu_sub_end(ctx)
+  end
+  if UI.menu_sub(ctx, "Size") then
+    for i, id in ipairs(NOTE_SIZE_IDS) do
+      if UI.menu_item(ctx, NOTE_SIZE_NAMES[i], nil, n.size == id) then n.size = id; Util.mark_pdirty() end
+    end
+    UI.menu_sub_end(ctx)
+  end
 end
 
 -- Library row menu: this PDF.
@@ -4923,7 +5270,7 @@ function UI.draw_region_row(ctx, i, reg)
       if other and not Util.same_path(other, reg.pdf) then Project.set_pdf2(reg, other) else R.add2[reg.key] = true end
     end
     UI.tip(ctx, "Add a 2nd PDF for this song (for example a bass part next to the lyrics).\n"
-      .. "Both are shown together during the song (Settings > Display > Split view).")
+      .. "Both are shown together during the song (Settings > Viewer > Page layout > Split view).")
   end
   if two then UI.draw_pdf2_row(ctx, reg, cx, cw, fh, LBL_W) end
   ImGui.PopID(ctx)
@@ -5222,7 +5569,7 @@ function UI.draw_cue_rows(ctx, reg, list, first, total)
       c.scroll = v; Util.mark_pdirty()
     end)
     UI.tip(ctx, "Scroll position at this cue: 0 = top, 100 = bottom. Empty = no scroll point.\n"
-      .. "Between two scroll points the page moves smoothly, or jumps (Settings > Autoscroll > Scroll).")
+      .. "Between two scroll points the page moves smoothly, or jumps (Settings > Playback > Autoscroll > Scroll).")
     -- use current view | add a scroll point below | remove (not for the Start row)
     ImGui.SameLine(ctx, x0 + VIEW_X)
     if UI.row_icon_button(ctx, "##view", fh, "view") then
@@ -5335,7 +5682,7 @@ function UI.draw_cue_list(ctx)
   local open = UI.heading(ctx, "Cue settings", "A cue list does the same as PDF markers (PDFPAGE / PDFSCROLL), but it is stored in the project "
     .. "data, not as markers. Use it when another program (for example a setlist program) must not see extra markers.\n\n"
     .. "Easiest way: turn on 'Record' (R), play the song and press 'Add page turn' (C key) at each page turn, and 'Add scroll point' "
-    .. "(S key) where the page must move. A MIDI button can do the same (Settings > MIDI).\n\n"
+    .. "(S key) where the page must move. A MIDI button can do the same (Settings > Control).\n\n"
     .. "Each song (region) has its own cues. The times are counted from the region start, so the cues move with the region.\n"
     .. "Beats: a cue stays on its bar and beat when the tempo changes. Seconds: a cue stays at its time.", "project", "cue_settings")
   if open then -- fold block 1: mode note, unit, song menu
@@ -5522,9 +5869,9 @@ function UI.draw_cue_list(ctx)
       .. "and 'Add scroll point' (S) where the page must move.", COL.GREY)
   end
 end
-function UI.draw_autoscroll_tab(ctx)
+function UI.draw_autoscroll_rows(ctx)
   local ch
-  UI.heading(ctx, "Mode", "The autoscroll mode is in the toolbar ('Scroll: ...'). It is saved in this project, "
+  UI.heading(ctx, "Autoscroll", "The autoscroll mode is in the toolbar ('Scroll: ...'). It is saved in this project, "
     .. "like Turn pages and Scroll.\n"
     .. "Default for new projects: saved on this computer (the mode of a project where you have not chosen one).\n\n"
     .. "Turn pages: show the next page a little before its page turn (PDFPAGE marker or page-turn cue), "
@@ -5587,11 +5934,35 @@ function UI.draw_autoscroll_tab(ctx)
   end
 end
 
-function UI.draw_midi_tab(ctx)
+function UI.draw_control_tab(ctx)
   local ch
 
+  -- the action scripts: they work also when the Chart Cue window has no focus, and in lock mode
+  UI.heading(ctx, "Shortcuts and external controls", "Use these for a keyboard key, a USB foot pedal, "
+    .. "a MIDI button, OSC (for example from a phone) or a control surface. "
+    .. "They work also when the Chart Cue window is not active, and in lock mode. "
+    .. "Chart Cue's own keys work only when its window is active.\n\n"
+    .. "Assign... opens REAPER's shortcut window: press the key, or move the control. "
+    .. "An action can have more than one shortcut. REAPER saves them in its own settings.", "computer")
+  for i, a in ipairs(Midi.ACTIONS) do
+    UI.row_start(ctx, a[1])
+    if Midi.action_cmd(i) == 0 then
+      UI.row_text(ctx, "Action script not found", COL.YELLOW)
+      UI.tip(ctx, "'" .. a[2] .. "' is not in the Chart Cue folder. Install Chart Cue again with ReaPack.")
+    else
+      local d = Midi.action_desc(i)
+      UI.row_text(ctx, d ~= "" and d or "(none)", d ~= "" and nil or COL.TEXT_DIM)
+      ImGui.SameLine(ctx, 0, 12)
+      if UI.row_button(ctx, "Assign...##act" .. i, UI.btn_w(ctx, "Assign...", CFG.SMALL_BTN_W), "ghost") then
+        Midi.assign_action(i)
+      end
+      UI.tip(ctx, "Add a shortcut to the action 'Chart Cue - " .. a[2]:match("^Chart Cue %- (.*)%.lua$")
+        .. "': press a key, or move a MIDI or OSC control.")
+    end
+  end
+
   -- the input switch first: most options below need it
-  UI.heading(ctx, "Input", "MIDI control is optional. Ignore this section if you do not use a controller.\n\n"
+  UI.heading(ctx, "MIDI input", "MIDI control is optional. Ignore this section if you do not use a controller.\n\n"
     .. "'Read MIDI directly' uses the CC numbers below. "
     .. "Leave it off if the script is bound to a CC in the Action List.\n\n"
     .. "Turn pages and add cues with buttons on your controller (direct input only). "
@@ -5630,7 +6001,7 @@ function UI.draw_midi_tab(ctx)
   end
 
   UI.group_sep(ctx)
-  UI.heading(ctx, "Scroll", "Absolute: a knob/fader position (0-127) sets the scroll position.\n"
+  UI.heading(ctx, "MIDI scroll", "Absolute: a knob/fader position (0-127) sets the scroll position.\n"
     .. "Relative: an endless encoder moves the page up or down. Pick the encoding your controller sends.", "computer")
   UI.field(ctx, "Knob type")
   local mi = (S.mode == "absolute") and 0 or 1
@@ -5663,7 +6034,7 @@ end
 function UI.draw_midi_debug(ctx)
   local ch
   UI.group_sep(ctx)
-  UI.heading(ctx, "Troubleshooting", nil, "computer")
+  UI.heading(ctx, "MIDI troubleshooting", nil, "computer")
   ch, S.show_midi_debug = UI.checkbox(ctx, "Show MIDI debug", S.show_midi_debug)
   if ch then Util.mark_dirty() end
   UI.tip(ctx, "Shows the last CC number and value that Chart Cue received. Use it to find the CC number of your knob.")
@@ -5698,7 +6069,7 @@ function UI.draw_poppler_settings(ctx)
   else UI.note(ctx, "OK - pdftoppm.exe and pdfinfo.exe found.", COL.GREEN) end
 end
 
--- "Match DPI to current view" (Settings > Display and the toolbar menu): the DPI that fits the zoom.
+-- "Match DPI to current view" (Settings > Appearance and the toolbar menu): the DPI that fits the zoom.
 -- Only possible while a page is shown (R.last_ratio) and below the largest page size (R.scale_to).
 function PDF.can_match_dpi() return R.last_ratio ~= nil and not R.scale_to end
 function PDF.match_dpi()
@@ -5725,7 +6096,7 @@ function UI.reset_all_settings()
   Msg.notify("All settings were reset to the defaults.", false, "general")
 end
 
--- Split view rows (Display > Page layout): 2 PDFs on screen when a song has 2 (PDF 1 + PDF 2),
+-- Split view rows (Viewer > Page layout): 2 PDFs on screen when a song has 2 (PDF 1 + PDF 2),
 -- for example lyrics and a bass part.
 function UI.draw_split_rows(ctx)
   local ch
@@ -5749,9 +6120,21 @@ function UI.draw_split_rows(ctx)
   end
 end
 
--- Display: sorted by what you do (PDF viewer on stage, Page quality with the cache, Window).
-function UI.draw_display_tab(ctx)
+-- Viewer: what you see on the page (page area, layout, brightness, notes).
+function UI.draw_viewer_tab(ctx)
   local ch
+  UI.heading(ctx, "Page area", "What the page area shows.\n\nPDF: the charts.\nSetlist: the setlist of the Setlist tab "
+    .. "in large text, with the current song marked (for shows without charts).\nSetlist and PDF: the setlist on top, "
+    .. "the PDF below; drag the line between them, double-click it for half and half.\n\n"
+    .. "Also in the right-click menu. Saved on this computer.", "computer")
+  UI.field(ctx, "Page area")
+  local ai = PAGE_AREA_INDEX[S.page_area] or 0
+  ch, ai = ImGui.Combo(ctx, "##pagearea", ai, PAGE_AREA_ITEMS)
+  if ch then S.page_area = PAGE_AREAS[ai + 1]; Util.mark_dirty() end
+  if S.page_area ~= "pdf" and not Setlist.cur() then
+    UI.note(ctx, "There is no setlist in this project yet (Setlist tab): the PDF is shown.", COL.YELLOW)
+  end
+  UI.group_sep(ctx)
   UI.heading(ctx, "Page layout", "What you see in the page area.\n\n"
     .. "Pages on screen: 1 page, 2 pages side by side (they zoom and scroll together), or continuous "
     .. "(the pages are one long strip: scroll through the whole PDF without jumps).\n"
@@ -5788,20 +6171,118 @@ function UI.draw_display_tab(ctx)
     .. "1 page and continuous: from below. Side by side (by 1 page): from the right. By 2 pages: always a jump.")
   UI.draw_split_rows(ctx)
 
+
   UI.group_sep(ctx)
-  UI.heading(ctx, "PDF viewer", "How the page looks during playback.\n\n"
-    .. "Page brightness: lower than 100% makes the white paper darker for dark stages. The page is not prepared again.\n\n"
-    .. "Page-turn flash: a short blue frame around the page when it turns during playback.", "computer")
+  UI.heading(ctx, "Brightness", "Page brightness: lower than 100% makes the white paper darker for dark stages. "
+    .. "The page is not prepared again. The sun button in the toolbar changes it too (25, 50, 75, 100%).", "computer")
   -- one slider: 100% = not dimmed (S.dim_page stays in settings.ini, set from the slider)
   UI.field(ctx, "Page brightness")
   local pct = S.dim_page and math.floor(S.dim_level * 100 + 0.5) or 100
   ch, pct = ImGui.SliderInt(ctx, "##dimlevel", pct, 25, 100, "%d%%")
   if ch then S.dim_page = pct < 100; S.dim_level = pct / 100; Util.mark_dirty() end
   UI.tip(ctx, "Lower than 100% makes the white paper darker for dark stages.")
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Notes", "Short texts on the pages, for example 'repeat x2'. Right-click the page and choose "
+    .. "'Add note here...'. Drag a note to move it; double-click or right-click it to edit or delete it. "
+    .. "Right-click a note to change its colour or size.\n\n"
+    .. "The notes (with their colour and size) are saved in the project. Show notes and the look of new notes "
+    .. "are saved on this computer.", "computer")
+  ch, S.show_notes = UI.checkbox(ctx, "Show notes", S.show_notes)
+  if ch then Util.mark_dirty() end
+  UI.tip(ctx, "Off: the notes are hidden, but they stay in the project.")
+  ImGui.BeginDisabled(ctx, not S.show_notes)
+  local function pick(label, id, ids, items, key)
+    local cur = 0
+    for i, v in ipairs(ids) do if v == S[key] then cur = i - 1 end end
+    UI.field(ctx, label)
+    local c, ni = ImGui.Combo(ctx, id, cur, items)
+    if c then S[key] = ids[ni + 1]; Util.mark_dirty() end
+  end
+  pick("New note size", "##notesize", NOTE_SIZE_IDS, NOTE_SIZE_ITEMS, "note_size")
+  UI.tip(ctx, "The size of new notes. To change a note, right-click it > Size.")
+  pick("New note colour", "##notecolor", NOTE_COLOR_IDS, NOTE_COLOR_ITEMS, "note_color")
+  UI.tip(ctx, "The colour of new notes. To change a note, right-click it > Colour.")
+  ImGui.EndDisabled(ctx)
+
+end
+
+-- Playback: what Chart Cue does while REAPER plays (autoscroll, page-turn signals, the panel).
+function UI.draw_playback_tab(ctx)
+  local ch
+  UI.draw_autoscroll_rows(ctx)
+
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Page-turn signals", "Page-turn flash: a short blue frame around the page when it turns during playback.\n\n"
+    .. "Page-turn countdown: a thin line at the bottom fills up just before an automatic page turn.", "computer")
   ch, S.turn_flash = UI.checkbox(ctx, "Page-turn flash", S.turn_flash)
   if ch then Util.mark_dirty() end
   UI.tip(ctx, "A short blue frame around the page when it turns during playback.")
+  ch, S.turn_warn = UI.checkbox(ctx, "Page-turn countdown", S.turn_warn)
+  if ch then Util.mark_dirty() end
+  UI.tip(ctx, "A thin line at the bottom of the page fills up before an automatic page turn (markers or cue list).")
+  ImGui.BeginDisabled(ctx, not S.turn_warn)
+  UI.field(ctx, "Countdown length")
+  local wi
+  ch, wi = ImGui.Combo(ctx, "##warnsec", S.warn_sec - 1, WARN_SEC_ITEMS)
+  if ch then S.warn_sec = wi + 1; Util.mark_dirty() end
+  ImGui.EndDisabled(ctx)
+  UI.tip(ctx, "How long before the page turn the line starts to fill up.")
 
+
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Setlist", "Show next song: with 'Play in setlist order' (Setlist tab), a label at the bottom "
+    .. "right of the page shows the next song near the end of a song, and the time left during a pause.", "computer")
+  ch, S.sl_next_label = UI.checkbox(ctx, "Show next song", S.sl_next_label)
+  if ch then Util.mark_dirty() end
+  UI.tip(ctx, "A 'Next: ...' label on the page near the end of a song and during pauses.")
+  ImGui.BeginDisabled(ctx, not S.sl_next_label)
+  UI.field(ctx, "Show it")
+  local ni = 0
+  for i, v in ipairs(SL_NEXT_SECS) do if v == S.sl_next_sec then ni = i - 1 end end
+  ch, ni = ImGui.Combo(ctx, "##slnextsec", ni, SL_NEXT_ITEMS)
+  if ch then S.sl_next_sec = SL_NEXT_SECS[ni + 1]; Util.mark_dirty() end
+  ImGui.EndDisabled(ctx)
+  UI.tip(ctx, "When the label shows during a song. During a pause it always shows.")
+
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Panel", "Hide panel when playing: during playback the tabs and the panel are hidden; only the toolbar and the page show. "
+    .. "The status bar shows only when there is an error.", "computer")
+  ch, S.hide_controls_playing = UI.checkbox(ctx, "Hide panel when playing", S.hide_controls_playing)
+  if ch then Util.mark_dirty() end
+  UI.tip(ctx, "While REAPER plays, only a small toolbar shows, so the music gets more space.\n"
+    .. "The status bar shows only when there is an error.")
+end
+
+-- Appearance: how the Chart Cue window looks (tabs, toolbar, spacing) and the page quality.
+function UI.draw_appearance_tab(ctx)
+  local ch
+  UI.heading(ctx, "Tabs", "The tabs to show above the panel. Settings and Help always show.\n\n"
+    .. "A hidden tab keeps its data: the library, regions, cues and setlists still work.", "computer")
+  for i, id in ipairs(TAB_IDS) do
+    local on = UI.tab_shown(i)
+    ch, on = UI.checkbox(ctx, TAB_NAMES[i], on)
+    if ch then
+      local s = S.tab_hide:gsub("," .. id .. ",", ",")
+      if not on then s = s .. id .. "," end
+      S.tab_hide = s; Util.mark_dirty()
+    end
+  end
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Toolbar", "The items to show in the toolbar. The page buttons always show.\n\n"
+    .. "A hidden item still works from its key or the right-click menu (lock: L, record cues: R), "
+    .. "and the autoscroll mode is also in Settings > Playback.", "computer")
+  for _, it in ipairs(TB_ITEMS) do
+    local on = UI.tb_shown(it[1])
+    ch, on = UI.checkbox(ctx, it[2], on)
+    if ch then UI.set_tb_shown(it[1], on) end
+  end
+
+
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Layout", "Comfortable layout: more empty space between rows and sections. Buttons, fields and tabs keep their size.", "computer")
+  ch, S.comfortable = UI.checkbox(ctx, "Comfortable layout", S.comfortable)
+  if ch then Util.mark_dirty() end
+  UI.tip(ctx, "More empty space between rows and sections. Buttons, fields and tabs keep their size.")
   UI.group_sep(ctx)
   UI.heading(ctx, "Page quality", "Page sharpness (DPI) sets how sharp the page images are. Higher = sharper, but slower and more disk space.\n\n"
     .. "'Match DPI to current view' sets the DPI for the current zoom.\n\n"
@@ -5895,19 +6376,21 @@ function UI.draw_display_tab(ctx)
     end
   end
   UI.draw_ask(ctx, "cache_clear")
+  do
+    local _, cw = UI.row_start(ctx, "Cache limit")
+    if UI.combo(ctx, "##cachelimit", UI.cache_limit_label(S.cache_limit_mb), math.min(cw, 140)) then
+      for _, mb in ipairs(CFG.CACHE_LIMITS) do
+        if ImGui.Selectable(ctx, UI.cache_limit_label(mb), mb == S.cache_limit_mb) and mb ~= S.cache_limit_mb then
+          S.cache_limit_mb = mb; Util.mark_dirty(); R.limit_due, R.limit_t = true, nil
+        end
+      end
+      ImGui.EndCombo(ctx)
+    end
+    UI.tip(ctx, "When the page cache is larger than this, Chart Cue removes the pages of the PDFs that you opened "
+      .. "longest ago. The PDFs on screen are kept. Removed pages are prepared again when needed.")
+  end
   -- (the messages of this section show in the "Page quality" title line, see above)
 
-  UI.group_sep(ctx)
-  UI.heading(ctx, "Window", "Hide panel when playing: during playback the tabs and the panel are hidden; only the toolbar and the page show. "
-    .. "The status bar shows only when there is an error.\n\n"
-    .. "Comfortable layout: more empty space between rows and sections. Buttons, fields and tabs keep their size.", "computer")
-  ch, S.hide_controls_playing = UI.checkbox(ctx, "Hide panel when playing", S.hide_controls_playing)
-  if ch then Util.mark_dirty() end
-  UI.tip(ctx, "While REAPER plays, only a small toolbar shows, so the music gets more space.\n"
-    .. "The status bar shows only when there is an error.")
-  ch, S.comfortable = UI.checkbox(ctx, "Comfortable layout", S.comfortable)
-  if ch then Util.mark_dirty() end
-  UI.tip(ctx, "More empty space between rows and sections. Buttons, fields and tabs keep their size.")
 end
 
 -- Troubleshooting for all of Chart Cue (end of Settings > General).
@@ -5932,7 +6415,7 @@ function UI.draw_general_troubleshooting(ctx)
   UI.tip(ctx, "Moves the window back to its default size and place, and undocks it.")
   if UI.danger_button(ctx, "Reset all settings...") then
     UI.ask("reset_all", "Reset all Chart Cue settings on this computer to the defaults? This resets the PDF engine, "
-      .. "page sharpness, window, MIDI and autoscroll settings. Your projects (library, regions, cues) are not changed.",
+      .. "page sharpness, cache limit, window, tabs, toolbar, notes look, page area, MIDI, autoscroll and setlist settings. Your projects (library, regions, cues) are not changed.",
       "Yes, reset", UI.reset_all_settings)
   end
   UI.draw_ask(ctx, "reset_all")
@@ -5961,7 +6444,7 @@ function UI.path_row(ctx, label, path, empty, empty_tip)
   if hit and has then Util.show_in_explorer(path) end
 end
 
-function UI.draw_project_tab(ctx)
+function UI.draw_general_tab(ctx)
   local ch
   UI.heading(ctx, "Current project", "The REAPER project file that holds the Chart Cue data of this project.", "project")
   UI.path_row(ctx, "Project file", R.projfn, "(not saved yet)",
@@ -6006,7 +6489,7 @@ Chart Cue shows your sheet music or chord charts (PDF files) inside REAPER. It c
 4. Optional: in REAPER, make a region with the same name as the PDF. For example, a region named "Song One" for the file "Song One.pdf". Chart Cue then opens that PDF by itself when the song plays.
 5. Optional: choose an autoscroll mode in the toolbar ("Scroll: Off"), so the page moves by itself while REAPER plays.
 
-Click a tab to open it. Click the same tab again to hide it and get more space for the music. The Settings tab (the gear icon) has 4 sections: Autoscroll, MIDI, Display, and General. Click a section name to open or close it. Only one section is open at a time. The first section of the Library, Regions and Cues tabs can also be closed with the arrow before its name.]==],
+Click a tab to open it. Click the same tab again to hide it and get more space for the music. The Setlist tab puts the songs in the order of your show. The Settings tab (the gear icon) has 5 sections: Viewer, Playback, Control, Appearance and General. Click a section name to open or close it. Only one section is open at a time. The first section of the Library, Regions, Cues and Setlist tabs can also be closed with the arrow before its name. Settings > Appearance > Tabs hides the tabs that you do not use.]==],
     more = [==[
 - You can dock the Chart Cue window like any other REAPER window. Chart Cue remembers where it was.
 - The first time a PDF opens, Chart Cue prepares the pages in the background ("Loading PDF" and "Preparing page"). After that, the PDF opens at once.
@@ -6022,7 +6505,7 @@ The Library is the list of PDFs in this project.
 - Click a PDF in the list to show it. "Show in Explorer" opens its folder. The red X takes it off the list (it asks first); the file itself is not deleted.
 - The blue row is the PDF that is on the screen now.
 - A red name means that the file cannot be found. Click "Relocate..." and pick the file again.
-- Right-click a PDF for: Open, Show as PDF 2, Replace PDF..., Show in Explorer and Remove from library.... "Show as PDF 2" shows that PDF next to the one on screen (for example lyrics and a bass part): the page area splits in 2 (Settings > Display > Page layout > Split view). Click a part to make it the active part (blue frame): the keys, the toolbar, the mouse wheel, MIDI and the actions act on it. Drag the line between the 2 parts to change their sizes; double-click it for the same size. Right-click > Close PDF 2 returns to 1 PDF. A PDF 2 shown this way is not saved, and markers move only PDF 1. "Replace PDF..." swaps the file (for example a new version of the chart) and keeps the region choices, the zoom and the cues. If the new file has fewer pages, a message tells you how many cues use a missing page.
+- Right-click a PDF for: Open, Show as PDF 2, Replace PDF..., Show in Explorer and Remove from library.... "Show as PDF 2" shows that PDF next to the one on screen (for example lyrics and a bass part): the page area splits in 2 (Settings > Viewer > Page layout > Split view). Click a part to make it the active part (blue frame): the keys, the toolbar, the mouse wheel, MIDI and the actions act on it. Drag the line between the 2 parts to change their sizes; double-click it for the same size. Right-click > Close PDF 2 returns to 1 PDF. A PDF 2 shown this way is not saved, and markers move only PDF 1. "Replace PDF..." swaps the file (for example a new version of the chart) and keeps the region choices, the zoom and the cues. If the new file has fewer pages, a message tells you how many cues use a missing page.
 - Use the search box and the sort menu above the list to find a PDF quickly.]==],
     more = [==[
 - "Include subfolders" makes "Add from folder" also look in all folders inside the chosen folder.
@@ -6046,7 +6529,7 @@ If your project contains several songs, each song can have its own PDF. Mark eac
 - When the play cursor enters a region without a PDF, the page area shows buttons: add a PDF, choose a PDF from the list, or ignore the region.
 - "Keep last page" (Regions tab, on by default): when a song has no PDF, during playback the last page stays on screen with a yellow note at the top. The buttons show when playback stops.
 - "Switch PDF at regions" turns this whole function on or off.
-- 2 PDFs for one song (for example lyrics and a bass part): click [+] after the region's PDF to add a "PDF 2" row, and choose the 2nd PDF there; the x removes it. When exactly 2 PDFs match a song, both are used automatically (PDF 1 = first by name; "Pair 2 matching PDFs" in Region settings turns this off); not when one of them has exactly the song's name: that one is the main chart, and [+] adds the other with one click. If you choose one of the 2 as PDF 1, the other one becomes PDF 2. Right-click the region for "Swap PDF 1 and PDF 2" and "Remove PDF 2". During the song both are shown together (Settings > Display > Split view); while REAPER is stopped, each part shows a "PDF 1" or "PDF 2" tag.]==],
+- 2 PDFs for one song (for example lyrics and a bass part): click [+] after the region's PDF to add a "PDF 2" row, and choose the 2nd PDF there; the x removes it. When exactly 2 PDFs match a song, both are used automatically (PDF 1 = first by name; "Pair 2 matching PDFs" in Region settings turns this off); not when one of them has exactly the song's name: that one is the main chart, and [+] adds the other with one click. If you choose one of the 2 as PDF 1, the other one becomes PDF 2. Right-click the region for "Swap PDF 1 and PDF 2" and "Remove PDF 2". During the song both are shown together (Settings > Viewer > Page layout > Split view); while REAPER is stopped, each part shows a "PDF 1" or "PDF 2" tag.]==],
     more = [==[
 - Joined words are split: "songA" matches "Song A - Bass.pdf".
 - Matching example: region "Song One" matches "song one.pdf", "Song_One.pdf", "song-one.PDF", "SongOne.pdf", "01 Song One.pdf", "Song One (Bb).pdf", "Song One v2.pdf" and "Song One - Bass.pdf".
@@ -6059,7 +6542,7 @@ If your project contains several songs, each song can have its own PDF. Mark eac
 - Regions and markers are read again automatically after each change in the project. "Rescan project" (Settings > General > Troubleshooting) does it by hand.]==] },
 
   { title = "Autoscroll: the page moves by itself", text = [==[
-Autoscroll moves the page while REAPER plays. Choose the mode in the toolbar ("Scroll: ..."). Settings > Autoscroll has the options of each mode. Each project saves its own mode. During playback the mode is locked, so the page cannot jump; stop playback to change it.
+Autoscroll moves the page while REAPER plays. Choose the mode in the toolbar ("Scroll: ..."). Settings > Playback has the options of each mode. Each project saves its own mode. During playback the mode is locked, so the page cannot jump; stop playback to change it.
 
 - Off: the page moves only when you scroll it.
 - Markers: you put markers in your REAPER project that tell Chart Cue what to show.
@@ -6067,7 +6550,7 @@ Autoscroll moves the page while REAPER plays. Choose the mode in the toolbar ("S
 
 Marker names for the "Markers" mode:
 - PDFPAGE 2 means: from here, show page 2.
-- PDFSCROLL 50 means: here, show the middle of the page. 0 is the top, 100 is the bottom. Between two PDFSCROLL markers, the page moves smoothly, or jumps (Settings > Autoscroll > Scroll).
+- PDFSCROLL 50 means: here, show the middle of the page. 0 is the top, 100 is the bottom. Between two PDFSCROLL markers, the page moves smoothly, or jumps (Settings > Playback > Autoscroll > Scroll).
 
 How to make a cue list (Cues tab):
 1. Choose "Cue list" as the autoscroll mode, or click "Use Cue list mode" in the Cues tab.
@@ -6084,13 +6567,13 @@ If you scroll by hand during playback, autoscroll waits a moment and then contin
 - Example for a 2-page song: PDFPAGE 1 at the start, PDFSCROLL 0 at bar 1, PDFSCROLL 100 at bar 16, PDFPAGE 2 at bar 17, PDFSCROLL 0 at bar 17, PDFSCROLL 100 at bar 32.
 - Marker names are not case-sensitive ("pdfpage 2" works). Markers with a wrong number are ignored and listed as a warning.
 - A PDFPAGE marker always starts the page at the top. If a PDFSCROLL marker is at exactly the same time, the PDFSCROLL marker wins.
-- "Turn pages" (Settings > Autoscroll): "One beat early" shows the next page one beat before its PDFPAGE marker or page-turn cue, so you can read ahead. It is saved in the project.
+- "Turn pages" (Settings > Playback > Autoscroll): "One beat early" shows the next page one beat before its PDFPAGE marker or page-turn cue, so you can read ahead. It is saved in the project.
 - The smooth movement never continues past a PDFPAGE marker.
 - With regions, the markers inside a region control the PDF of that region. They work from the region start to the region end.
 - Manual scrolling (wheel, drag, MIDI) pauses autoscroll for 1.5 seconds.
 - Cue list: each song (region) has its own cues, counted from the region start. If you move a region, its cues move with it. Without regions, the cues count from the project start ("whole project").
 - Cue list: "Count time in" is chosen per project. Beats: a cue stays on its bar and beat when the tempo changes. Seconds: a cue stays at the same time. Switching keeps every cue at its current place.
-- Cue list: a cue has a page, a scroll position, or both. Between two scroll points the page moves smoothly, or jumps (Settings > Autoscroll > Scroll). A new cue at the same place replaces the old one.
+- Cue list: a cue has a page, a scroll position, or both. Between two scroll points the page moves smoothly, or jumps (Settings > Playback > Autoscroll > Scroll). A new cue at the same place replaces the old one.
 - Cue list: the first row ("Start") shows that each song starts on page 1 at the top. Change it, and it becomes a cue.
 - Cue list: click a row to move the edit cursor to its cue. The page icon gives the cue the page and scroll position shown now. The + adds a scroll point halfway to the next cue. Right-click a row for: Go to cue, Use current view, Add scroll point below and Remove cue.
 - "Add page turn" uses the page after the cue before it (the first page turn gives page 2), at the top of the page. If you add a page turn between existing cues, the following page numbers go up by one.
@@ -6103,10 +6586,41 @@ If you scroll by hand during playback, autoscroll waits a moment and then contin
 - "Remove PDF markers..." then removes them (for this song, or for all songs with "(all songs)" in the Song menu). Only PDF markers are removed; regions and other markers are not changed. It is one undo step, so Edit > Undo (Ctrl+Z) brings them back.
 - The cue list is saved in the project, like the library. Save the project after changes.]==] },
 
+  { title = "Setlist", text = [==[
+The Setlist tab puts the songs (regions) in the order of your show. The timeline does not change.
+
+1. Open the Setlist tab and click "Make a setlist": it starts with all regions in timeline order.
+2. Drag the rows, or use the arrows, to change the order. "Add song" adds a region at the end, and "Add pause" a pause; a region can be in the list more than once (for example an interlude).
+3. For each song, choose what happens at its end: Stop (REAPER stops and the edit cursor goes to the next song; press Play to go on) or Continue (the next song plays at once).
+4. Tick "Play in setlist order".
+
+- The tick box of a row: play or skip the song. A skipped song stays in the list.
+- The X removes the song from this setlist. The region stays in the project.
+- Click a song to go to it (also during playback).
+- During playback the order is locked, so it cannot change by mistake. "Lock setlist" locks everything in the Setlist tab (greyed out), and a click on a song then does not go to it; the play buttons above the list still work.
+- Stop (the square button) stops and goes back to the start of the song.
+- Page area (Settings > Viewer, or right-click > Page area): PDF (the charts), Setlist (the setlist in large text, with the current song marked, for shows without charts) or Setlist and PDF (the setlist on top, the PDF below; drag the line between them, double-click it for half and half). With Setlist, the toolbar has only the play buttons; with Setlist and PDF, the play buttons come first.
+- Undo: Ctrl+Z in the Setlist tab, or the arrow at the right of the play buttons, takes back the last change of the list.
+- Right-click a row: Go to song, Skip / Play this row, Move to top, Move to bottom, Remove from setlist.
+- The status bar shows the setlist in use while Play in setlist order is on.
+- The time left in the heading counts down during the song.
+- "More..." has: New setlist, Duplicate, Rename, Reset to timeline order and Delete setlist. Each project can have several setlists, for example "Friday" and "Festival short".
+- Add pause: a pause (10 seconds at first; change it in its row) stops REAPER at the end of the song before it, then plays the next song after its seconds. A pause after a song always stops, also with Continue.
+- The buttons above the list: previous song, play / pause, stop, next song.
+- The "Chart Cue - Next song" action, for a foot pedal or a key (Settings > Control > Shortcuts and external controls): after a Stop or during a pause it plays the next song; during a song it goes to the next song at once.
+- The heading shows the length of the set, and the time left from the current song.
+- "Show next song" (Settings > Playback > Setlist): a "Next: ..." label at the bottom right of the page near the end of a song (the last 5 to 30 seconds, or always) and while REAPER waits at the next song.
+- The page-turn countdown also runs to the end of a song when the next song follows at once (Continue).]==],
+    more = [==[
+- Continue: when the next song starts where the last one ends on the timeline, REAPER just plays on, without a gap. Another song is reached with a jump, which can come up to about 1/30 of a second late: a very short gap. Put songs that must flow into each other directly after each other on the timeline.
+- A click on the timeline during playback: the setlist follows you to that song.
+- A row whose region was deleted shows "(missing)" in yellow. It is passed during playback.
+- The setlists are saved in the project.]==] },
+
   { title = "MIDI controller", text = [==[
 You can scroll the page with a knob, fader or endless encoder on a MIDI controller. This is optional.
 
-1. Open Settings > MIDI.
+1. Open Settings > Control.
 2. Tick "Read MIDI directly".
 3. Set "Knob type" and the CC number that your knob sends.
 
@@ -6119,18 +6633,34 @@ You can scroll the page with a knob, fader or endless encoder on a MIDI controll
 - Another way: bind the Chart Cue action to a knob in REAPER's Action List (Add shortcut, then move the knob). When REAPER asks about the running script, choose "New instance" and "Remember my answer". The new instance only sends the value to the open Chart Cue.
 - With an Action List binding, do NOT tick "Read MIDI directly".
 - "Scroll speed" sets how far the page moves for each step of a relative encoder.
-- "Show MIDI debug" (Troubleshooting, at the end of Settings > MIDI) shows the last CC number and value that Chart Cue received. Use it to find the CC number of your knob.
+- "Show MIDI debug" (Troubleshooting, at the end of Settings > Control) shows the last CC number and value that Chart Cue received. Use it to find the CC number of your knob.
 - Page turning works with direct MIDI input. A value of 64 or more counts as a button press.]==] },
 
-  { title = "Display", text = [==[
-- Page brightness (PDF viewer): lower than 100% makes the white paper darker for dark stages. 100% = not dimmed.
-- Page-turn flash (PDF viewer): a short blue frame when the page turns during playback.
-- Pages on screen (PDF viewer, or right-click > Pages on screen): 1 page; 2 pages side by side, which zoom and scroll together (the toolbar shows "3-4 / 12"); or continuous: the pages are one long strip, and you scroll through the whole PDF without jumps (the toolbar shows the page at the top). Page turn, side by side: by 1 page (1-2, then 2-3), so the next page is always visible, or by 2 pages like a book (1-2, then 3-4); a page turn to page 4 then shows pages 3-4, and a page turn to a page that is already on screen does nothing. Page turn motion (every layout): Smooth slides the next page in (from below, or from the right side by side), Jump shows it at once; turning by 2 pages always jumps. Cues and markers do not change.
+  { title = "Settings", text = [==[
+Settings has 5 sections: Viewer (what you see on the page), Playback (what happens while REAPER plays), Control (keys, pedals, MIDI), Appearance (the window and the page quality) and General.
+
+Viewer:
+- Page area (or right-click > Page area): PDF, Setlist (the setlist in large text, for shows without charts) or Setlist and PDF (the setlist on top, the PDF below).
+- Pages on screen (or right-click > Pages on screen): 1 page; 2 pages side by side, which zoom and scroll together (the toolbar shows "3-4 / 12"); or continuous: the pages are one long strip, and you scroll through the whole PDF without jumps (the toolbar shows the page at the top). Page turn, side by side: by 1 page (1-2, then 2-3), so the next page is always visible, or by 2 pages like a book (1-2, then 3-4); a page turn to page 4 then shows pages 3-4, and a page turn to a page that is already on screen does nothing. Page turn motion (every layout): Smooth slides the next page in (from below, or from the right side by side), Jump shows it at once; turning by 2 pages always jumps. Cues and markers do not change.
+- Page brightness: lower than 100% makes the white paper darker for dark stages. 100% = not dimmed. The sun button in the toolbar goes 25, 50, 75, 100% and back to 25%; its sun is fuller when the page is brighter.
+- Notes: right-click the page and choose "Add note here..." to put a short text on the page, for example "repeat x2". Drag a note to move it. Double-click it, or right-click it, to edit or delete it. Right-click a note to change its colour or size. The notes are saved in the project, with the PDF and the page; the PDF file does not change. Viewer > Notes: show or hide them, and the size and colour of new notes.
+
+Playback:
+- Page-turn flash: a short blue frame when the page turns during playback.
+- Page-turn countdown: a thin line at the bottom of the page fills up before an automatic page turn (markers or cue list). "Countdown length" sets when it starts: 1 to 4 seconds before the turn.
+- Setlist: "Show next song" shows "Next: ..." on the page near the end of a song (Setlist tab, Play in setlist order).
+- Hide panel when playing (or the button at the right of the toolbar): while REAPER plays, the tabs and the panel are hidden and only the toolbar and the page show, so the music gets more space. If there is an error, one red line is shown.
+
+Control:
+- Shortcuts and external controls: give the actions (next / previous page, performance mode, next song) a key, a foot pedal, MIDI or OSC. MIDI input, MIDI scroll and MIDI troubleshooting: see Help > MIDI controller.
+
+Appearance:
+- Tabs: hide the tabs that you do not use. Settings and Help always show.
+- Toolbar: choose which items the toolbar shows. The page buttons always show.
+- Comfortable layout: more empty space between rows and sections; buttons, fields and tabs keep their size.
 - Page sharpness (DPI): a higher number gives sharper pages, but the first preparation takes longer. "Page quality" tells you if the page looks sharp.
 - PDF engine: "Windows (built in)" needs no extra software. "Poppler" is an optional alternative.
-- Hide panel when playing (Window, or the button at the right of the toolbar): while REAPER plays, the tabs and the panel are hidden and only the toolbar and the page show, so the music gets more space. If there is an error, one red line is shown.
-- Comfortable layout (Window): more empty space between rows and sections; buttons, fields and tabs keep their size.
-- Page cache (Page quality): Chart Cue keeps the pages on your disk, so PDFs open fast. Its size is shown next to "Clear...", which clears it at any time. It is filled again when needed.]==],
+- Page cache: Chart Cue keeps the pages on your disk, so PDFs open fast. Its size is shown next to "Clear...", which clears it at any time. It is filled again when needed. Cache limit (default 1 GB): when the cache is larger, the pages of the PDFs that you opened longest ago are removed. The PDFs on screen are kept.]==],
     more = [==[
 - "Match DPI to current view" sets the DPI that fits your current zoom.
 - Chart Cue prepares all pages of a PDF in the background. The pages near the current page come first.
@@ -6150,8 +6680,8 @@ The round "?" next to a heading tells you where its settings are saved: in this 
 - "Open automatically": Chart Cue opens by itself when you open a project that uses it. Restart REAPER one time after you turn this on.
 - "Close with project": Chart Cue closes together with its project.]==],
     more = [==[
-- Saved in the project (.rpp): the library, region choices, ignored regions, "Switch PDF at regions", the autoscroll mode and the PDF on screen.
-- Saved for your computer (Data\Chart Cue\settings.ini in the REAPER resource folder): the PDF engine, DPI, window and dock place, MIDI settings and the default autoscroll mode (used by projects that have no mode yet).
+- Saved in the project (.rpp): the library, region choices, ignored regions, "Switch PDF at regions", the autoscroll mode, the PDF on screen, the cue lists, the notes (with their colour and size), the setlists, "Play in setlist order" and "Lock setlist".
+- Saved for your computer (Data\Chart Cue\settings.ini in the REAPER resource folder): the PDF engine, DPI, page cache limit, window and dock place, MIDI settings, the default autoscroll mode (used by projects that have no mode yet), the page area, the look of new notes, the toolbar items, the tabs and the other settings.
 - Automatic open adds 3 marked lines at the end of REAPER's Scripts\__startup.lua. A backup is saved first (__startup.lua.chartcue-backup). Turning the option off removes only these 3 lines.
 - Chart Cue closes when you close the project tab, or when File > Close project, New project or Open project replaces the project in the same tab. Switching tabs and "Save as" keep it open.]==] },
 
@@ -6167,15 +6697,16 @@ The round "?" next to a heading tells you where its settings are saved: in this 
 - Ctrl and +: zoom in. Ctrl and -: zoom out. Ctrl and 0: fit the page width.
 - Ctrl and Z: undo the last cue change; Ctrl, Shift and Z: redo it (while the Cues tab is open).
 - Mouse wheel: scroll the page. Ctrl and mouse wheel: zoom.
-- Right-click the toolbar or the page for a menu with the most used options: Add PDF, Replace PDF (the PDF on screen), hide the panel when playing, show the panel, lock, performance mode, the autoscroll mode, Record cues, Copy markers into cues (all songs), page brightness, Match DPI, Settings, Help, Dock Chart Cue in Docker (ticked while docked) and Close Chart Cue. Grey items are not available now. In lock mode during playback, a right-click on the page does nothing.
-- Right-click a row in the Library, Regions or Cues list for the options of that PDF, region or cue.
+- Right-click the toolbar or the page for a menu with the most used options: Add PDF, Add note here (on the page), hide the panel when playing, show the panel, lock, performance mode, the autoscroll mode, Record cues, Copy markers into cues (all songs), page brightness, page area, pages on screen, Match DPI, Dock Chart Cue in Docker (ticked while docked) and Close Chart Cue. Grey items are not available now. In lock mode during playback, a right-click on the page does nothing.
+- Right-click a row in the Library, Regions, Cues or Setlist list for the options of that PDF, region, cue or song.
+- Ctrl and Z in the Setlist tab: undo the last setlist change.
 - Drag the page with the mouse to move it.
 - Drag the bar on the right of the page to scroll.
 - Drag the thin line under the settings panel to change its height. Double-click it for a larger panel, or to go back to the default height.
 
 The keys work when the Chart Cue window is active. Click on it first.
 
-To turn pages when the Chart Cue window is not active (for example with a foot pedal, or a key while you work in REAPER), use these actions in REAPER's Action List: "Chart Cue - Next page", "Chart Cue - Previous page" and "Chart Cue - Toggle performance mode". Load them once with "New action > Load ReaScript...", then give them a shortcut. They also work in lock mode.]==],
+To turn pages when the Chart Cue window is not active (for example with a foot pedal, or a key while you work in REAPER), use the actions "Chart Cue - Next page", "Chart Cue - Previous page", "Chart Cue - Toggle performance mode" and "Chart Cue - Next song" (setlist). Open Settings > Control > "Shortcuts and external controls" and click "Assign..." next to an action, then press the key or move the control. A MIDI button, OSC or a control surface also works. They also work in lock mode.]==],
     more = [==[
 - The fit menu at the top has: Fit width, Fit height, Fit page and 100% (the real size of the page). Each PDF remembers its own fit and zoom (saved in the project).
 - Click the page number ("3 / 12") in the toolbar to type a page number, then press Enter.
@@ -6187,10 +6718,10 @@ To turn pages when the Chart Cue window is not active (for example with a foot p
 - "No PDF open": open a PDF in the Library tab.
 - "Loading PDF" or "Preparing page" stays for a long time: wait a moment. Large PDFs need more time the first time. If nothing changes, click "Retry rendering" in the status bar.
 - A PDF name is red: the file was moved or renamed. Click "Relocate..." in the Library tab.
-- The page looks blurry: click "Match DPI to current view" in Settings > Display > Page quality (or "Change" to type a higher DPI).
+- The page looks blurry: click "Match DPI to current view" in Settings > Appearance > Page quality (or "Change" to type a higher DPI).
 - The wrong PDF opens for a song: check the menu of that region in the Regions tab.
 - Chart Cue opens twice, or REAPER asks about a running script: use only one way to open Chart Cue automatically (Settings > General).
-- Nothing helps: change the PDF engine in Settings > Display and try again.]==],
+- Nothing helps: change the PDF engine in Settings > Appearance > Page quality and try again.]==],
     more = [==[
 - Password-protected PDFs cannot be shown. Save a copy without a password.
 - "Marker warning" in the status bar: a PDFPAGE or PDFSCROLL marker has a wrong number. The message shows its name and time.
@@ -6351,12 +6882,628 @@ function UI.draw_cues_tab(ctx)
   R.cue_part_ctx = nil -- the PDF 2 list context ends with the Cues tab (playback must not see it)
 end
 
+---------------------------------------------------------------------------
+-- SETLIST (the show order: P.setlists; playback: stop or continue at the end of each song)
+---------------------------------------------------------------------------
+function Setlist.cur() return P.setlists[P.setlist_cur] end
+
+-- A copy of one row (a song or a pause: every field).
+function Setlist.copy_item(it)
+  local c = {}
+  for k, v in pairs(it) do c[k] = v end
+  return c
+end
+
+-- Undo for the setlist rows (Ctrl+Z in the Setlist tab, or the undo button): a copy of the rows before
+-- each change; at most CFG.CUE_UNDO_MAX steps. Cleared when another setlist or project is used.
+function Setlist.save_undo(l)
+  local u = R.sl_undo
+  if not u or u.list ~= l then u = { list = l }; R.sl_undo = u end
+  local items = {}
+  for i, it in ipairs(l.items) do items[i] = Setlist.copy_item(it) end
+  u[#u + 1] = items
+  if #u > CFG.CUE_UNDO_MAX then table.remove(u, 1) end
+end
+function Setlist.can_undo(l) return R.sl_undo and R.sl_undo.list == l and #R.sl_undo > 0 end
+function Setlist.undo(l)
+  if not Setlist.can_undo(l) or P.setlist_lock or Util.playing() then return end
+  l.items = table.remove(R.sl_undo)
+  R.sl_pos = nil; Util.mark_pdirty()
+  Msg.notify("Setlist change undone.", false, "setlist")
+end
+
+-- A new setlist with every region in timeline order (also "Reset to timeline order").
+function Setlist.from_timeline(name)
+  local items = {}
+  local regs = {}
+  for _, rg in ipairs(R.regions) do regs[#regs + 1] = rg end
+  table.sort(regs, function(a, b) return a.start < b.start end)
+  for _, rg in ipairs(regs) do items[#items + 1] = { key = rg.key, name = rg.name, ending = "stop", skip = false } end
+  return { name = name, items = items }
+end
+
+-- The region of item i when it plays (a song, not skipped, its region still exists).
+function Setlist.region(l, i)
+  local it = l.items[i]
+  if not it or it.skip or it.kind then return nil end
+  return Project.region_by_key(it.key)
+end
+
+-- The next song after item i that plays, and its region.
+function Setlist.next_from(l, i)
+  for j = (i or 0) + 1, #l.items do
+    local rg = Setlist.region(l, j)
+    if rg then return j, rg end
+  end
+end
+
+-- true when another song plays right after region `reg` ends (for the page-turn countdown): in setlist order,
+-- the song has Continue and no pause comes before the next one; else a region starts where this one ends.
+function Setlist.song_follows(reg)
+  local l = P.setlist_on and Setlist.cur()
+  if l then
+    if not R.sl_pos or Setlist.region(l, R.sl_pos) ~= reg then return false end
+    local j = Setlist.next_from(l, R.sl_pos)
+    return j ~= nil and l.items[R.sl_pos].ending == "continue" and not Setlist.pause_after(l, R.sl_pos)
+  end
+  for _, rg in ipairs(R.regions) do
+    if rg ~= reg and rg.start >= reg.stop - 0.01 and rg.start <= reg.stop + 0.5 then return true end
+  end
+  return false
+end
+
+-- The first pause between item i and the next song that plays, or nil.
+function Setlist.pause_after(l, i)
+  for j = (i or 0) + 1, #l.items do
+    local it = l.items[j]
+    if not it.skip then
+      if it.kind then return it end
+      if Project.region_by_key(it.key) then return nil end
+    end
+  end
+end
+
+-- The item that plays at `pos`: first from item `from` on (the same region can be in the list more
+-- than once), then from the top.
+function Setlist.find(l, pos, from)
+  local function inside(j)
+    local rg = Setlist.region(l, j)
+    return rg and pos >= rg.start - 0.05 and pos < rg.stop
+  end
+  for j = from or 1, #l.items do if inside(j) then return j end end
+  for j = 1, math.min((from or 1) - 1, #l.items) do if inside(j) then return j end end
+end
+
+-- Every frame: while REAPER plays in setlist order, the end of a song stops REAPER (the edit cursor
+-- goes to the next song) or goes on with the next song. Next on the timeline: REAPER just plays on.
+function Setlist.tick()
+  local l = P.setlist_on and Setlist.cur()
+  if not l then R.sl_hold = nil; return end
+  local now = Util.now()
+  -- a pause between songs (REAPER is stopped, the edit cursor is at the next song): a timed pause
+  -- plays on by itself; Play or the "Next song" action end any pause
+  local h = R.sl_hold
+  if h then
+    if Util.playing() then R.sl_hold = nil
+    elseif h.t_end and now >= h.t_end then
+      R.sl_hold = nil; r.OnPlayButton(); R.sl_guard = now + CFG.SL_GUARD
+      return
+    end
+  end
+  if not Util.playing() then
+    -- stopped (also while waiting at the next song): follow the edit cursor when it moves; paused: the
+    -- pause position is the song, so nothing to follow
+    if (r.GetPlayState() & 2) ~= 0 then return end
+    local c = r.GetCursorPosition()
+    if c ~= R.sl_cursor then R.sl_cursor = c; Setlist.sync(l) end
+    return
+  end
+  if R.sl_guard and now < R.sl_guard then return end
+  local pos = r.GetPlayPosition()
+  local rg = R.sl_pos and Setlist.region(l, R.sl_pos)
+  if not rg or pos < rg.start - 0.05 or pos > rg.stop + 0.1 then
+    R.sl_pos = Setlist.find(l, pos, R.sl_pos) -- a click on the timeline: follow it
+    return
+  end
+  if pos < rg.stop - CFG.SL_EARLY then return end
+  local it = l.items[R.sl_pos]
+  local j, nrg = Setlist.next_from(l, R.sl_pos)
+  local pause = nrg and Setlist.pause_after(l, R.sl_pos)
+  if pause then -- a pause before the next song: stop and wait (the song's ending does not matter)
+    r.OnStopButton()
+    R.sl_pos = j; r.SetEditCurPos(nrg.start, true, false)
+    R.sl_hold = { t_end = (pause.kind == "pause") and (now + pause.sec) or nil }
+  elseif it.ending == "continue" and nrg then
+    R.sl_pos = j
+    if math.abs(nrg.start - rg.stop) > 0.01 then -- not directly after it on the timeline: jump
+      r.SetEditCurPos(nrg.start, true, true)
+      R.sl_guard = now + CFG.SL_GUARD
+    end
+  else
+    r.OnStopButton()
+    if nrg then R.sl_pos = j; r.SetEditCurPos(nrg.start, true, false); R.sl_hold = {} end -- waits for Play
+  end
+end
+
+-- The "Next song" action: in setlist order, after a Stop or during a pause it plays (the edit cursor is
+-- already at the next song); during a song, and without setlist order, it goes to the next song (the button).
+function Setlist.next_cmd()
+  local l = Setlist.cur()
+  if not l then return end
+  if P.setlist_on and (R.sl_hold or not Util.playing()) then
+    R.sl_hold = nil; r.OnPlayButton(); R.sl_guard = Util.now() + CFG.SL_GUARD
+    return
+  end
+  Setlist.next_song(l)
+end
+
+-- The time left: the rest of the current song (from the play cursor, or the edit cursor when stopped) and
+-- everything after it; nil when "Play in setlist order" is off or no song is current.
+function Setlist.time_left(l)
+  if not (P.setlist_on and R.sl_pos) then return nil end
+  local rg = Setlist.region(l, R.sl_pos)
+  local pos = Util.playing() and r.GetPlayPosition() or r.GetCursorPosition()
+  return Setlist.length(l, R.sl_pos + 1) + (rg and Util.clamp(rg.stop - pos, 0, rg.stop - rg.start) or 0)
+end
+
+-- The current song from the play cursor (or the edit cursor when stopped): after a click on the timeline
+-- or a move of the edit cursor, previous / next song go from the song that is really there.
+function Setlist.sync(l)
+  local moving = (r.GetPlayState() & 3) ~= 0 -- playing or paused: the play position
+  local pos = moving and r.GetPlayPosition() or r.GetCursorPosition()
+  local j = Setlist.find(l, pos, R.sl_pos)
+  if j then R.sl_pos = j end
+end
+
+-- The length of the set: all songs and timed pauses that play; from item `from` on for the time left.
+function Setlist.length(l, from)
+  from = from or 1
+  local c = R.sl_len
+  if not c or c.frame ~= R.frames or c.list ~= l then c = { frame = R.frames, list = l }; R.sl_len = c end
+  if c[from] then return c[from] end
+  local s = 0
+  for i = from, #l.items do
+    local it = l.items[i]
+    if not it.skip then
+      if it.kind == "pause" then s = s + it.sec
+      elseif not it.kind then
+        local rg = Project.region_by_key(it.key)
+        if rg then s = s + (rg.stop - rg.start) end
+      end
+    end
+  end
+  c[from] = s
+  return s
+end
+
+-- The "Next: ..." label text on the page (nil: none). During a pause: the song at the edit cursor.
+function Setlist.next_label()
+  local l = P.setlist_on and S.sl_next_label and Setlist.cur()
+  if not l or not R.sl_pos then return nil end
+  local h = R.sl_hold
+  if not h then -- during a song: only in its last seconds
+    local rg = Util.playing() and Setlist.region(l, R.sl_pos)
+    if not rg or (S.sl_next_sec > 0 and rg.stop - r.GetPlayPosition() > S.sl_next_sec) then return nil end
+  end
+  local j = h and R.sl_pos or Setlist.next_from(l, R.sl_pos)
+  local it = j and l.items[j]
+  if not it then return nil end
+  local rg = Project.region_by_key(it.key)
+  local name = rg and rg.name ~= "" and rg.name or "(unnamed region)"
+  if h and h.t_end then return string.format("Next: %s in %d s", name, math.max(0, math.ceil(h.t_end - Util.now()))) end
+  if h then return "Next: " .. name .. "  (press Play)" end
+  return "Next: " .. name
+end
+
+-- The previous / next song of the list (the buttons): during playback playback moves there; stopped: the edit cursor.
+function Setlist.prev_song(l)
+  Setlist.sync(l)
+  for j = (R.sl_pos or 1) - 1, 1, -1 do
+    if Setlist.region(l, j) then Setlist.go(l, j); return end
+  end
+end
+function Setlist.next_song(l)
+  Setlist.sync(l)
+  local j = Setlist.next_from(l, R.sl_pos or 0)
+  if j then Setlist.go(l, j) end
+end
+
+-- Moves the edit cursor (and the play position while playing) to item i.
+function Setlist.go(l, i)
+  local rg = Setlist.region(l, i) or (not l.items[i].kind and Project.region_by_key(l.items[i].key))
+  if not rg then return end
+  R.sl_pos, R.sl_hold = i, nil
+  r.SetEditCurPos(rg.start, true, Util.playing())
+  R.sl_guard = Util.now() + CFG.SL_GUARD
+end
+
+-- REAPER's text window for a setlist name (deferred: it is modal). done(name) runs with the new name.
+function Setlist.ask_name(title, old, done)
+  r.defer(function()
+    local ok, txt = r.GetUserInputs(title, 1, "Name:,extrawidth=200,separator=\n", old or "")
+    if not ok then return end
+    txt = Util.trim(txt:gsub("[\t\r\n]", " "))
+    if txt ~= "" then done(txt) end
+  end)
+end
+
+-- Transport icons like REAPER's: previous / next song (a bar and a triangle), play, pause, stop.
+function UI.draw_transport_icon(dl, cx, cy, kind, col)
+  if kind == "play" then
+    ImGui.DrawList_AddTriangleFilled(dl, cx - 5, cy - 7, cx - 5, cy + 7, cx + 7, cy, col)
+  elseif kind == "pause" then
+    ImGui.DrawList_AddRectFilled(dl, cx - 6, cy - 7, cx - 2, cy + 7, col)
+    ImGui.DrawList_AddRectFilled(dl, cx + 2, cy - 7, cx + 6, cy + 7, col)
+  elseif kind == "stop" then
+    ImGui.DrawList_AddRectFilled(dl, cx - 6, cy - 6, cx + 6, cy + 6, col, 1)
+  elseif kind == "prev" then
+    ImGui.DrawList_AddRectFilled(dl, cx - 7, cy - 6, cx - 5, cy + 6, col)
+    ImGui.DrawList_AddTriangleFilled(dl, cx + 6, cy - 6, cx + 6, cy + 6, cx - 4, cy, col)
+  else -- next
+    ImGui.DrawList_AddRectFilled(dl, cx + 5, cy - 6, cx + 7, cy + 6, col)
+    ImGui.DrawList_AddTriangleFilled(dl, cx - 6, cy - 6, cx - 6, cy + 6, cx + 4, cy, col)
+  end
+end
+
+-- Page area "Setlist" (the setlist instead of the PDF): on, and there is a setlist.
+function UI.setlist_view_on() return S.page_area == "setlist" and Setlist.cur() ~= nil end
+-- "Setlist and PDF": the setlist on top, the PDF below.
+function UI.setlist_both_on() return S.page_area == "both" and Setlist.cur() ~= nil end
+
+-- The page area as a large setlist: the set length and the time left at the top (centred, large), then
+-- one row per item: number, name, the ending (Stop / Continue) and the length. The current song is bold and
+-- blue; pauses are yellow. A list longer than the area scrolls so the current song stays in view.
+function UI.draw_setlist_view(ctx, w, h, small)
+  local l = Setlist.cur()
+  local x0, y0 = ImGui.GetCursorScreenPos(ctx)
+  ImGui.Dummy(ctx, w, h)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  ImGui.DrawList_AddRectFilled(dl, x0, y0, x0 + w, y0 + h, CFG.PAGE_BG)
+  local font, bold = ImGui.GetFont(ctx), R.label_font or ImGui.GetFont(ctx)
+  local base = ImGui.GetFontSize(ctx)
+  local k, kh = 1.8, 2.2
+  if small then k, kh = 1.2, 1.5 end -- "Setlist and PDF": smaller, so more songs fit
+  local fs, hs = base * k, base * kh
+  local lh = math.floor(fs * 1.6)
+  ImGui.DrawList_PushClipRect(dl, x0, y0, x0 + w, y0 + h, true)
+  -- the time at the top: the length of the set, and the time left (it counts down)
+  local left = Setlist.time_left(l)
+  local head = "Set " .. Util.fmt_mmss(Setlist.length(l)) .. (left and ("     Left " .. Util.fmt_mmss(left)) or "")
+  local hw = (ImGui.CalcTextSize(ctx, head)) * kh
+  ImGui.DrawList_AddTextEx(dl, bold, hs, x0 + (w - hw) / 2, y0 + 14, COL.TEXT_BRIGHT, head)
+  local top = y0 + 14 + hs * 1.6
+  -- which rows: all when they fit; else from 2 rows before the current song
+  local fit = math.max(1, math.floor((y0 + h - top) / lh))
+  local cur = R.sl_pos or 1
+  local first = (#l.items <= fit) and 1 or Util.clamp(cur - 2, 1, #l.items - fit + 1)
+  local y, n = top, 0
+  local dur_w = (ImGui.CalcTextSize(ctx, "00:00")) * k
+  local end_w = (ImGui.CalcTextSize(ctx, "Continue")) * k
+  for i, it in ipairs(l.items) do
+    if not it.kind then n = n + 1 end
+    if i >= first and y < y0 + h then
+      local rg = not it.kind and Project.region_by_key(it.key)
+      local name = it.kind and "Pause"
+        or (rg and (rg.name ~= "" and rg.name or "(unnamed region)")) or ((it.name or "") .. " (missing)")
+      local here = P.setlist_on and i == R.sl_pos
+      local col = (it.skip and COL.TEXT_DIM) or (here and COL.ACCENT) or (it.kind and COL.YELLOW)
+        or (i < cur and P.setlist_on and COL.TEXT_DIM) or COL.TEXT_MAIN
+      if here then ImGui.DrawList_AddRectFilled(dl, x0 + 8, y - 4, x0 + w - 8, y + lh - 8, COL.ACTIVE_BG, 8) end
+      local f = here and bold or font
+      local dur = it.kind and it.sec or (rg and (rg.stop - rg.start)) or 0
+      local dx = x0 + w - 24 - dur_w
+      local ex = dx - 24 - end_w
+      ImGui.DrawList_AddTextEx(dl, f, fs, x0 + 24, y, col, it.kind and "" or tostring(n))
+      ImGui.DrawList_PushClipRect(dl, x0, y0, ex - 16, y0 + h, true) -- a long name stops before the ending
+      ImGui.DrawList_AddTextEx(dl, f, fs, x0 + 24 + fs * 2, y, col, name .. (it.skip and "  (skipped)" or ""))
+      ImGui.DrawList_PopClipRect(dl)
+      if not it.kind then
+        ImGui.DrawList_AddTextEx(dl, font, fs, ex, y, COL.TEXT_DIM, it.ending == "continue" and "Continue" or "Stop")
+      end
+      ImGui.DrawList_AddTextEx(dl, f, fs, dx, y, it.kind and COL.YELLOW or (here and COL.ACCENT or COL.TEXT_DIM), Util.fmt_mmss(dur))
+      y = y + lh
+    end
+  end
+  ImGui.DrawList_PopClipRect(dl)
+  if not small then UI.draw_perf_exit(ctx, dl, x0, y0, w, h) end -- (with Setlist and PDF: on the PDF part)
+end
+
+-- The 4 transport buttons in a row (previous song, play / pause, stop, next song); bw x bh each, g apart.
+-- Used above the setlist and in the toolbar (Page area "Setlist" or "Setlist and PDF").
+function UI.transport_buttons(ctx, l, bw, bh, g)
+  local playing = Util.playing()
+  local function btn(id, icon, tip, kind)
+    local nc, nv = UI.push_kind(ctx, kind)
+    local hit = UI.button(ctx, "##tp_" .. id, bw, bh)
+    UI.pop_kind(ctx, nc, nv)
+    local x0, y0 = ImGui.GetItemRectMin(ctx)
+    local x1, y1 = ImGui.GetItemRectMax(ctx)
+    UI.draw_transport_icon(ImGui.GetWindowDrawList(ctx), math.floor((x0 + x1) / 2) + 0.5, math.floor((y0 + y1) / 2) + 0.5,
+      icon, kind and COL.WHITE or COL.TEXT_MAIN)
+    UI.tip(ctx, tip)
+    return hit
+  end
+  if btn("prev", "prev", "Previous song") then Setlist.prev_song(l) end
+  ImGui.SameLine(ctx, 0, g)
+  if btn("play", playing and "pause" or "play", playing and "Pause" or "Play", playing and "primary" or nil) then
+    if playing then r.OnPauseButton() else R.sl_hold = nil; r.OnPlayButton(); R.sl_guard = Util.now() + CFG.SL_GUARD end
+  end
+  ImGui.SameLine(ctx, 0, g)
+  if btn("stop", "stop", "Stop (back to the start of the song)") then
+    R.sl_hold = nil; r.OnStopButton()
+    local rg = R.sl_pos and Setlist.region(l, R.sl_pos)
+    if rg then r.SetEditCurPos(rg.start, true, false) end
+  end
+  ImGui.SameLine(ctx, 0, g)
+  if btn("next", "next", "Next song (for a foot pedal or a key: the 'Next song' action, Settings > Control)") then
+    Setlist.next_song(l)
+  end
+end
+
+-- The transport buttons centred above the setlist; the undo button at the right end of the row.
+function UI.draw_transport(ctx, l)
+  local BW, BH, G = 44, 32, 8
+  local x = ImGui.GetCursorPosX(ctx)
+  local aw = UI.panel_w(ctx)
+  ImGui.SetCursorPosX(ctx, x + math.max(0, (aw - 4 * BW - 3 * G) / 2))
+  UI.transport_buttons(ctx, l, BW, BH, G)
+  local fh = ImGui.GetFrameHeight(ctx)
+  ImGui.SameLine(ctx, x + aw - fh - 14)
+  ImGui.SetCursorPosY(ctx, ImGui.GetCursorPosY(ctx) + (BH - fh) / 2)
+  local can = Setlist.can_undo(l) and not P.setlist_lock and not Util.playing()
+  if UI.row_icon_button(ctx, "##slundo", fh, "undo", can) and can then Setlist.undo(l) end
+  UI.tip(ctx, can and "Undo the last setlist change (Ctrl+Z)." or "Nothing to undo (or the setlist is locked).")
+  UI.vgap(ctx, 6)
+  UI.section_msg(ctx, "setlist")
+end
+
+local SL_ENDINGS = { "stop", "continue" }
+local SL_ENDING_ITEMS = "Stop\0Continue\0"
+
+-- One row: # | name (and time) | the end of the song | play / skip | up, down | remove.
+function UI.draw_setlist_row(ctx, l, i, locked)
+  local it = l.items[i]
+  ImGui.PushID(ctx, "sl" .. i)
+  local x = ImGui.GetCursorPosX(ctx)
+  local aw = UI.panel_w(ctx)
+  local fh = ImGui.GetFrameHeight(ctx)
+  local END_W, G = 110, 6
+  local right_w = END_W + G + fh + G + 3 * (fh + 2)
+  local rg = not it.kind and Project.region_by_key(it.key)
+  if P.setlist_on and R.sl_pos == i then UI.row_highlight(ctx, aw) end
+  local rsx, rsy = ImGui.GetCursorScreenPos(ctx)
+  if ImGui.IsMouseClicked(ctx, 1) and UI.mouse_in_row(ctx, rsx, rsy, aw) then R.menu_req = { kind = "setlist", i = i } end
+  local clicked, hovered = UI.row_click_area(ctx, "##slrow", aw - right_w - 24)
+  if clicked and rg and not P.setlist_lock then Setlist.go(l, i) end
+  if hovered then
+    ImGui.SetTooltip(ctx, (it.kind == "pause" and "A timed pause: REAPER stops, then plays the next song by itself.")
+      or (P.setlist_lock and "Lock setlist is on: clicks do not change the song.")
+      or (rg and ("Click to go to this song" .. (Util.playing() and " (playback moves there)." or "."))
+      or "This region is not in the project any more.") .. (locked and "" or "\nDrag the row to move it."))
+  end
+  -- drag a row onto another row to move it there (not during playback)
+  if not locked and ImGui.BeginDragDropSource(ctx) then
+    ImGui.SetDragDropPayload(ctx, "CC_SETLIST", tostring(i))
+    ImGui.Text(ctx, it.kind and "Pause" or (it.name ~= "" and it.name or "(unnamed region)"))
+    ImGui.EndDragDropSource(ctx)
+  end
+  if not locked and ImGui.BeginDragDropTarget(ctx) then
+    local ok, payload = ImGui.AcceptDragDropPayload(ctx, "CC_SETLIST")
+    if ok then R.sl_move = { from = tonumber(payload), to = i } end
+    ImGui.EndDragDropTarget(ctx)
+  end
+  -- number, name, time range
+  local name = (it.kind == "pause" and "Pause")
+    or (rg and (rg.name ~= "" and rg.name or "(unnamed region)")) or (((it.name or "") ~= "" and it.name or "(region)") .. " (missing)")
+  local here = P.setlist_on and R.sl_pos == i
+  local col = (it.kind and COL.YELLOW) or (not rg and COL.YELLOW) or (it.skip and COL.TEXT_DIM)
+    or (here and COL.ACCENT) or COL.TEXT_MAIN
+  UI.row_text(ctx, tostring(i), COL.TEXT_DIM)
+  ImGui.SameLine(ctx, x + 30)
+  local times = rg and (Util.fmt_mmss(rg.stop - rg.start)) or ""
+  local tw = (ImGui.CalcTextSize(ctx, times))
+  local name_w = aw - right_w - 30 - tw - 40
+  if here then UI.push_font(ctx, R.label_font) end -- the song that plays: bold
+  UI.row_text(ctx, UI.trunc_text(ctx, name, math.max(20, name_w)) .. (it.skip and "  (skipped)" or ""), col)
+  if here then UI.pop_font(ctx) end
+  if rg then
+    ImGui.SameLine(ctx, x + aw - right_w - tw - 24)
+    UI.row_text(ctx, times, COL.TEXT_DIM)
+  end
+  -- the end of the song; a timed pause: its seconds; a wait: nothing
+  ImGui.SameLine(ctx, x + aw - right_w - 14)
+  if it.kind == "pause" then
+    ImGui.SetNextItemWidth(ctx, END_W)
+    ImGui.BeginDisabled(ctx, P.setlist_lock)
+    local ch, sec = ImGui.InputInt(ctx, "##sec", it.sec, 5, 30)
+    ImGui.EndDisabled(ctx)
+    if ImGui.IsItemActivated(ctx) then Setlist.save_undo(l) end -- one undo step per edit of the field
+    if ch then it.sec = Util.clamp(sec, 1, 3600); Util.mark_pdirty() end
+    UI.tip(ctx, "The pause in seconds. Then the next song plays by itself (Next song or Play starts it earlier).")
+  else
+    ImGui.BeginDisabled(ctx, P.setlist_lock)
+    ImGui.SetNextItemWidth(ctx, END_W)
+    local ei = (it.ending == "continue") and 1 or 0
+    local ch, ni = ImGui.Combo(ctx, "##end", ei, SL_ENDING_ITEMS)
+    if ch then Setlist.save_undo(l); it.ending = SL_ENDINGS[ni + 1]; Util.mark_pdirty() end
+    UI.tip(ctx, "At the end of this song: Stop (the edit cursor goes to the next song; press Play to go on)\n"
+      .. "or Continue (the next song plays at once). A pause after the song always stops.")
+    ImGui.EndDisabled(ctx)
+  end
+  -- play / skip, up, down, remove (not during playback, so the show order cannot change by mistake)
+  ImGui.BeginDisabled(ctx, locked)
+  ImGui.SameLine(ctx, 0, G)
+  local on = not it.skip
+  local sch, nv = ImGui.Checkbox(ctx, "##play", on)
+  if sch then Setlist.save_undo(l); it.skip = not nv; Util.mark_pdirty() end
+  UI.tip(ctx, "Ticked: this row plays. Not ticked: it is skipped (it stays in the list).")
+  ImGui.SameLine(ctx, 0, G)
+  if UI.row_icon_button(ctx, "##up", fh, "up", i > 1) and i > 1 then R.sl_move = { from = i, to = i - 1 } end
+  UI.tip(ctx, "Move up")
+  ImGui.SameLine(ctx, 0, 2)
+  if UI.row_icon_button(ctx, "##down", fh, "down", i < #l.items) and i < #l.items then R.sl_move = { from = i, to = i + 1 } end
+  UI.tip(ctx, "Move down")
+  ImGui.SameLine(ctx, 0, 2)
+  if UI.remove_x_button(ctx, "##rm", fh) then R.sl_remove = i end
+  UI.tip(ctx, "Remove from this setlist (the region stays in the project).")
+  ImGui.EndDisabled(ctx)
+  ImGui.PopID(ctx)
+end
+
+function UI.draw_setlist_tab(ctx)
+  local playing = Util.playing()
+  R.sl_open = UI.heading(ctx, "Setlist settings", "The order of the songs in your show. Each song is a region; the timeline does not change.\n\n"
+    .. "Play in setlist order: at the end of each song REAPER stops (the edit cursor goes to the next song) "
+    .. "or goes on with the next song (Continue). A song directly after the last one on the timeline plays on "
+    .. "without a jump; another song is reached with a jump, which can give a very short gap.\n\n"
+    .. "A region can be in the list more than once (for example an interlude). Skipped songs stay in the list.\n"
+    .. "During playback (and with Lock setlist) the order is locked. Saved in this project.", "project", "sl_settings")
+  if #R.regions == 0 then ImGui.TextDisabled(ctx, "No regions in this project. Each song of a setlist is a region."); return end
+  if #P.setlists == 0 then
+    UI.note(ctx, "No setlist yet. Make one from the regions of this project, in timeline order.", COL.TEXT_DIM)
+    if UI.full_button(ctx, "Make a setlist", "primary") then
+      P.setlists[1] = Setlist.from_timeline("Setlist 1"); P.setlist_cur = 1; Util.mark_pdirty()
+    end
+    return
+  end
+  if not P.setlists[P.setlist_cur] then P.setlist_cur = 1 end
+  local l = Setlist.cur()
+  local ch
+  if R.sl_open then
+    ch, P.setlist_lock = UI.checkbox(ctx, "Lock setlist", P.setlist_lock)
+    if ch then Util.mark_pdirty() end
+    UI.tip(ctx, "On: everything in the Setlist tab is locked (greyed out), and a click on a song does not go to it.\n"
+      .. "The play buttons (play, stop, previous / next song) still work. Saved in this project.")
+    ImGui.BeginDisabled(ctx, P.setlist_lock) -- (until the end of this section)
+    ch, P.setlist_on = UI.checkbox(ctx, "Play in setlist order", P.setlist_on)
+    if ch then Util.mark_pdirty(); R.sl_pos = nil end
+    UI.tip(ctx, "On: the end of each song stops REAPER or goes on to the next song of the setlist.\n"
+      .. "Off: REAPER plays the timeline as usual.")
+    -- which setlist, and its actions
+    do
+      local _, cw = UI.row_start(ctx, "Current setlist")
+      ImGui.BeginDisabled(ctx, playing)
+      if UI.combo(ctx, "##slpick", l.name, math.min(cw, 220)) then
+        for i, s in ipairs(P.setlists) do
+          if ImGui.Selectable(ctx, s.name .. "##sl" .. i, i == P.setlist_cur) and i ~= P.setlist_cur then
+            P.setlist_cur = i; R.sl_pos = nil; Util.mark_pdirty()
+          end
+        end
+        ImGui.EndCombo(ctx)
+      end
+      ImGui.SameLine(ctx, 0, 8)
+      if UI.combo(ctx, "##slmore", "More...", 110) then
+        if ImGui.Selectable(ctx, "New setlist...") then
+          Setlist.ask_name("Chart Cue - New setlist", "Setlist " .. (#P.setlists + 1), function(n)
+            P.setlists[#P.setlists + 1] = Setlist.from_timeline(n); P.setlist_cur = #P.setlists; R.sl_pos = nil; Util.mark_pdirty()
+          end)
+        end
+        if ImGui.Selectable(ctx, "Duplicate...") then
+          Setlist.ask_name("Chart Cue - Duplicate setlist", l.name .. " (copy)", function(n)
+            local items = {}
+            for _, it in ipairs(l.items) do items[#items + 1] = Setlist.copy_item(it) end
+            P.setlists[#P.setlists + 1] = { name = n, items = items }; P.setlist_cur = #P.setlists; R.sl_pos = nil; Util.mark_pdirty()
+          end)
+        end
+        if ImGui.Selectable(ctx, "Rename...") then
+          Setlist.ask_name("Chart Cue - Rename setlist", l.name, function(n) l.name = n; Util.mark_pdirty() end)
+        end
+        ImGui.Separator(ctx)
+        ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.RED) -- the 2 items that remove your work
+        local reset, del = ImGui.Selectable(ctx, "Reset to timeline order..."), ImGui.Selectable(ctx, "Delete setlist...")
+        ImGui.PopStyleColor(ctx)
+        if reset then
+          UI.ask("sl_reset", "Reset '" .. l.name .. "' to all regions in timeline order? Your order, skipped songs "
+            .. "and endings in this setlist are lost.", "Yes, reset", function()
+              local n = Setlist.from_timeline(l.name)
+              Setlist.save_undo(l)
+              l.items = n.items; R.sl_pos = nil; Util.mark_pdirty()
+            end)
+        end
+        if del then
+          UI.ask("sl_delete", "Delete the setlist '" .. l.name .. "'? The regions stay in the project.", "Yes, delete", function()
+            table.remove(P.setlists, P.setlist_cur)
+            P.setlist_cur = math.max(1, math.min(P.setlist_cur, #P.setlists)); R.sl_pos = nil
+            if #P.setlists == 0 then P.setlist_on = false end
+            Util.mark_pdirty()
+          end)
+        end
+        ImGui.EndCombo(ctx)
+      end
+      ImGui.EndDisabled(ctx)
+      UI.tip(ctx, "New, duplicate, rename, reset or delete a setlist.")
+    end
+    UI.draw_ask(ctx, "sl_reset"); UI.draw_ask(ctx, "sl_delete")
+    -- add a region at the end (the same region can be added more than once)
+    do
+      local _, cw = UI.row_start(ctx, "Add song")
+      ImGui.BeginDisabled(ctx, playing or P.setlist_lock)
+      local pw = UI.btn_w(ctx, "Add pause", CFG.SMALL_BTN_W)
+      if UI.combo(ctx, "##sladd", "Choose a region...", math.min(cw - pw - 8, 220)) then
+        for i, rg in ipairs(R.regions) do
+          if ImGui.Selectable(ctx, (rg.name ~= "" and rg.name or "(unnamed region)") .. "##ra" .. i) then
+            Setlist.save_undo(l)
+            l.items[#l.items + 1] = { key = rg.key, name = rg.name, ending = "stop", skip = false }; Util.mark_pdirty()
+          end
+        end
+        ImGui.EndCombo(ctx)
+      end
+      UI.tip(ctx, "Adds the region at the end of the setlist. A region can be in the list more than once.")
+      ImGui.SameLine(ctx, 0, 8)
+      if UI.row_button(ctx, "Add pause", pw, "ghost") then
+        Setlist.save_undo(l)
+        l.items[#l.items + 1] = { kind = "pause", sec = 10, skip = false }; Util.mark_pdirty()
+      end
+      UI.tip(ctx, "Adds a pause at the end of the setlist (10 seconds; change it in its row). Drag it to its place.\n"
+        .. "REAPER stops at the end of the song before it, then plays the next song after the seconds.")
+      ImGui.EndDisabled(ctx)
+    end
+    ImGui.EndDisabled(ctx) -- (Lock setlist)
+  end -- "Setlist settings" open
+  UI.group_sep(ctx)
+  local total = Setlist.length(l)
+  local nsongs = 0
+  for _, it in ipairs(l.items) do if not it.kind then nsongs = nsongs + 1 end end
+  local left = Setlist.time_left(l)
+  local lock_txt = (P.setlist_lock and "  -  locked") or (playing and "  -  order locked during playback") or ""
+  UI.heading(ctx, string.format("Setlist (%d)  -  %s%s%s", nsongs, Util.fmt_mmss(total),
+    left and ("  (" .. Util.fmt_mmss(left) .. " left)") or "", lock_txt), "The time: all songs and timed pauses that play "
+    .. "(from the current song on: the time left). Click a song to go to it. Drag a row, or use the arrows, "
+    .. "to change the order. The tick box: play or skip. The X removes the song from this setlist.", "project")
+  if #l.items == 0 then ImGui.TextDisabled(ctx, "This setlist is empty. Add a song above."); return end
+  UI.draw_transport(ctx, l)
+  R.sl_move, R.sl_remove = nil, nil
+  if R.sl_menu_change then -- a change from the row menu (last frame)
+    R.sl_move, R.sl_remove, R.sl_menu_change = R.sl_menu_change.move, R.sl_menu_change.remove, nil
+  end
+  UI.push_row_style(ctx)
+  local pend_move, pend_remove = R.sl_move, R.sl_remove -- (the rows clear nothing; they only add requests)
+  for i = 1, #l.items do UI.draw_setlist_row(ctx, l, i, playing or P.setlist_lock) end
+  R.sl_move, R.sl_remove = R.sl_move or pend_move, R.sl_remove or pend_remove
+  UI.pop_row_style(ctx)
+  -- changes after the list is drawn (the rows must not change while they are drawn)
+  local mv = R.sl_move
+  if mv and mv.from and mv.from ~= mv.to and l.items[mv.from] and l.items[mv.to] then
+    Setlist.save_undo(l)
+    local it = table.remove(l.items, mv.from)
+    table.insert(l.items, mv.to, it)
+    R.sl_pos = nil; Util.mark_pdirty()
+  end
+  if R.sl_remove and l.items[R.sl_remove] then
+    Setlist.save_undo(l)
+    table.remove(l.items, R.sl_remove); R.sl_pos = nil; Util.mark_pdirty()
+    Msg.notify("Removed from the setlist. Ctrl+Z (or the undo button) brings it back.", false, "setlist")
+  end
+  R.sl_move, R.sl_remove = nil, nil
+end
+
 -- Settings tab: one collapsible section per area. The open section is saved (S.settings_open).
 local SETTINGS_SECTIONS = {
-  { "Autoscroll", UI.draw_autoscroll_tab },
-  { "MIDI", UI.draw_midi_tab },
-  { "Display", UI.draw_display_tab },
-  { "General", UI.draw_project_tab }, -- project file, open/close, troubleshooting
+  { "Viewer", UI.draw_viewer_tab },         -- page layout, brightness, notes
+  { "Playback", UI.draw_playback_tab },     -- autoscroll, page-turn signals, hide panel
+  { "Control", UI.draw_control_tab },          -- shortcuts and external controls, MIDI
+  { "Appearance", UI.draw_appearance_tab }, -- toolbar, layout, page quality
+  { "General", UI.draw_general_tab },       -- project file, open/close, troubleshooting
 }
 -- One section open at a time (or none): a click on a section closes the open one.
 -- The section bars look like the Help topics (collapsing headers).
@@ -6384,7 +7531,7 @@ function UI.draw_settings_tab(ctx)
   end
 end
 
-local TAB_DRAW = { UI.draw_library_tab, UI.draw_regions_tab, UI.draw_cues_tab, UI.draw_settings_tab, UI.draw_help_tab }
+local TAB_DRAW = { UI.draw_library_tab, UI.draw_regions_tab, UI.draw_cues_tab, UI.draw_setlist_tab, UI.draw_settings_tab, UI.draw_help_tab }
 
 ---------------------------------------------------------------------------
 -- UI: TOOLBAR, TAB STRIP, PANEL, STATUS, VIEW
@@ -6393,11 +7540,13 @@ local TAB_DRAW = { UI.draw_library_tab, UI.draw_regions_tab, UI.draw_cues_tab, U
 -- merges into the panel below it. Other tabs are text only, with a soft hover fade.
 function UI.draw_tab_strip(ctx)
   local aw = ImGui.GetContentRegionAvail(ctx)
-  local n = TAB_FIRST_SETTING - 1        -- text tabs; Settings (gear) and Help ("?") are icon tabs
+  local n = 0                            -- the text tabs shown; Settings (gear) and Help ("?") are icon tabs
+  for i = 1, TAB_FIRST_SETTING - 1 do if UI.tab_shown(i) then n = n + 1 end end
+  if not UI.tab_shown(S.tab) then S.tab = TAB_FIRST_SETTING end -- a hidden tab was open: show Settings
   local gap, h = CFG.TAB_GAP, CFG.TAB_H
   local lift = 6                         -- the selected tab is this much taller
   local help_w = h
-  local tab_w = math.floor((aw - 2 * help_w - gap * (n + 1) - CFG.TAB_GROUP_GAP - 8) / n)
+  local tab_w = math.floor((aw - 2 * help_w - gap * (n + 1) - CFG.TAB_GROUP_GAP - 8) / math.max(1, n))
   local x0, y0 = ImGui.GetCursorScreenPos(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
   local strip_b = y0 + h + lift          -- bottom of the strip = top of the panel
@@ -6442,7 +7591,7 @@ function UI.draw_tab_strip(ctx)
   end
 
   local x = x0 + 4
-  for i = 1, n do
+  for i = 1, TAB_FIRST_SETTING - 1 do if UI.tab_shown(i) then
     local name = TAB_NAMES[i]
     local label = name
     if i == TAB_REGIONS and attn > 0 then
@@ -6461,7 +7610,7 @@ function UI.draw_tab_strip(ctx)
         .. "\nClick to see the region list.")
     end
     x = x + tab_w + gap
-  end
+  end end
   x = x + CFG.TAB_GROUP_GAP
   tab(TAB_FIRST_SETTING, "", help_w, x)
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, "Settings") end
@@ -6619,6 +7768,8 @@ function UI.draw_status(ctx)
   local parts = {}
   parts[#parts + 1] = string.format("Scroll %.0f%%", pct)
   if reg then parts[#parts + 1] = "Region: " .. reg.name end
+  local sl = P.setlist_on and Setlist.cur()
+  if sl then parts[#parts + 1] = "Setlist: " .. sl.name end
   local nxt = UI.next_turn_text()
   if nxt then parts[#parts + 1] = nxt end
   if UI.midi_in_use() then
@@ -6649,7 +7800,7 @@ function UI.draw_status(ctx)
   elseif recent then
     ImGui.TextColored(ctx, recent.err and COL.RED or COL.GREEN, UI.trunc_text(ctx, recent.text, aw - 6))
   elseif PDF.engine() == "poppler" and not R.pdfinfo_ok then
-    ImGui.TextColored(ctx, COL.YELLOW, "pdfinfo.exe missing next to pdftoppm.exe - see Settings > Display.")
+    ImGui.TextColored(ctx, COL.YELLOW, "pdfinfo.exe missing next to pdftoppm.exe - see Settings > Appearance > Page quality.")
   elseif R.warn then
     ImGui.TextColored(ctx, COL.YELLOW, UI.trunc_text(ctx, R.warn, aw - 6))
   elseif #R.marker_warns > 0 then
@@ -6737,6 +7888,12 @@ function UI.draw_tb_icon(dl, cx, cy, kind, col)
     ImGui.DrawList_PathLineTo(dl, cx, cy + 1.5 - d)
     ImGui.DrawList_PathLineTo(dl, cx + 3, cy + 1.5 + d)
     ImGui.DrawList_PathStroke(dl, col, 0, 1.5)
+  elseif kind == "up" or kind == "down" then
+    local d = (kind == "up") and 1 or -1
+    ImGui.DrawList_PathLineTo(dl, cx - 5, cy + d * 2.5)
+    ImGui.DrawList_PathLineTo(dl, cx, cy - d * 2.5)
+    ImGui.DrawList_PathLineTo(dl, cx + 5, cy + d * 2.5)
+    ImGui.DrawList_PathStroke(dl, col, 0, 2)
   elseif kind == "prev" or kind == "next" then
     local d = (kind == "prev") and 1 or -1
     ImGui.DrawList_PathLineTo(dl, cx + d * 2.5, cy - 5)
@@ -6799,6 +7956,8 @@ function UI.handle_keys(ctx)
     if ImGui.IsKeyPressed(ctx, K("0"), false) then Nav.fit_width() end
     if ImGui.IsKeyPressed(ctx, K("Z"), false) and S.tab == TAB_CUES and S.panel_open then
       if (ImGui.GetKeyMods(ctx) & ImGui.Mod_Shift()) ~= 0 then Cues.redo() else Cues.undo() end -- Ctrl+Shift+Z: redo
+    elseif ImGui.IsKeyPressed(ctx, K("Z"), false) and S.tab == TAB_SETLIST and S.panel_open and Setlist.cur() then
+      Setlist.undo(Setlist.cur())
     end
   end
 end
@@ -7022,7 +8181,7 @@ end
 -- Part 2: a 2nd PDF on screen next to part 1 (Library > right-click > "Show as PDF 2").
 -- Not saved; it closes with "Close PDF 2" or when the project changes.
 function UI.show_part2(path)
-  if P.split_off then Msg.notify("Split view is off for this project (Settings > Display > Page layout).", false); return end
+  if P.split_off then Msg.notify("Split view is off for this project (Settings > Viewer > Page layout).", false); return end
   if not R.part2 then R.part2 = Pane.new() end
   Pane.part2(PDF.open_pdf, path, false)
   R.active_part = 2
@@ -7052,6 +8211,32 @@ function UI.close_part2()
   R.part2, R.active_part = nil, 1
 end
 
+-- Performance mode: the exit button in the top-right corner of the page area (on hover, for a moment after
+-- entering, and after a click / tap on the page).
+function UI.draw_perf_exit(ctx, dl, x0, y0, area_w, view_h)
+  R.perf_btn_over = false
+  if R.perf then
+    local mx, my = ImGui.GetMousePos(ctx)
+    local lbl = "Exit performance mode (F / Esc)"
+    local tw, th = ImGui.CalcTextSize(ctx, lbl)
+    local bx1, by0 = x0 + area_w - 10, y0 + 10
+    local bx0, by1 = bx1 - tw - 20, by0 + th + 12
+    local near = mx >= x0 + area_w - 260 and mx <= x0 + area_w and my >= y0 and my <= y0 + 60
+    -- a click / tap on the page also shows the button (touch screens have no hover)
+    if ImGui.IsMouseClicked(ctx, 0) and mx >= x0 and mx <= x0 + area_w and my >= y0 and my <= y0 + view_h then
+      if not near then R.perf_tap_t = Util.now() end
+    end
+    if near or Util.now() - R.perf_t < 2.5 or Util.now() - R.perf_tap_t < 3 then
+      local over = mx >= bx0 and mx <= bx1 and my >= by0 and my <= by1
+      R.perf_btn_over = over
+      ImGui.DrawList_AddRectFilled(dl, bx0, by0, bx1, by1, over and COL.ACCENT or 0x000000BB, 6)
+      ImGui.DrawList_AddText(dl, bx0 + 10, by0 + 6, COL.WHITE, lbl)
+      if over and ImGui.IsMouseClicked(ctx, 0) then UI.toggle_perf() end
+    end
+  end
+
+end
+
 -- One part of the split view, drawn as that part (UI.draw_parts runs it with Pane.part2 for part 2).
 function UI.draw_part_view(ctx, w, h)
   R.view_w, R.view_h = w - CFG.SCROLLBAR_W - 4, h
@@ -7069,6 +8254,34 @@ end
 -- The page area: part 1 alone, or part 1 and part 2 with a draggable divider between them
 -- (S.split_layout: top and bottom or side by side; S.split_frac: the share of part 1).
 function UI.draw_parts(ctx, aw, vh)
+  if UI.setlist_view_on() then UI.draw_setlist_view(ctx, aw, vh); return end
+  if UI.setlist_both_on() then
+    -- the setlist on top, the PDF (1 or 2 parts) below; drag the divider, double-click = half and half
+    local D = CFG.SPLIT_H
+    local x0, y0 = ImGui.GetCursorScreenPos(ctx)
+    local h1 = math.floor((vh - D) * S.sl_split + 0.5)
+    UI.draw_setlist_view(ctx, aw, h1, true)
+    ImGui.SetCursorScreenPos(ctx, x0, y0 + h1)
+    ImGui.InvisibleButton(ctx, "##slsplit", aw, D)
+    local hov, act = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
+    if hov or act then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_ResizeNS()) end
+    if act then
+      local _, dy = ImGui.GetMouseDelta(ctx)
+      if dy ~= 0 then S.sl_split = Util.clamp(S.sl_split + dy / math.max(1, vh - D), 0.15, 0.85); Util.mark_dirty() end
+    end
+    if hov and ImGui.IsMouseDoubleClicked(ctx, 0) then S.sl_split = 0.5; Util.mark_dirty() end
+    local cy = y0 + h1 + D / 2
+    ImGui.DrawList_AddLine(ImGui.GetWindowDrawList(ctx), x0 + aw / 2 - 20, cy, x0 + aw / 2 + 20, cy,
+      (hov or act) and COL.ACCENT or COL.SCROLL_THUMB, 3)
+    ImGui.SetCursorScreenPos(ctx, x0, y0 + h1 + D)
+    UI.draw_pdf_parts(ctx, aw, vh - h1 - D)
+    return
+  end
+  UI.draw_pdf_parts(ctx, aw, vh)
+end
+
+-- The PDF part of the page area: PDF 1 alone, or PDF 1 and PDF 2 with a divider.
+function UI.draw_pdf_parts(ctx, aw, vh)
   local sbw = CFG.SCROLLBAR_W
   if not R.part2 then
     R.view_w, R.view_h = aw - sbw - 4, vh
@@ -7134,6 +8347,86 @@ function UI.draw_parts(ctx, aw, vh)
   ImGui.Dummy(ctx, 0, 0)
 end
 
+---------------------------------------------------------------------------
+-- NOTES (short texts on the pages, P.notes; the PDF file does not change)
+---------------------------------------------------------------------------
+-- Opens REAPER's text window for a note (n = nil: a new note at R.note_click). Empty text deletes the note.
+-- It is a modal window: it opens after the frame (deferred), not inside the ImGui frame.
+function Notes.edit(path, n)
+  local click = R.note_click
+  r.defer(function()
+    local ok, txt = r.GetUserInputs(n and "Chart Cue - Edit note" or "Chart Cue - Add note", 1,
+      "Note:,extrawidth=300,separator=\n", n and n.text or "")
+    if not ok then return end
+    txt = txt:gsub("[\t\r\n]", " "):match("^%s*(.-)%s*$")
+    if n then
+      if txt == "" then Notes.delete(path, n) elseif txt ~= n.text then n.text = txt; Util.mark_pdirty() end
+    elseif txt ~= "" and click then
+      P.notes[path] = P.notes[path] or {}
+      table.insert(P.notes[path], { page = click.page, x = click.x, y = click.y, text = txt,
+        color = S.note_color, size = S.note_size })
+      Util.mark_pdirty()
+    end
+  end)
+end
+
+function Notes.delete(path, n)
+  local list = P.notes[path]
+  if not list then return end
+  for i, x in ipairs(list) do if x == n then table.remove(list, i); break end end
+  if #list == 0 then P.notes[path] = nil end
+  Util.mark_pdirty()
+end
+
+-- The page rectangles drawn this frame (screen px), for the notes. The tables are reused (none per frame).
+function UI.add_prect(p, x, y, w, h)
+  local n = (R.prect_n or 0) + 1
+  R.prect_n = n
+  R.prects = R.prects or {}
+  local e = R.prects[n]
+  if not e then e = {}; R.prects[n] = e end
+  e.p, e.x, e.y, e.w, e.h = p, x, y, w, h
+end
+
+-- The page point at screen (mx, my): page, x, y (0..1 of the page); nil outside the pages.
+function UI.page_point(mx, my)
+  for i = 1, R.prect_n or 0 do
+    local e = R.prects[i]
+    if mx >= e.x and mx < e.x + e.w and my >= e.y and my < e.y + e.h then
+      return e.p, (mx - e.x) / e.w, (my - e.y) / e.h
+    end
+  end
+end
+
+-- The notes of the pages on screen, clipped to the view. The note under the mouse: R.note_hover.
+function UI.draw_notes(ctx, dl, x0, y0, w, h, hover_ok)
+  R.note_hover = nil
+  local list = S.show_notes and P.notes[S.pdf_path]
+  if not list then return end
+  local mx, my = ImGui.GetMousePos(ctx)
+  local font, fs0 = ImGui.GetFont(ctx), ImGui.GetFontSize(ctx)
+  ImGui.DrawList_PushClipRect(dl, x0, y0, x0 + w, y0 + h, true)
+  for i = 1, R.prect_n or 0 do
+    local e = R.prects[i]
+    for _, n in ipairs(list) do
+      if n.page == e.p then
+        local nx, ny = math.floor(e.x + n.x * e.w + 0.5), math.floor(e.y + n.y * e.h + 0.5)
+        local cols = NOTE_COLORS[n.color] or NOTE_COLORS.yellow -- each note has its own colour and size
+        local k = NOTE_SIZES[n.size] or 1
+        local fs, pad = fs0 * k, math.floor(6 * k + 0.5)
+        local tw, th = ImGui.CalcTextSize(ctx, n.text)
+        tw, th = tw * k, th * k
+        local nx1, ny1 = nx + tw + 2 * pad, ny + th + pad + 2
+        local over = hover_ok and mx >= nx and mx <= nx1 and my >= ny and my <= ny1
+        ImGui.DrawList_AddRectFilled(dl, nx, ny, nx1, ny1, over and cols[2] or cols[1], 4)
+        ImGui.DrawList_AddTextEx(dl, font, fs, nx + pad, ny + pad / 2 + 1, COL.NOTE_TEXT, n.text)
+        if over then R.note_hover, R.note_hover_w, R.note_hover_h = n, e.w, e.h end
+      end
+    end
+  end
+  ImGui.DrawList_PopClipRect(dl)
+end
+
 function UI.draw_view(ctx, view_w, view_h)
   local sbw = CFG.SCROLLBAR_W
   local area_w = math.max(1, view_w - sbw - 4)
@@ -7167,6 +8460,7 @@ function UI.draw_view(ctx, view_w, view_h)
 
   local hovered, active = false, false
   local locked = UI.locked()
+  local nh -- the note under the mouse (found while drawing the last frame)
   if img then
     ImGui.InvisibleButton(ctx, "##pageview", area_w, view_h)
     hovered, active = ImGui.IsItemHovered(ctx), ImGui.IsItemActive(ctx)
@@ -7176,9 +8470,23 @@ function UI.draw_view(ctx, view_w, view_h)
       R.active_part = R.in_part2 and 2 or 1
     end
     if locked then hovered, active = false, false end -- lock mode: no wheel, no dragging, no menu
-    -- the toolbar menu (also when a menu is open: a second right-click opens it again at the mouse)
+    -- notes: drag one to move it, double-click it to edit it
+    nh = hovered and S.show_notes and R.note_hover or nil
+    if nh and ImGui.IsMouseDoubleClicked(ctx, 0) then
+      R.note_drag = nil; Notes.edit(S.pdf_path, nh)
+    elseif nh and ImGui.IsMouseClicked(ctx, 0) then
+      R.note_drag = { n = nh, w = R.note_hover_w, h = R.note_hover_h, part2 = R.in_part2 }
+    end
+    -- the toolbar menu (also when a menu is open: a second right-click opens it again at the mouse);
+    -- on a note: the note menu. The page point is kept for "Add note here".
     if not locked and ImGui.IsMouseClicked(ctx, 1) and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenBlockedByPopup()) then
-      R.menu_req = { kind = "main" }
+      if nh then
+        R.menu_req = { kind = "note", note = nh, path = S.pdf_path }
+      else
+        R.menu_req = { kind = "main" }
+        local pg, fx, fy = UI.page_point(ImGui.GetMousePos(ctx))
+        R.note_click = pg and { path = S.pdf_path, page = pg, x = fx, y = fy } or nil
+      end
     end
   else
     -- No page image (empty states): a plain Dummy keeps the layout but, unlike an InvisibleButton,
@@ -7197,7 +8505,21 @@ function UI.draw_view(ctx, view_w, view_h)
       end
     end
   end
-  if active and not R.perf_btn_over then -- a click on the performance-mode exit button is not a drag
+  -- a note that is dragged follows the mouse (in its own part only); saved when the mouse is released
+  local nd = R.note_drag
+  if nd and nd.part2 == R.in_part2 then
+    if ImGui.IsMouseDown(ctx, 0) then
+      local dx, dy = ImGui.GetMouseDelta(ctx)
+      if dx ~= 0 or dy ~= 0 then
+        nd.n.x = Util.clamp(nd.n.x + dx / nd.w, 0, 0.98); nd.n.y = Util.clamp(nd.n.y + dy / nd.h, 0, 0.98)
+        nd.moved = true
+      end
+    else
+      if nd.moved then Util.mark_pdirty() end
+      R.note_drag = nil
+    end
+  end
+  if active and not R.perf_btn_over and not R.note_drag then -- a click on the exit button or a note is not a drag
     local dx, dy = ImGui.GetMouseDelta(ctx)
     if dy ~= 0 then Nav.scroll_by(-dy) end
     if dx ~= 0 then S.scroll_x = Util.clamp(S.scroll_x - dx, 0, R.max_x); Util.mark_dirty() end
@@ -7216,6 +8538,7 @@ function UI.draw_view(ctx, view_w, view_h)
   Nav.update_motion()
 
   ImGui.DrawList_AddRectFilled(dl, x0, y0, x0 + area_w, y0 + view_h, CFG.PAGE_BG)
+  R.prect_n = 0 -- the page rectangles of this frame (for the notes)
   if img then
     -- snap to whole screen pixels so the texture is never sampled at half-pixel offsets (blur)
     local dw = math.floor(math.min(disp_w, area_w) + 0.5)
@@ -7241,9 +8564,11 @@ function UI.draw_view(ctx, view_w, view_h)
         if prev then ImGui.DrawList_AddImage(dl, prev, bx - R.side_step, by, bx - R.side_step + pw, by + ph, 0, 0, 1, 1, UI.page_tint()) end
       end
       ImGui.DrawList_AddImage(dl, img, bx, by, bx + pw, by + ph, 0, 0, 1, 1, UI.page_tint())
+      UI.add_prect(first, bx, by, pw, ph)
       if not second then -- nothing after the last page
       elseif img2 then
         ImGui.DrawList_AddImage(dl, img2, x2, y2, x2 + pw, y2 + ph, 0, 0, 1, 1, UI.page_tint())
+        UI.add_prect(second, x2, y2, pw, ph)
       else
         ImGui.DrawList_AddText(dl, x2 + 20, y2 + 20, COL.TEXT, string.format("Preparing page %d...", second))
       end
@@ -7265,6 +8590,7 @@ function UI.draw_view(ctx, view_w, view_h)
         local im = (p == first) and img or PDF.get_page_image(p)
         if im then
           ImGui.DrawList_AddImage(dl, im, bx, y, bx + disp_w, y + disp_h, 0, 0, 1, 1, UI.page_tint())
+          UI.add_prect(p, bx, y, disp_w, disp_h)
         else
           ImGui.DrawList_AddText(dl, bx + 20, y + 20, COL.TEXT, string.format("Preparing page %d...", p))
         end
@@ -7275,8 +8601,11 @@ function UI.draw_view(ctx, view_w, view_h)
       local u0, u1 = sx / disp_w, (sx + dw) / disp_w
       local v0, v1 = sy / disp_h, (sy + dh) / disp_h
       ImGui.DrawList_AddImage(dl, img, ox, oy, ox + dw, oy + dh, u0, v0, u1, v1, UI.page_tint())
+      UI.add_prect(first, ox - sx, oy - sy, disp_w, disp_h) -- the whole page (the view shows a part of it)
     end
+    UI.draw_notes(ctx, dl, x0, y0, area_w, view_h, hovered and not R.note_drag)
   elseif blocked and (#P.pdfs > 0 or R.total > 0) then -- an empty library shows the welcome instead
+    R.note_hover = nil
     UI.draw_region_empty_state(ctx, x0, y0, area_w, view_h, blocked)
   elseif R.info_job then
     ImGui.DrawList_AddText(dl, x0 + 20, y0 + 20, COL.TEXT, "Loading PDF...")
@@ -7315,6 +8644,11 @@ function UI.draw_view(ctx, view_w, view_h)
       ImGui.DrawList_AddRect(dl, x0 + hw, y0 + hw, x0 + area_w - hw, y0 + view_h - hw, c, 6, 0, CFG.FLASH_W)
     end
   end
+  -- page-turn countdown: a thin line at the bottom fills up before an automatic page turn (R.turn_in seconds)
+  if S.turn_warn and img and R.turn_in and R.turn_in < S.warn_sec then
+    local k = 1 - math.max(0, R.turn_in) / S.warn_sec
+    ImGui.DrawList_AddRectFilled(dl, x0, y0 + view_h - 3, x0 + area_w * k, y0 + view_h, (COL.ACCENT & 0xFFFFFF00) | 0xB0)
+  end
   -- banner: kept page (region without a PDF during playback); does not block the page
   local badge_y = y0 + 10
   if kept then
@@ -7338,28 +8672,21 @@ function UI.draw_view(ctx, view_w, view_h)
     if R.lock then badge(locked and "LOCKED" or "Lock on (active during playback)", locked and COL.YELLOW or COL.GREY) end
     if R.rec and Nav.scroll_mode() == "cues" then badge("REC", COL.RED) end
   end
-  if not part1 then ImGui.SetCursorScreenPos(ctx, x0, y0 + view_h); return end -- part 2: no performance-mode button
-  -- performance mode: a hint after entering, and an exit button in the top-right corner on hover
-  R.perf_btn_over = false
-  if R.perf then
-    local mx, my = ImGui.GetMousePos(ctx)
-    local lbl = "Exit performance mode (F / Esc)"
-    local tw, th = ImGui.CalcTextSize(ctx, lbl)
-    local bx1, by0 = x0 + area_w - 10, y0 + 10
-    local bx0, by1 = bx1 - tw - 20, by0 + th + 12
-    local near = mx >= x0 + area_w - 260 and mx <= x0 + area_w and my >= y0 and my <= y0 + 60
-    -- a click / tap on the page also shows the button (touch screens have no hover)
-    if ImGui.IsMouseClicked(ctx, 0) and mx >= x0 and mx <= x0 + area_w and my >= y0 and my <= y0 + view_h then
-      if not near then R.perf_tap_t = Util.now() end
-    end
-    if near or Util.now() - R.perf_t < 2.5 or Util.now() - R.perf_tap_t < 3 then
-      local over = mx >= bx0 and mx <= bx1 and my >= by0 and my <= by1
-      R.perf_btn_over = over
-      ImGui.DrawList_AddRectFilled(dl, bx0, by0, bx1, by1, over and COL.ACCENT or 0x000000BB, 6)
-      ImGui.DrawList_AddText(dl, bx0 + 10, by0 + 6, COL.WHITE, lbl)
-      if over and ImGui.IsMouseClicked(ctx, 0) then UI.toggle_perf() end
+  -- setlist: "Next: <song>" at the bottom right during playback and pauses (Settings > Playback > Setlist)
+  if part1 then
+    local nl = Setlist.next_label()
+    if nl then -- larger text, white on a solid dark box: readable over the music
+      local k = 1.5
+      local tw, th = ImGui.CalcTextSize(ctx, nl)
+      tw, th = tw * k, th * k
+      local lx, ly = x0 + area_w - tw - 28, y0 + view_h - th - 28
+      ImGui.DrawList_AddRectFilled(dl, lx - 12, ly - 7, lx + tw + 12, ly + th + 7, 0x101318F2, 8)
+      ImGui.DrawList_AddRect(dl, lx - 12, ly - 7, lx + tw + 12, ly + th + 7, COL.ACCENT, 8, 0, 2)
+      ImGui.DrawList_AddTextEx(dl, ImGui.GetFont(ctx), ImGui.GetFontSize(ctx) * k, lx, ly, COL.WHITE, nl)
     end
   end
+  if not part1 then ImGui.SetCursorScreenPos(ctx, x0, y0 + view_h); return end -- part 2: no performance-mode button
+  UI.draw_perf_exit(ctx, dl, x0, y0, area_w, view_h)
 
   ImGui.SetCursorScreenPos(ctx, x0, y0 + view_h + 2)
 end
@@ -7475,6 +8802,7 @@ function UI.frame()
   Pane.active(Midi.poll_direct_midi)
   Project.project_tick()
   Project.region_tick()
+  Setlist.tick()
   Project.pick_tick()
   Project.import_tick()
   Project.copy_tick()
@@ -7482,6 +8810,7 @@ function UI.frame()
   PDF.render_tick()
   Pane.part2(PDF.info_tick)
   if not R.job then Pane.part2(PDF.render_tick) end -- the parts take turns: one batch at a time
+  PDF.limit_tick()
   Util.dir_size_tick()
   if Util.now() - (R.hb_t or 0) >= 0.25 then -- single-instance heartbeat (timeout is 1 s)
     R.hb_t = Util.now()
@@ -7627,10 +8956,15 @@ function UI.init()
   if S.tab_ver < 3 then
     if S.tab_ver < 2 and S.tab >= TAB_CUES then S.tab = S.tab + 1 end -- old numbers had no Cues tab
     -- v2 numbers: 4..7 = Autoscroll, MIDI, Display, Project (now one Settings tab), 8 = Help
-    if S.tab >= 8 then S.tab = TAB_HELP elseif S.tab >= 4 then S.tab = TAB_FIRST_SETTING end
+    if S.tab >= 8 then S.tab = 5 elseif S.tab >= 4 then S.tab = 4 end -- (v3 numbers: 4 Settings, 5 Help)
     S.tab_ver = 3; Util.mark_dirty()
   end
+  if S.tab_ver < 4 then -- the Setlist tab came before Settings and Help
+    if S.tab >= TAB_SETLIST then S.tab = S.tab + 1 end
+    S.tab_ver = 4; Util.mark_dirty()
+  end
   S.tab = Util.clamp(math.floor(S.tab), 1, TAB_HELP)
+  if S.sl_view then S.page_area, S.sl_view = "setlist", false; Util.mark_dirty() end -- the switch before "Page area"
   R.ctx = r.ImGui_CreateContext(CFG.TITLE)
   -- the window moves only by its title bar, so a drag on Chart Cue's resize edges never moves it
   r.ImGui_SetConfigVar(R.ctx, r.ImGui_ConfigVar_WindowsMoveFromTitleBarOnly(), 1)
@@ -7668,6 +9002,7 @@ local test = rawget(_G, "ChartCueTest")
 if test then
   test.CFG, test.S, test.R, test.Util, test.PDF, test.Project, test.Nav, test.Midi, test.UI, test.Msg, test.Cues, test.Pane =
     CFG, S, R, Util, PDF, Project, Nav, Midi, UI, Msg, Cues, Pane
+  test.Setlist, test.Notes = Setlist, Notes
   test.get_P = function() return P end
   return
 end

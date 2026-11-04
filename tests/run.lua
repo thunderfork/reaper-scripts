@@ -142,6 +142,155 @@ test("page turns at their time", function()
   ok(R.autoscroll_active, "autoscroll active")
 end)
 
+test("page-turn countdown: seconds to the next page turn", function()
+  local _, R = setup_view()
+  at_play(5, function() C.Nav.timeline_tick(true, false, PAGES, {}) end)
+  ok(R.turn_in and math.abs(R.turn_in - 3) < 0.01, "3 s before the turn at 8 s")
+  C.Nav.timeline_tick(false, false, PAGES, {})
+  eq(R.turn_in, nil, "stopped: no countdown")
+end)
+
+test("page-turn countdown: runs to the song end when the next song follows", function()
+  local S, R = setup_view()
+  local keep = R.regions
+  local a, b = { key = "a", start = 0, stop = 30 }, { key = "b", start = 30, stop = 60 }
+  R.regions, R.active_region = { a, b }, a
+  at_play(28, function() C.Nav.timeline_tick(true, false, {}, {}) end)
+  ok(R.turn_in and math.abs(R.turn_in - 2) < 0.01, "2 s before the next song")
+  R.regions = { a }
+  at_play(28, function() C.Nav.timeline_tick(true, false, {}, {}) end)
+  eq(R.turn_in, nil, "no song after it: no countdown")
+  R.regions, R.active_region = keep, nil
+  ok(S, "S")
+end)
+
+test("notes: saved and read back; an old project has no note lines", function()
+  local P = C.get_P()
+  ok(not Project.serialize_cfg():find("\nnote=", 1, true), "no notes: no note lines")
+  local f = "C:\\Charts\\Song N.pdf"
+  P.notes[f] = { { page = 2, x = 0.25, y = 0.5, text = "repeat x2, then coda", color = "blue", size = "large" } }
+  local p2 = Project.parse_cfg((Project.serialize_cfg() .. "\n"):gmatch("([^\n]*)\n"))
+  P.notes[f] = nil
+  local n = p2.notes[f] and p2.notes[f][1]
+  ok(n, "the note is read back")
+  eq(n.page, 2); eq(n.x, 0.25); eq(n.y, 0.5); eq(n.text, "repeat x2, then coda")
+  eq(n.color, "blue"); eq(n.size, "large")
+  -- a line without colour and size (the first format) gets the defaults of new notes
+  local p3 = Project.parse_cfg(("note=" .. f .. "\t1\t0.1\t0.2\tcoda\n"):gmatch("([^\n]*)\n"))
+  local n3 = p3.notes[f] and p3.notes[f][1]
+  ok(n3 and n3.text == "coda" and n3.color == C.S.note_color and n3.size == C.S.note_size, "old line: defaults")
+end)
+
+test("setlist: saved and read back in its order; no lines without a setlist", function()
+  local P = C.get_P()
+  ok(not Project.serialize_cfg():find("\nsetlist=", 1, true), "no setlist: no setlist lines")
+  P.setlists = { { name = "Friday", items = {
+    { key = "gB", name = "Song B", ending = "continue", skip = false },
+    { key = "gA", name = "Song A", ending = "stop", skip = true },
+    { key = "gB", name = "Song B", ending = "stop", skip = false } } } }
+  P.setlist_on = true
+  local p2 = Project.parse_cfg((Project.serialize_cfg() .. "\n"):gmatch("([^\n]*)\n"))
+  P.setlists, P.setlist_on = {}, false
+  local l = p2.setlists[1]
+  ok(l and l.name == "Friday", "the name")
+  eq(#l.items, 3, "3 rows (one region twice)")
+  eq(l.items[1].key, "gB"); eq(l.items[1].ending, "continue")
+  eq(l.items[2].skip, true, "skipped"); eq(l.items[3].key, "gB")
+  eq(p2.setlist_on, true)
+end)
+
+test("setlist: stop or continue at the end of a song; a skipped song is passed", function()
+  local R, P, Setlist = C.R, C.get_P(), C.Setlist
+  local keep_regs, keep_sl, keep_on = R.regions, P.setlists, P.setlist_on
+  local seek, stopped
+  local sep, sob = r.SetEditCurPos, r.OnStopButton
+  r.SetEditCurPos = function(t) seek = t end
+  r.OnStopButton = function() stopped = true end
+  R.regions = { { key = "a", name = "A", start = 0, stop = 10 }, { key = "b", name = "B", start = 20, stop = 30 },
+    { key = "c", name = "C", start = 40, stop = 50 } }
+  P.setlists = { { name = "x", items = { { key = "c", ending = "continue" }, { key = "b", skip = true, ending = "stop" },
+    { key = "a", ending = "stop" } } } }
+  P.setlist_cur, P.setlist_on, R.sl_pos, R.sl_guard = 1, true, nil, nil
+  local good, e = pcall(function()
+    at_play(45, function() Setlist.tick() end)
+    eq(R.sl_pos, 1, "song C found")
+    at_play(49.99, function() Setlist.tick() end)
+    eq(seek, 0, "Continue: jump to A (B is skipped)")
+    eq(R.sl_pos, 3)
+    R.sl_guard = nil; seek = nil
+    at_play(9.99, function() Setlist.tick() end)
+    ok(stopped, "Stop at the end of the last song")
+  end)
+  r.SetEditCurPos, r.OnStopButton = sep, sob
+  R.regions, P.setlists, P.setlist_on, R.sl_pos, R.sl_guard = keep_regs, keep_sl, keep_on, nil, nil
+  if not good then error(e, 0) end
+end)
+
+test("setlist: a pause stops at the song end; a timed pause plays on; pauses are saved", function()
+  local R, P, Setlist = C.R, C.get_P(), C.Setlist
+  local keep_regs, keep_sl, keep_on = R.regions, P.setlists, P.setlist_on
+  local seek, stopped, played
+  local sep, sob, opb, gps = r.SetEditCurPos, r.OnStopButton, r.OnPlayButton, r.GetPlayState
+  r.SetEditCurPos = function(t) seek = t end
+  r.OnStopButton = function() stopped = true end
+  r.OnPlayButton = function() played = true end
+  R.regions = { { key = "a", name = "A", start = 0, stop = 10 }, { key = "b", name = "B", start = 20, stop = 30 } }
+  P.setlists = { { name = "x", items = { { key = "a", ending = "continue" }, { kind = "pause", sec = 1 },
+    { key = "b", ending = "stop" } } } }
+  P.setlist_cur, P.setlist_on, R.sl_pos, R.sl_guard, R.sl_hold = 1, true, nil, nil, nil
+  local good, e = pcall(function()
+    at_play(5, function() Setlist.tick() end)
+    at_play(9.99, function() Setlist.tick() end)
+    ok(stopped, "the pause after A stops REAPER (A has Continue)")
+    eq(seek, 20, "the edit cursor is at B"); eq(R.sl_pos, 3)
+    ok(R.sl_hold and R.sl_hold.t_end, "a timed pause runs")
+    r.GetPlayState = function() return 0 end
+    R.sl_hold.t_end = C.Util.now() - 1
+    Setlist.tick()
+    ok(played, "after its seconds, the next song plays")
+    local p2 = Project.parse_cfg((Project.serialize_cfg() .. "\n"):gmatch("([^\n]*)\n"))
+    eq(p2.setlists[1].items[2].kind, "pause"); eq(p2.setlists[1].items[2].sec, 1)
+    eq(p2.setlists[1].items[3].key, "b")
+  end)
+  r.SetEditCurPos, r.OnStopButton, r.OnPlayButton, r.GetPlayState = sep, sob, opb, gps
+  R.regions, P.setlists, P.setlist_on, R.sl_pos, R.sl_guard, R.sl_hold = keep_regs, keep_sl, keep_on, nil, nil, nil
+  if not good then error(e, 0) end
+end)
+
+test("setlist: next song goes from the song at the cursor, not from an old position", function()
+  local R, P, Setlist = C.R, C.get_P(), C.Setlist
+  local keep_regs, keep_sl, keep_on = R.regions, P.setlists, P.setlist_on
+  local seek
+  local sep = r.SetEditCurPos
+  r.SetEditCurPos = function(t) seek = t end
+  R.regions = { { key = "a", start = 0, stop = 10 }, { key = "b", start = 20, stop = 30 }, { key = "c", start = 40, stop = 50 } }
+  P.setlists = { { name = "x", items = { { key = "a", ending = "stop" }, { key = "b", ending = "stop" }, { key = "c", ending = "stop" } } } }
+  P.setlist_cur, P.setlist_on, R.sl_pos = 1, true, 1 -- an old position: song A
+  local good, e = pcall(function()
+    at_play(25, function() Setlist.next_song(P.setlists[1]) end) -- the play cursor was moved to B by hand
+    eq(seek, 40, "next song after B is C")
+  end)
+  r.SetEditCurPos = sep
+  R.regions, P.setlists, P.setlist_on, R.sl_pos, R.sl_guard = keep_regs, keep_sl, keep_on, nil, nil
+  if not good then error(e, 0) end
+end)
+
+test("setlist: a copied row keeps a pause; undo takes back the last change", function()
+  local R, P, Setlist = C.R, C.get_P(), C.Setlist
+  local c = Setlist.copy_item({ kind = "pause", sec = 7, skip = true })
+  eq(c.kind, "pause"); eq(c.sec, 7); eq(c.skip, true)
+  local keep_lock = P.setlist_lock
+  P.setlist_lock = false
+  local l = { name = "u", items = { { key = "a", ending = "stop" }, { key = "b", ending = "stop" } } }
+  Setlist.save_undo(l)
+  table.remove(l.items, 1)
+  eq(#l.items, 1, "removed")
+  Setlist.undo(l)
+  eq(#l.items, 2, "undo brings it back"); eq(l.items[1].key, "a")
+  ok(not Setlist.can_undo(l), "nothing more to undo")
+  P.setlist_lock, R.sl_undo, R.sl_pos = keep_lock, nil, nil
+end)
+
 test("turn pages early (2 beats at 120 bpm = 1 s)", function()
   local S, _, P = setup_view()
   P.turn_early = 2
@@ -472,6 +621,27 @@ test("cache folder: one per file and sharpness", function()
   ok(a ~= b, "other sharpness: other folder")
   ok(a:find(C.CFG.CACHE_ROOT, 1, true) == 1, "inside the cache folder")
   S.dpi = keep
+end)
+
+test("cache limit: the PDFs used longest ago go first; the PDF on screen stays", function()
+  local R, S, PDF = C.R, C.S, C.PDF
+  local root = C.CFG.CACHE_ROOT
+  local old, mid, new, cur = root .. "\\t_old", root .. "\\t_mid", root .. "\\t_new", root .. "\\t_cur"
+  local times = { [old] = 100, [mid] = 200, [new] = 300, [cur] = 50 }
+  local keep_rm, keep_used, keep_lim, keep_dir, keep_job = PDF.rmdir_all, PDF.last_used, S.cache_limit_mb, R.cache_dir, R.job
+  local removed
+  PDF.rmdir_all = function(f) removed = f end
+  PDF.last_used = function(d) return times[d] end
+  S.cache_limit_mb, R.cache_dir, R.job = 1, cur .. "\\dpi150_win", nil
+  local MB = 1048576
+  PDF.limit_cache({ [old] = 0.5 * MB, [mid] = 0.5 * MB, [new] = 0.5 * MB, [cur] = 0.5 * MB }, 2 * MB)
+  PDF.rmdir_all, PDF.last_used, S.cache_limit_mb, R.cache_dir, R.job = keep_rm, keep_used, keep_lim, keep_dir, keep_job
+  ok(removed ~= nil, "something removed")
+  eq(#removed, 3, "3 folders: 2 MB down to 0.9 MB or less")
+  eq(removed[1], old, "the oldest first")
+  eq(removed[2], mid, "then the next oldest")
+  eq(removed[3], new, "the PDF on screen is not removed, although it is older")
+  R.cache_size = nil
 end)
 
 -- project switch ("Save as" keeps the data, another project does not get it) -----

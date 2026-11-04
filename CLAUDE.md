@@ -61,6 +61,8 @@ Main file: `Chart Cue/Chart Cue.lua` (the `Chart Cue` folder is the ReaPack cate
 - `PDF`: PDF info, rendering, cache, and page images.
 - `Project`: regions, markers, library, and project configuration.
 - `Cues`: the cue list (per region, in the project data) and its undo.
+- `Notes`: text notes on the pages (P.notes).
+- `Setlist`: the show order (P.setlists), its playback (stop / continue / pauses) and its undo.
 - `Nav`: page, scroll, zoom, and autoscroll logic.
 - `Midi`: MIDI input and CC handling, and the commands of the action scripts.
 - `Msg`: messages, errors and the diagnostic log.
@@ -103,7 +105,8 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 ## Deployment
 
 - Development copy: `Chart Cue/Chart Cue.lua` in this repository, and the action scripts
-  `Chart Cue - Next page.lua`, `Chart Cue - Previous page.lua`, `Chart Cue - Toggle performance mode.lua`
+  `Chart Cue - Next page.lua`, `Chart Cue - Previous page.lua`, `Chart Cue - Toggle performance mode.lua`,
+  `Chart Cue - Next song.lua`
   in the same folder.
 - Deploy with:
 
@@ -123,6 +126,8 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 ## Other files
 
 - `PLAN.md`: done work, open items and the release checklist.
+- `.claude/skills/debug-time`: the review round for "debug time" (senior developer, UI/UX designer, cross-review,
+  feedback, fixes, final full-code pass, then the commit / push question).
 - `README.md`: for other users. `tools\`: check.ps1 (with `.luarc.json`: the static checks), test.ps1,
   deploy.ps1, release.ps1, shots.ps1. `tests\`: run.lua (logic tests), shots.lua, test.pdf.
 - `LICENSE` (MIT). `tools\release.ps1`: makes `release\Chart-Cue-<version>.zip` (git-ignored).

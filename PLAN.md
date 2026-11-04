@@ -64,6 +64,7 @@ Steps (each tested by the user before the next):
        dropdown, record into the active part (UI.record_cue), part 2 follows its cues. Not yet: "(both)" view, MIDI CCs for PDF 2.
    3d. DONE 4 November 2026: Help, README (ReaImGui note), full check and optimization pass, release 1.3.
 - 1.3 (4 November 2026): 2 PDFs per song (split view, PDF 1 / PDF 2 in Regions, own cues, active part); pages on screen (1, side by side with Rolling / Book, continuous) and the slide-in page turn; Display > Page layout; Library: Add from folder remembers the folders, Sync, Remove unused PDFs, Sort: Unused first, Replace PDF; right-click menus; Redo; bold row labels; one standard button width; panel fit to sections; fixes (region PDF at playback start, empty dropdown text, clicks during playback, double flash, odd last page).
+- 1.4 (4 November 2026, committed, not pushed or released yet): Setlist tab (show order, Stop / Continue, timed pauses, several setlists, lock, undo, right-click menu, play buttons, "Next song" action, Page area: PDF / Setlist / Setlist and PDF, "Next: ..." label); notes on the pages (colour and size per note); page-turn countdown (also before the next song); toolbar and tab items can be hidden; brightness button; Settings in 5 sections (Viewer, Playback, Control, Appearance, General); Shortcuts and external controls (Assign...); page cache limit (1 GB); "debug time" review skill (.claude/skills/debug-time).
 
 ## Release checklist (do before sharing a new version)
 1. Version: @version and CFG.VERSION are equal; @changelog has 1–3 user-facing lines.
@@ -76,8 +77,9 @@ Steps (each tested by the user before the next):
 8. Regions: rename, move, undo, save and reopen: the PDF assignment stays. "Keep last page" during playback in a region without a PDF; the page can be turned.
 9. Cues: record page turns and scroll points (Record on and off, Lock on); "+ below" and "Use current view" (also on the Start row); Undo and Ctrl+Z; switch Beats / Seconds; a wrong value shows a red border; Scroll Smooth / Jump.
 10. Markers: PDFPAGE / PDFSCROLL markers scroll the page; "Remove PDF markers..." asks first and Ctrl+Z brings them back.
-11. Control: keys (window active); the 3 actions (window not active, also in lock mode); MIDI absolute and relative; MIDI page turns and cue buttons; every right-click menu.
-12. Stage: performance mode on / off; lock; hide panel when playing; page brightness.
+11. Control: keys (window active); the 4 actions (window not active, also in lock mode), and Assign... in Settings > Control; MIDI absolute and relative; MIDI page turns and cue buttons; every right-click menu.
+12. Stage: performance mode on / off (also with Page area Setlist); lock; hide panel when playing; page brightness (slider and toolbar button); page-turn countdown; notes (add, drag, edit, colour, size).
+15. Setlist: make, reorder (drag, arrows, menu), skip, remove and undo, pauses, Stop / Continue (adjacent and far songs), play buttons, Next song action, Lock setlist, Page area Setlist and Setlist and PDF, duplicate with a pause, another project.
 13. Window: dock and undock (menu); resize the floating window at each edge and the corner; collapse and open.
 14. Large set: a 300-page PDF and a project with 30 regions: start time, page cache size, smooth playback.
 
