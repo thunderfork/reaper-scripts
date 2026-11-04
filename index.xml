@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Thunderfork Scripts" commit="7d02396bcc210c56e9143dcbff80895eb55aadf8">
+<index version="1" name="Thunderfork Scripts" commit="f6955765190a53ccaad772445a30603babfee2f1">
   <category name="Chart Cue">
     <reapack name="Chart Cue.lua" type="script" desc="Chart Cue: Open PDF Viewer">
       <metadata>
@@ -54,6 +54,14 @@ shortcut assignment for the actions, a page cache limit, and many fixes.]]></cha
         <source main="main" file="Chart Cue - Previous page.lua">https://github.com/thunderfork/reaper-scripts/raw/7d02396bcc210c56e9143dcbff80895eb55aadf8/Chart%20Cue/Chart%20Cue%20-%20Previous%20page.lua</source>
         <source main="main" file="Chart Cue - Toggle performance mode.lua">https://github.com/thunderfork/reaper-scripts/raw/7d02396bcc210c56e9143dcbff80895eb55aadf8/Chart%20Cue/Chart%20Cue%20-%20Toggle%20performance%20mode.lua</source>
         <source main="main" file="Chart Cue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/7d02396bcc210c56e9143dcbff80895eb55aadf8/Chart%20Cue/Chart%20Cue%20-%20Next%20song.lua</source>
+      </version>
+      <version name="1.4.1" author="Nick Gkogkomitros" time="2026-11-04T09:14:48Z">
+        <changelog><![CDATA[Faster toolbar, safer cue lists for PDF 2, and preparation for a later UI scale setting. No visible changes.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/f6955765190a53ccaad772445a30603babfee2f1/Chart%20Cue/Chart%20Cue.lua</source>
+        <source main="main" file="Chart Cue - Next page.lua">https://github.com/thunderfork/reaper-scripts/raw/f6955765190a53ccaad772445a30603babfee2f1/Chart%20Cue/Chart%20Cue%20-%20Next%20page.lua</source>
+        <source main="main" file="Chart Cue - Previous page.lua">https://github.com/thunderfork/reaper-scripts/raw/f6955765190a53ccaad772445a30603babfee2f1/Chart%20Cue/Chart%20Cue%20-%20Previous%20page.lua</source>
+        <source main="main" file="Chart Cue - Toggle performance mode.lua">https://github.com/thunderfork/reaper-scripts/raw/f6955765190a53ccaad772445a30603babfee2f1/Chart%20Cue/Chart%20Cue%20-%20Toggle%20performance%20mode.lua</source>
+        <source main="main" file="Chart Cue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/f6955765190a53ccaad772445a30603babfee2f1/Chart%20Cue/Chart%20Cue%20-%20Next%20song.lua</source>
       </version>
     </reapack>
   </category>
