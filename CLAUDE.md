@@ -63,7 +63,8 @@ Main file: `Chart Cue/Chart Cue.lua` (the `Chart Cue` folder is the ReaPack cate
 
 ## Architecture
 
-- `CFG`: constants, paths, and defaults. `COL`: the colours.
+- `CFG`: constants, paths, defaults and named sizes in pixels (CFG.UI_SCALE: the icons; use a named size,
+  not a new plain number, for a size that repeats). `COL`: the colours.
 - `S`: global settings persisted in `settings.ini`.
 - `R`: volatile runtime state.
 - `P`: per-project configuration stored in the REAPER project.

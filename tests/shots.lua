@@ -32,7 +32,7 @@ C.UI.init() -- the normal start, with the window
 C.S.comfortable = os.getenv("CHARTCUE_COMFORT") == "1" -- set by .\tools\shots.ps1 -Comfortable
 
 local S, R = C.S, C.R
-local function settings(open) S.tab = 4; S.settings_open = open end
+local function settings(open) S.tab = 5; S.settings_open = open end -- (5 sections: Viewer, Playback, Control, Appearance, General)
 local scenes = {
   { "01_first_start", function() S.tab = 1 end, 2 },
   { "02_library", function()
@@ -43,11 +43,17 @@ local scenes = {
   { "03_regions", function() S.tab = 2 end, 2 },
   { "04_cues", function() S.tab = 3 end, 2 },
   { "04b_cues_recording", function() C.get_P().scroll_mode = "cues"; R.rec = true end, 1.5 },
-  { "05_settings_autoscroll", function() settings("1000") end, 1.5 },
-  { "06_settings_midi", function() settings("0100") end, 1.5 },
-  { "07_settings_display", function() settings("0010") end, 1.5 },
-  { "08_settings_general", function() settings("0001") end, 1.5 },
-  { "09_help", function() S.tab = 5 end, 1.5 },
+  { "05_setlist", function()
+      local P = C.get_P()
+      if #P.setlists == 0 and #R.regions > 0 then P.setlists[1] = C.Setlist.from_timeline("Setlist 1"); P.setlist_cur = 1 end
+      S.tab = 4
+    end, 1.5 },
+  { "06_settings_viewer", function() settings("10000") end, 1.5 },
+  { "07_settings_playback", function() settings("01000") end, 1.5 },
+  { "08_settings_control", function() settings("00100") end, 1.5 },
+  { "09_settings_appearance", function() settings("00010") end, 1.5 },
+  { "10_settings_general", function() settings("00001") end, 1.5 },
+  { "11_help", function() S.tab = 6 end, 1.5 },
 }
 
 local i, t_next, waiting = 0, r.time_precise() + 1, false

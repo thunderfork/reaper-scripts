@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 1.4
+-- @version 1.4.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,10 +13,7 @@
 --   [main] Chart Cue - Toggle performance mode.lua
 --   [main] Chart Cue - Next song.lua
 -- @changelog
---   Setlist tab: your show order with Stop / Continue, pauses, several setlists, play buttons and a Next song action;
---   the page area can show the setlist, the PDF, or both.
---   Notes on the pages, a page-turn countdown, a brightness button, hideable toolbar items and tabs, Settings in 5 sections,
---   shortcut assignment for the actions, a page cache limit, and many fixes.
+--   Faster toolbar, safer cue lists for PDF 2, and preparation for a later UI scale setting. No visible changes.
 
 -- MIT License
 --
@@ -101,7 +98,7 @@ CFG.WIN_MIN_W, CFG.WIN_MIN_H = 300, 200 -- smallest window size when resizing
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.4"      -- keep equal to @version in the header
+CFG.VERSION = "1.4.1"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.FEEDBACK_URL = "https://github.com/thunderfork/reaper-scripts/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
@@ -159,6 +156,8 @@ CFG.SP = {
 }
 -- Layout sizes (pixels)
 CFG.ROW_H = 26   -- height of every control (fields, dropdowns, buttons, list rows); see UI.h
+CFG.UI_SCALE = 1           -- the size of drawn icons (1 = 100%); for a later "UI scale" setting, every size in
+                           -- pixels below (and the fonts) must use it too
 CFG.TB_BTN_W = 34          -- width of the < > - + toolbar buttons
 CFG.TB_GAP = 8             -- gap between toolbar items
 CFG.TB_GROUP_GAP = 25      -- gap between toolbar groups (a divider line in the middle)
@@ -168,6 +167,15 @@ CFG.REGION_COMBO_W = 280    -- Regions: PDF menu
 CFG.DOT_W = 16              -- Regions: status symbol column
 CFG.HELP_ICON = 20          -- round "?" icon
 CFG.SMALL_BTN_W = 80        -- Browse..., Cancel
+CFG.ROW_GAP = 12            -- gap between a value and the next item in a row (DPI, quality, Change)
+CFG.CTRL_GAP = 8            -- gap between 2 controls side by side (a dropdown and its button)
+CFG.DPI_FIELD_W = 140       -- the DPI number field
+CFG.CACHE_LIMIT_W = 140     -- the "Cache limit" dropdown
+CFG.SL_COMBO_W = 220        -- setlist: the "Current setlist" and "Add song" dropdowns (at most)
+CFG.SL_MORE_W = 110         -- setlist: the "More..." dropdown
+CFG.SL_END_W = 110          -- setlist row: the Stop / Continue dropdown and the pause seconds
+CFG.SL_ROW_GAP = 6          -- setlist row: gap between its controls
+CFG.TRANSPORT_W, CFG.TRANSPORT_H, CFG.TRANSPORT_GAP = 44, 32, 8 -- the play buttons above the setlist
 CFG.MEDIUM_BTN_W = 100      -- Relocate..., Yes, remove
 CFG.FLASH_SEC = 0.7         -- page-turn flash duration
 CFG.FLASH_W = 6             -- page-turn flash border width
@@ -3927,15 +3935,16 @@ local BRIGHT_TIPS = {
 
 -- Sun icon for the brightness button: the disc is fuller and the rays are longer when the page is brighter.
 function UI.draw_sun_icon(dl, cx, cy, pct)
+  local s = CFG.UI_SCALE
   local k = Util.clamp(pct / 100, 0.25, 1)
   local col = COL.TEXT_MAIN
-  ImGui.DrawList_AddCircle(dl, cx, cy, 4.5, col, 16, 1.5)
-  ImGui.DrawList_AddCircleFilled(dl, cx, cy, 4.5 * k, col, 16)
-  local r0, r1 = 6.5, 6.5 + 3.5 * k
+  ImGui.DrawList_AddCircle(dl, cx, cy, 4.5 * s, col, 16, 1.5 * s)
+  ImGui.DrawList_AddCircleFilled(dl, cx, cy, 4.5 * k * s, col, 16)
+  local r0, r1 = 6.5 * s, (6.5 + 3.5 * k) * s
   for i = 0, 7 do
     local a = i * math.pi / 4
-    local c, s = math.cos(a), math.sin(a)
-    ImGui.DrawList_AddLine(dl, cx + c * r0, cy + s * r0, cx + c * r1, cy + s * r1, col, 1.5)
+    local c, sn = math.cos(a), math.sin(a)
+    ImGui.DrawList_AddLine(dl, cx + c * r0, cy + sn * r0, cx + c * r1, cy + sn * r1, col, 1.5 * s)
   end
 end
 
@@ -4179,10 +4188,7 @@ function UI.context_menus(ctx)
   elseif m.kind == "note" then UI.note_menu(ctx, m)
   elseif m.kind == "setlist" then UI.setlist_menu(ctx, m.i)
   elseif m.kind == "cue" then
-    R.cue_part_ctx = m.part -- the list of the row (PDF 1 or PDF 2)
-    local ok, err = pcall(UI.cue_menu, ctx, m)
-    R.cue_part_ctx = nil
-    if not ok then error(err, 0) end
+    Cues.with_part(m.part, UI.cue_menu, ctx, m) -- the list of the row (PDF 1 or PDF 2)
   else UI.main_menu(ctx) end
   -- a menu can end with a submenu, whose label sets the cursor itself: one empty item ends the menu
   -- cleanly (ImGui stops with an error when the cursor was moved after the last item)
@@ -4417,11 +4423,20 @@ function UI.menu_item(ctx, label, key, checked, disabled)
   return hit
 end
 
-function UI.draw_centered_toolbar(ctx)
-  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FramePadding(), 8, UI.pad_y(ctx)) -- the same height as all controls
+-- The toolbar rows are built again only when something that changes their items or widths changed
+-- (R.tb_cache); the buttons themselves read their state (lock, record, brightness...) every frame.
+function UI.toolbar_rows(ctx, avail)
+  local p1, p2 = Nav.spread()
+  local playing = Util.playing()
+  local mode = Nav.scroll_mode()
+  local c = R.tb_cache
+  if c and c.ctx == ctx and c.avail == avail and c.name == R.pdf_name and c.total == R.total and c.p1 == p1
+      and c.p2 == p2 and c.go == R.goto_edit and c.play == playing and c.mode == mode
+      and c.act == R.autoscroll_active and c.hide == S.tb_hide and c.area == S.page_area and c.sl == Setlist.cur()
+      and c.path == S.pdf_path then
+    return c.rows
+  end
   local items = UI.toolbar_items(ctx)
-  local avail = math.max(1, (ImGui.GetContentRegionAvail(ctx)))
-  local x0 = ImGui.GetCursorPosX(ctx)
   local gap, ggap = CFG.TB_GAP, CFG.TB_GROUP_GAP
   local groups = {}
   for _, it in ipairs(items) do
@@ -4446,6 +4461,18 @@ function UI.draw_centered_toolbar(ctx)
     end
   end
   if #row > 0 then rows[#rows + 1] = { items = row, w = row_w } end
+  R.tb_cache = { ctx = ctx, avail = avail, name = R.pdf_name, total = R.total, p1 = p1, p2 = p2, go = R.goto_edit,
+    play = playing, mode = mode, act = R.autoscroll_active, hide = S.tb_hide, area = S.page_area, sl = Setlist.cur(),
+    path = S.pdf_path, rows = rows }
+  return rows
+end
+
+function UI.draw_centered_toolbar(ctx)
+  ImGui.PushStyleVar(ctx, ImGui.StyleVar_FramePadding(), 8, UI.pad_y(ctx)) -- the same height as all controls
+  local avail = math.max(1, (ImGui.GetContentRegionAvail(ctx)))
+  local x0 = ImGui.GetCursorPosX(ctx)
+  local ggap, gap = CFG.TB_GROUP_GAP, CFG.TB_GAP
+  local rows = UI.toolbar_rows(ctx, avail)
   local dl, fh = ImGui.GetWindowDrawList(ctx), ImGui.GetFrameHeight(ctx)
   for _, rw in ipairs(rows) do -- every item is one frame high, so SameLine keeps one top edge
     for j, e in ipairs(rw.items) do
@@ -4578,7 +4605,7 @@ function UI.draw_ask(ctx, id, key)
   local _, cw = UI.row_start(ctx)
   local hw = math.floor((cw - 8) / 2)
   local yes = UI.row_button(ctx, a.yes, hw, true)
-  ImGui.SameLine(ctx, 0, 8)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   local no = UI.button(ctx, "Cancel", cw - hw - 8, UI.h(ctx))
   ImGui.PopID(ctx) -- always paired with PushID above
   if yes then R.ask = nil; a.run() elseif no then R.ask = nil end
@@ -4830,7 +4857,7 @@ function UI.song_title(ctx, name, rg)
   UI.row_text(ctx, name, COL.HEADING)
   UI.pop_font(ctx)
   if rg then
-    ImGui.SameLine(ctx, 0, 12)
+    ImGui.SameLine(ctx, 0, CFG.ROW_GAP)
     UI.row_text(ctx, Util.fmt_mmss(rg.start) .. " - " .. Util.fmt_mmss(rg.stop), COL.TEXT)
   end
 end
@@ -4852,7 +4879,7 @@ function UI.button_pair2(ctx, la, ka, lb, kb, ta, tb, row_label)
   local a = UI.button(ctx, la, w, UI.h(ctx))
   UI.pop_kind(ctx, nc, nv)
   if ta then UI.tip(ctx, ta) end
-  if stack then ImGui.SetCursorPosX(ctx, cx) else ImGui.SameLine(ctx, 0, 8) end
+  if stack then ImGui.SetCursorPosX(ctx, cx) else ImGui.SameLine(ctx, 0, CFG.CTRL_GAP) end
   nc, nv = UI.push_kind(ctx, kb)
   local b = UI.button(ctx, lb, w, UI.h(ctx))
   UI.pop_kind(ctx, nc, nv)
@@ -4950,7 +4977,7 @@ function UI.draw_library_tab(ctx)
       if UI.button(ctx, "Add from folder", bw, fh) then Project.start_folder_pick() end
       UI.tip(ctx, "Adds all PDFs of a folder. The folder is remembered for the sync button next to it.")
       UI.pop_kind(ctx, nc, nv)
-      ImGui.SameLine(ctx, 0, 8)
+      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
       local can_sync = #P.folders > 0 and not R.import and not R.sync
       ImGui.BeginDisabled(ctx, not can_sync)
       if UI.row_icon_button(ctx, "##syncfolders", fh, "sync", can_sync) and can_sync then Project.sync_folders() end
@@ -5420,28 +5447,29 @@ function UI.row_icon_button(ctx, id, size, kind, lit)
   local cx, cy = math.floor(x0 + size / 2) + 0.5, math.floor(y0 + size / 2) + 0.5
   local col = hov and COL.TEXT_BRIGHT or (lit and COL.TEXT_MAIN) or COL.TEXT_DIM
   if lit == false then col = (COL.TEXT_DIM & 0xFFFFFF00) | 0x60 end -- not available now: faint
+  local s = CFG.UI_SCALE
   if kind == "sync" then -- the usual refresh symbol: a circular arrow (3/4 of a circle) with one head
-    local rad, a0, a1 = 5.5, math.pi * -0.35, math.pi * 1.25
+    local rad, a0, a1 = 5.5 * s, math.pi * -0.35, math.pi * 1.25
     ImGui.DrawList_PathArcTo(dl, cx, cy, rad, a0, a1)
-    ImGui.DrawList_PathStroke(dl, col, 0, 1.7)
+    ImGui.DrawList_PathStroke(dl, col, 0, 1.7 * s)
     -- the head at the end of the arc, pointing on along the circle (clockwise on screen)
     local ex, ey = cx + math.cos(a1) * rad, cy + math.sin(a1) * rad
     local tx, ty = -math.sin(a1), math.cos(a1) -- direction of the arc at its end
     local nx, ny = math.cos(a1), math.sin(a1)  -- outwards
-    ImGui.DrawList_AddTriangleFilled(dl, ex + tx * 3.5, ey + ty * 3.5,
-      ex - tx * 1 + nx * 3, ey - ty * 1 + ny * 3, ex - tx * 1 - nx * 3, ey - ty * 1 - ny * 3, col)
+    ImGui.DrawList_AddTriangleFilled(dl, ex + tx * 3.5 * s, ey + ty * 3.5 * s,
+      ex - tx * s + nx * 3 * s, ey - ty * s + ny * 3 * s, ex - tx * s - nx * 3 * s, ey - ty * s - ny * 3 * s, col)
   elseif kind == "undo" or kind == "redo" then -- a curved arrow (to the left for undo, to the right for redo)
     local d = (kind == "undo") and -1 or 1
-    ImGui.DrawList_PathArcTo(dl, cx, cy + 2, 5, math.pi, 2 * math.pi)
-    ImGui.DrawList_PathStroke(dl, col, 0, 1.6)
-    local ex = cx + d * 5 -- the arrow head: left end (undo) or right end (redo)
-    ImGui.DrawList_PathLineTo(dl, ex - 3, cy - 0.5)
-    ImGui.DrawList_PathLineTo(dl, ex, cy + 2.5)
-    ImGui.DrawList_PathLineTo(dl, ex + 3, cy - 0.5)
-    ImGui.DrawList_PathStroke(dl, col, 0, 1.6)
+    ImGui.DrawList_PathArcTo(dl, cx, cy + 2 * s, 5 * s, math.pi, 2 * math.pi)
+    ImGui.DrawList_PathStroke(dl, col, 0, 1.6 * s)
+    local ex = cx + d * 5 * s -- the arrow head: left end (undo) or right end (redo)
+    ImGui.DrawList_PathLineTo(dl, ex - 3 * s, cy - 0.5 * s)
+    ImGui.DrawList_PathLineTo(dl, ex, cy + 2.5 * s)
+    ImGui.DrawList_PathLineTo(dl, ex + 3 * s, cy - 0.5 * s)
+    ImGui.DrawList_PathStroke(dl, col, 0, 1.6 * s)
   elseif kind == "view" then
-    ImGui.DrawList_AddRect(dl, cx - 5, cy - 6.5, cx + 5, cy + 6.5, col, 1.5, 0, 1.5)
-    ImGui.DrawList_AddRectFilled(dl, cx - 3, cy - 2, cx + 3, cy + 2, col)
+    ImGui.DrawList_AddRect(dl, cx - 5 * s, cy - 6.5 * s, cx + 5 * s, cy + 6.5 * s, col, 1.5 * s, 0, 1.5 * s)
+    ImGui.DrawList_AddRectFilled(dl, cx - 3 * s, cy - 2 * s, cx + 3 * s, cy + 2 * s, col)
   else
     UI.draw_tb_icon(dl, cx, cy, kind, col)
   end
@@ -5624,7 +5652,7 @@ function UI.draw_cue_bar(ctx)
   ImGui.EndDisabled(ctx)
   -- the add buttons: only while Record is on (greyed out otherwise), like the C and S keys
   local on = can and R.rec
-  ImGui.SameLine(ctx, 0, 12)
+  ImGui.SameLine(ctx, 0, CFG.ROW_GAP)
   -- the 2 add buttons: the standard width (smaller only in a narrow panel)
   local abw = UI.std_w(ctx, "Add scroll point", math.floor((UI.panel_w(ctx) - 12 - 8) / 2))
   ImGui.BeginDisabled(ctx, not on)
@@ -5638,7 +5666,7 @@ function UI.draw_cue_bar(ctx)
   end
   add_tip("Add page turn (C key): the next page after the cue before it, at the top.\n"
     .. "Added at the play cursor, in the current song.")
-  ImGui.SameLine(ctx, 0, 8)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   if UI.button(ctx, "Add scroll point", abw, UI.h(ctx)) and on then UI.record_cue(Cues.add_scroll_point) end
   add_tip("Add scroll point (S key): the same page as the cue before it, at the current scroll position.\n"
     .. "Added at the play cursor, in the current song.")
@@ -5666,13 +5694,20 @@ function UI.draw_undo_redo(ctx)
   end
 end
 
+-- Runs fn(...) with the cue list of PDF `part` (1 or 2; nil = the part that runs, see Cues.key), and
+-- always sets the choice back, also after an error: the choice never stays on for other code.
+function Cues.with_part(part, fn, ...)
+  local keep = R.cue_part_ctx
+  R.cue_part_ctx = part
+  local ok, a, b, c = pcall(fn, ...)
+  R.cue_part_ctx = keep
+  if not ok then error(a, 0) end
+  return a, b, c
+end
+
 -- The add buttons record into the active part, like the C / S keys (not into the list the tab shows).
 function UI.record_cue(fn)
-  local keep = R.cue_part_ctx
-  R.cue_part_ctx = nil
-  local ok, err = pcall(Pane.active, fn)
-  R.cue_part_ctx = keep
-  if not ok then error(err, 0) end
+  Cues.with_part(nil, Pane.active, fn)
 end
 
 -- Cues tab: "Cue settings" (unit, song, tools) and the "Cue list" with its bar.
@@ -5952,7 +5987,7 @@ function UI.draw_control_tab(ctx)
     else
       local d = Midi.action_desc(i)
       UI.row_text(ctx, d ~= "" and d or "(none)", d ~= "" and nil or COL.TEXT_DIM)
-      ImGui.SameLine(ctx, 0, 12)
+      ImGui.SameLine(ctx, 0, CFG.ROW_GAP)
       if UI.row_button(ctx, "Assign...##act" .. i, UI.btn_w(ctx, "Assign...", CFG.SMALL_BTN_W), "ghost") then
         Midi.assign_action(i)
       end
@@ -6058,7 +6093,7 @@ function UI.draw_poppler_settings(ctx)
   if ch then Util.mark_dirty() end
   UI.tip(ctx, "Poppler for Windows: select pdftoppm.exe. pdfinfo.exe must be in the same folder.")
   local edited = ImGui.IsItemDeactivatedAfterEdit(ctx)
-  ImGui.SameLine(ctx, 0, 8)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   if UI.button(ctx, "Browse...", CFG.SMALL_BTN_W, 0) then PDF.browse_exe() end
   if edited then
     R.exe = PDF.find_pdftoppm(); PDF.check_pdfinfo()
@@ -6305,7 +6340,7 @@ function UI.draw_appearance_tab(ctx)
     UI.row_start(ctx, "Page sharpness (DPI)")
     local edit = R.dpi_manual or not R.last_ratio
     if edit then
-      ImGui.SetNextItemWidth(ctx, 140)
+      ImGui.SetNextItemWidth(ctx, CFG.DPI_FIELD_W)
       ch, R.dpi_edit = ImGui.InputInt(ctx, "##dpi", R.dpi_edit or S.dpi, 25, 50)
       if ImGui.IsItemDeactivatedAfterEdit(ctx) or ch then
         local d = Util.clamp(R.dpi_edit, 50, 600)
@@ -6319,12 +6354,12 @@ function UI.draw_appearance_tab(ctx)
       UI.row_text(ctx, string.format("%d DPI", S.dpi))
     end
     if q then
-      ImGui.SameLine(ctx, 0, 12)
+      ImGui.SameLine(ctx, 0, CFG.ROW_GAP)
       UI.row_text(ctx, q, qcol)
       UI.tip(ctx, qtip)
     end
     if R.last_ratio then
-      ImGui.SameLine(ctx, 0, 12)
+      ImGui.SameLine(ctx, 0, CFG.ROW_GAP)
       if R.dpi_manual then
         if UI.row_button(ctx, "Done##dpi", UI.btn_w(ctx, "Change", CFG.SMALL_BTN_W), "ghost") then R.dpi_manual = false end
         UI.tip(ctx, "Back to the short view of the DPI.")
@@ -6378,7 +6413,7 @@ function UI.draw_appearance_tab(ctx)
   UI.draw_ask(ctx, "cache_clear")
   do
     local _, cw = UI.row_start(ctx, "Cache limit")
-    if UI.combo(ctx, "##cachelimit", UI.cache_limit_label(S.cache_limit_mb), math.min(cw, 140)) then
+    if UI.combo(ctx, "##cachelimit", UI.cache_limit_label(S.cache_limit_mb), math.min(cw, CFG.CACHE_LIMIT_W)) then
       for _, mb in ipairs(CFG.CACHE_LIMITS) do
         if ImGui.Selectable(ctx, UI.cache_limit_label(mb), mb == S.cache_limit_mb) and mb ~= S.cache_limit_mb then
           S.cache_limit_mb = mb; Util.mark_dirty(); R.limit_due, R.limit_t = true, nil
@@ -6867,7 +6902,7 @@ function UI.draw_help_tab(ctx)
     end
     UI.pop_kind(ctx, nc, nv)
     UI.tip(ctx, "Opens the Chart Cue page for problems and ideas on GitHub, in your browser.")
-    ImGui.SameLine(ctx, 0, 8)
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
     ImGui.BeginDisabled(ctx, true)
     UI.button(ctx, "REAPER forum", hw, UI.h(ctx))
     ImGui.EndDisabled(ctx) -- always paired with BeginDisabled above
@@ -6878,8 +6913,9 @@ end
 
 -- Cues tab: the cue list; a note and a mode button when the mode is not Cue list.
 function UI.draw_cues_tab(ctx)
-  UI.draw_cue_list(ctx) -- the "Use Cue list mode" note is the first row of its "Cue settings" section
-  R.cue_part_ctx = nil -- the PDF 2 list context ends with the Cues tab (playback must not see it)
+  -- the "Use Cue list mode" note is the first row of its "Cue settings" section; the tab chooses the
+  -- list (PDF 1 or PDF 2) inside, and the choice ends with the tab (playback must not see it)
+  Cues.with_part(nil, UI.draw_cue_list, ctx)
 end
 
 ---------------------------------------------------------------------------
@@ -7129,19 +7165,20 @@ end
 
 -- Transport icons like REAPER's: previous / next song (a bar and a triangle), play, pause, stop.
 function UI.draw_transport_icon(dl, cx, cy, kind, col)
+  local s = CFG.UI_SCALE
   if kind == "play" then
-    ImGui.DrawList_AddTriangleFilled(dl, cx - 5, cy - 7, cx - 5, cy + 7, cx + 7, cy, col)
+    ImGui.DrawList_AddTriangleFilled(dl, cx - 5 * s, cy - 7 * s, cx - 5 * s, cy + 7 * s, cx + 7 * s, cy, col)
   elseif kind == "pause" then
-    ImGui.DrawList_AddRectFilled(dl, cx - 6, cy - 7, cx - 2, cy + 7, col)
-    ImGui.DrawList_AddRectFilled(dl, cx + 2, cy - 7, cx + 6, cy + 7, col)
+    ImGui.DrawList_AddRectFilled(dl, cx - 6 * s, cy - 7 * s, cx - 2 * s, cy + 7 * s, col)
+    ImGui.DrawList_AddRectFilled(dl, cx + 2 * s, cy - 7 * s, cx + 6 * s, cy + 7 * s, col)
   elseif kind == "stop" then
-    ImGui.DrawList_AddRectFilled(dl, cx - 6, cy - 6, cx + 6, cy + 6, col, 1)
+    ImGui.DrawList_AddRectFilled(dl, cx - 6 * s, cy - 6 * s, cx + 6 * s, cy + 6 * s, col, 1 * s)
   elseif kind == "prev" then
-    ImGui.DrawList_AddRectFilled(dl, cx - 7, cy - 6, cx - 5, cy + 6, col)
-    ImGui.DrawList_AddTriangleFilled(dl, cx + 6, cy - 6, cx + 6, cy + 6, cx - 4, cy, col)
+    ImGui.DrawList_AddRectFilled(dl, cx - 7 * s, cy - 6 * s, cx - 5 * s, cy + 6 * s, col)
+    ImGui.DrawList_AddTriangleFilled(dl, cx + 6 * s, cy - 6 * s, cx + 6 * s, cy + 6 * s, cx - 4 * s, cy, col)
   else -- next
-    ImGui.DrawList_AddRectFilled(dl, cx + 5, cy - 6, cx + 7, cy + 6, col)
-    ImGui.DrawList_AddTriangleFilled(dl, cx - 6, cy - 6, cx - 6, cy + 6, cx + 4, cy, col)
+    ImGui.DrawList_AddRectFilled(dl, cx + 5 * s, cy - 6 * s, cx + 7 * s, cy + 6 * s, col)
+    ImGui.DrawList_AddTriangleFilled(dl, cx - 6 * s, cy - 6 * s, cx - 6 * s, cy + 6 * s, cx + 4 * s, cy, col)
   end
 end
 
@@ -7242,7 +7279,7 @@ end
 
 -- The transport buttons centred above the setlist; the undo button at the right end of the row.
 function UI.draw_transport(ctx, l)
-  local BW, BH, G = 44, 32, 8
+  local BW, BH, G = CFG.TRANSPORT_W, CFG.TRANSPORT_H, CFG.TRANSPORT_GAP
   local x = ImGui.GetCursorPosX(ctx)
   local aw = UI.panel_w(ctx)
   ImGui.SetCursorPosX(ctx, x + math.max(0, (aw - 4 * BW - 3 * G) / 2))
@@ -7267,7 +7304,7 @@ function UI.draw_setlist_row(ctx, l, i, locked)
   local x = ImGui.GetCursorPosX(ctx)
   local aw = UI.panel_w(ctx)
   local fh = ImGui.GetFrameHeight(ctx)
-  local END_W, G = 110, 6
+  local END_W, G = CFG.SL_END_W, CFG.SL_ROW_GAP
   local right_w = END_W + G + fh + G + 3 * (fh + 2)
   local rg = not it.kind and Project.region_by_key(it.key)
   if P.setlist_on and R.sl_pos == i then UI.row_highlight(ctx, aw) end
@@ -7383,7 +7420,7 @@ function UI.draw_setlist_tab(ctx)
     do
       local _, cw = UI.row_start(ctx, "Current setlist")
       ImGui.BeginDisabled(ctx, playing)
-      if UI.combo(ctx, "##slpick", l.name, math.min(cw, 220)) then
+      if UI.combo(ctx, "##slpick", l.name, math.min(cw, CFG.SL_COMBO_W)) then
         for i, s in ipairs(P.setlists) do
           if ImGui.Selectable(ctx, s.name .. "##sl" .. i, i == P.setlist_cur) and i ~= P.setlist_cur then
             P.setlist_cur = i; R.sl_pos = nil; Util.mark_pdirty()
@@ -7391,8 +7428,8 @@ function UI.draw_setlist_tab(ctx)
         end
         ImGui.EndCombo(ctx)
       end
-      ImGui.SameLine(ctx, 0, 8)
-      if UI.combo(ctx, "##slmore", "More...", 110) then
+      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+      if UI.combo(ctx, "##slmore", "More...", CFG.SL_MORE_W) then
         if ImGui.Selectable(ctx, "New setlist...") then
           Setlist.ask_name("Chart Cue - New setlist", "Setlist " .. (#P.setlists + 1), function(n)
             P.setlists[#P.setlists + 1] = Setlist.from_timeline(n); P.setlist_cur = #P.setlists; R.sl_pos = nil; Util.mark_pdirty()
@@ -7439,7 +7476,7 @@ function UI.draw_setlist_tab(ctx)
       local _, cw = UI.row_start(ctx, "Add song")
       ImGui.BeginDisabled(ctx, playing or P.setlist_lock)
       local pw = UI.btn_w(ctx, "Add pause", CFG.SMALL_BTN_W)
-      if UI.combo(ctx, "##sladd", "Choose a region...", math.min(cw - pw - 8, 220)) then
+      if UI.combo(ctx, "##sladd", "Choose a region...", math.min(cw - pw - CFG.CTRL_GAP, CFG.SL_COMBO_W)) then
         for i, rg in ipairs(R.regions) do
           if ImGui.Selectable(ctx, (rg.name ~= "" and rg.name or "(unnamed region)") .. "##ra" .. i) then
             Setlist.save_undo(l)
@@ -7449,7 +7486,7 @@ function UI.draw_setlist_tab(ctx)
         ImGui.EndCombo(ctx)
       end
       UI.tip(ctx, "Adds the region at the end of the setlist. A region can be in the list more than once.")
-      ImGui.SameLine(ctx, 0, 8)
+      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
       if UI.row_button(ctx, "Add pause", pw, "ghost") then
         Setlist.save_undo(l)
         l.items[#l.items + 1] = { kind = "pause", sec = 10, skip = false }; Util.mark_pdirty()
@@ -7838,16 +7875,17 @@ end
 
 -- Lock icon (drawn, no icon font): body + shackle; the shackle is lifted and open when unlocked.
 function UI.draw_lock_icon(dl, cx, cy, closed, col)
-  local bw, bh = 12, 9                 -- body
-  local bx0, by0 = cx - bw / 2, cy - 1
-  ImGui.DrawList_AddRectFilled(dl, bx0, by0, bx0 + bw, by0 + bh, col, 2)
-  local rr = 3.5                       -- shackle radius
-  local sx = closed and cx or (cx + 3) -- open: moved right
-  local sy = closed and (by0 - 1) or (by0 - 3)
-  ImGui.DrawList_PathArcTo(dl, sx, sy - 2, rr, math.pi, 2 * math.pi)
-  ImGui.DrawList_PathLineTo(dl, sx + rr, sy + (closed and 1 or 0))
-  ImGui.DrawList_PathStroke(dl, col, 0, 2)
-  ImGui.DrawList_AddLine(dl, sx - rr, sy - 2, sx - rr, closed and (sy + 1) or (sy - 0.5), col, 2)
+  local s = CFG.UI_SCALE
+  local bw, bh = 12 * s, 9 * s         -- body
+  local bx0, by0 = cx - bw / 2, cy - 1 * s
+  ImGui.DrawList_AddRectFilled(dl, bx0, by0, bx0 + bw, by0 + bh, col, 2 * s)
+  local rr = 3.5 * s                   -- shackle radius
+  local sx = closed and cx or (cx + 3 * s) -- open: moved right
+  local sy = closed and (by0 - 1 * s) or (by0 - 3 * s)
+  ImGui.DrawList_PathArcTo(dl, sx, sy - 2 * s, rr, math.pi, 2 * math.pi)
+  ImGui.DrawList_PathLineTo(dl, sx + rr, sy + (closed and 1 * s or 0))
+  ImGui.DrawList_PathStroke(dl, col, 0, 2 * s)
+  ImGui.DrawList_AddLine(dl, sx - rr, sy - 2 * s, sx - rr, closed and (sy + 1 * s) or (sy - 0.5 * s), col, 2 * s)
 end
 
 function UI.toggle_lock()
@@ -7874,35 +7912,36 @@ function UI.can_record() return R.rec and Nav.scroll_mode() == "cues" and not UI
 
 -- Record icon: a filled circle; full red when armed, dim red when off.
 function UI.draw_rec_icon(dl, cx, cy, armed)
-  ImGui.DrawList_AddCircleFilled(dl, cx, cy, 5.5, armed and COL.RED or ((COL.RED & 0xFFFFFF00) | 0x80))
+  ImGui.DrawList_AddCircleFilled(dl, cx, cy, 5.5 * CFG.UI_SCALE, armed and COL.RED or ((COL.RED & 0xFFFFFF00) | 0x80))
 end
 
 -- Toolbar icons (drawn, the same line weight as the lock): "prev", "next", "minus", "plus",
 -- "hide" / "show" (a window with a top bar and a chevron: up = controls fold away when playing, down = they stay).
 function UI.draw_tb_icon(dl, cx, cy, kind, col)
+  local s = CFG.UI_SCALE
   if kind == "hide" or kind == "show" then
-    ImGui.DrawList_AddRect(dl, cx - 7, cy - 6, cx + 7, cy + 6, col, 2, 0, 1.5)
-    ImGui.DrawList_AddLine(dl, cx - 7, cy - 2.5, cx + 7, cy - 2.5, col, 1.5)
-    local d = (kind == "hide") and 1.5 or -1.5 -- up or down
-    ImGui.DrawList_PathLineTo(dl, cx - 3, cy + 1.5 + d)
-    ImGui.DrawList_PathLineTo(dl, cx, cy + 1.5 - d)
-    ImGui.DrawList_PathLineTo(dl, cx + 3, cy + 1.5 + d)
-    ImGui.DrawList_PathStroke(dl, col, 0, 1.5)
+    ImGui.DrawList_AddRect(dl, cx - 7 * s, cy - 6 * s, cx + 7 * s, cy + 6 * s, col, 2 * s, 0, 1.5 * s)
+    ImGui.DrawList_AddLine(dl, cx - 7 * s, cy - 2.5 * s, cx + 7 * s, cy - 2.5 * s, col, 1.5 * s)
+    local d = ((kind == "hide") and 1.5 or -1.5) * s -- up or down
+    ImGui.DrawList_PathLineTo(dl, cx - 3 * s, cy + 1.5 * s + d)
+    ImGui.DrawList_PathLineTo(dl, cx, cy + 1.5 * s - d)
+    ImGui.DrawList_PathLineTo(dl, cx + 3 * s, cy + 1.5 * s + d)
+    ImGui.DrawList_PathStroke(dl, col, 0, 1.5 * s)
   elseif kind == "up" or kind == "down" then
-    local d = (kind == "up") and 1 or -1
-    ImGui.DrawList_PathLineTo(dl, cx - 5, cy + d * 2.5)
+    local d = ((kind == "up") and 1 or -1) * s
+    ImGui.DrawList_PathLineTo(dl, cx - 5 * s, cy + d * 2.5)
     ImGui.DrawList_PathLineTo(dl, cx, cy - d * 2.5)
-    ImGui.DrawList_PathLineTo(dl, cx + 5, cy + d * 2.5)
-    ImGui.DrawList_PathStroke(dl, col, 0, 2)
+    ImGui.DrawList_PathLineTo(dl, cx + 5 * s, cy + d * 2.5)
+    ImGui.DrawList_PathStroke(dl, col, 0, 2 * s)
   elseif kind == "prev" or kind == "next" then
-    local d = (kind == "prev") and 1 or -1
-    ImGui.DrawList_PathLineTo(dl, cx + d * 2.5, cy - 5)
+    local d = ((kind == "prev") and 1 or -1) * s
+    ImGui.DrawList_PathLineTo(dl, cx + d * 2.5, cy - 5 * s)
     ImGui.DrawList_PathLineTo(dl, cx - d * 2.5, cy)
-    ImGui.DrawList_PathLineTo(dl, cx + d * 2.5, cy + 5)
-    ImGui.DrawList_PathStroke(dl, col, 0, 2)
+    ImGui.DrawList_PathLineTo(dl, cx + d * 2.5, cy + 5 * s)
+    ImGui.DrawList_PathStroke(dl, col, 0, 2 * s)
   else
-    ImGui.DrawList_AddLine(dl, cx - 5.5, cy, cx + 5.5, cy, col, 2)
-    if kind == "plus" then ImGui.DrawList_AddLine(dl, cx, cy - 5.5, cx, cy + 5.5, col, 2) end
+    ImGui.DrawList_AddLine(dl, cx - 5.5 * s, cy, cx + 5.5 * s, cy, col, 2 * s)
+    if kind == "plus" then ImGui.DrawList_AddLine(dl, cx, cy - 5.5 * s, cx, cy + 5.5 * s, col, 2 * s) end
   end
 end
 
@@ -7918,12 +7957,13 @@ end
 
 -- Gear icon (the Settings tab): a ring with 8 teeth.
 function UI.draw_gear_icon(dl, cx, cy, col)
+  local s = CFG.UI_SCALE
   for k = 0, 7 do
     local a = k * math.pi / 4
-    local c, s = math.cos(a), math.sin(a)
-    ImGui.DrawList_AddLine(dl, cx + c * 5, cy + s * 5, cx + c * 8.5, cy + s * 8.5, col, 3)
+    local c, sn = math.cos(a), math.sin(a)
+    ImGui.DrawList_AddLine(dl, cx + c * 5 * s, cy + sn * 5 * s, cx + c * 8.5 * s, cy + sn * 8.5 * s, col, 3 * s)
   end
-  ImGui.DrawList_AddCircle(dl, cx, cy, 4.5, col, 0, 3)
+  ImGui.DrawList_AddCircle(dl, cx, cy, 4.5 * s, col, 0, 3 * s)
 end
 
 function UI.toggle_perf()
@@ -8123,7 +8163,7 @@ function UI.draw_region_empty_state(ctx, x0, y0, area_w, view_h, reg)
       R.choose_existing = true
     end
   end
-  ImGui.SameLine(ctx, 0, 8)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   if ignored then
     if UI.button(ctx, "Stop ignoring##sec2", hw, sec_h) then Project.unignore_region(reg); return end
   else
