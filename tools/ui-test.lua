@@ -1,3 +1,4 @@
+-- @noindex
 -- UI test (run it with tools\ui-test.ps1; it runs in the test REAPER C:\REAPERtest only): opens every tab,
 -- Settings section, right-click menu and page area in a few states, and logs all console output (errors)
 -- to %TEMP%\chartcue_menutest.txt. Add a step for each new menu, popup, tab, section or view

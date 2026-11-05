@@ -1,12 +1,13 @@
 ---
 name: debug-time
-description: Full review of Chart Cue before a commit - senior developer pass, senior UI/UX designer pass, a cross-review, feedback, fixes, then a final full-code pass and the commit/push question. Use when the user says "debug time" (or asks for a debug / optimize / review round).
+description: Full review of Chart Cue and Segue before a commit - senior developer pass, senior UI/UX designer pass, a cross-review, feedback, fixes, then a final full-code pass and the commit/push question. Use when the user says "debug time" (or asks for a debug / optimize / review round).
 ---
 
 # Debug time
 
-A review round for Chart Cue (`Chart Cue/Chart Cue.lua`, the action scripts, the Help texts, CLAUDE.md,
-PLAN.md, README.md). The user does not read code: report in plain words, with what they will see.
+A review round for Chart Cue (`Chart Cue/Chart Cue.lua`) and Segue (`Segue/Segue.lua`): the action scripts,
+the Help texts, CLAUDE.md, PLAN.md, README.md. Review the script(s) that changed since the last release; the
+shared parts (`Setlist`, `UI.draw_now_view`) must stay the same in both, and the look must match Chart Cue. The user does not read code: report in plain words, with what they will see.
 
 ## 1. Collect (before reading)
 

@@ -1,11 +1,11 @@
-# Chart Cue: plan (state on 4 November 2026)
+# Thunderfork scripts: plan (state on 5 November 2026)
 
 ## Context
 - File: `Chart Cue/Chart Cue.lua`, public version 1.5. Chart Cue's data (settings.ini, page cache, tmp, autostart.lua, guide) is in REAPER\Data\Chart Cue since 1.2. REAPER 7 ReaScript, Lua 5.4, ReaImGui API pinned to 0.9.3 through the ReaTeam shim. Windows only.
 - Modules: CFG, S (settings.ini), R (runtime), COL, P (project config in the .rpp ExtState "ChartCue"/"cfg"), Util, PDF, Project, Nav, Midi, UI, Cues, Notes, Setlist, Pane, Msg, Dock, Autostart.
 - Layout system: UI.form / UI.field / UI.button_pair / UI.full_button, CFG.SP + UI.sp, one control height UI.h, one text rule CFG.TEXT_LIFT. Compact layout is the default.
 - Constraints:
-  - Do not change the .rpp ExtState format, the settings.ini keys, the cache folder layout or the __startup.lua markers. Only add new keys, with defaults. P.fixed_start, P.continue_after_end and scroll_mode=fixed are still read and written, so the saved text ("Save as" detection) stays the same.
+  - No users yet: no code for earlier development versions. Ask before a change to the .rpp ExtState format, the settings keys, the cache folder layout or the __startup.lua markers. New keys get defaults and are written only when they differ from them ("Save as" detection). The old keys tab_ver, sl_view, fixed_start, continue_after_end and scroll_mode=fixed were removed on 5 November 2026.
   - Keep every disk or long operation non-blocking.
   - Every Push needs a Pop. Call End only when Begin returned true.
 - Working rules from the user:
@@ -21,8 +21,9 @@
 - 1.2 (3 November 2026): settings and page cache moved to REAPER\Data\Chart Cue (no migration: no other users yet); autoscroll mode locked during playback (text in both toolbars); repository renamed to thunderfork/reaper-scripts, ReaPack name "Thunderfork Scripts"; index workflow fixed (CMake 4, pinned runner).
 - 1.3 (4 November 2026): 2 PDFs per song (split view, PDF 1 / PDF 2 in Regions, own cues, active part; design: panes, module Pane); pages on screen (1, side by side with Rolling / Book, continuous) and the slide-in page turn; Display > Page layout (now Viewer > Page layout); Library: Add from folder remembers the folders, Sync, Remove unused PDFs, Sort: Unused first, Replace PDF; right-click menus; Redo; bold row labels; one standard button width; panel fit to sections; fixes (region PDF at playback start, empty dropdown text, clicks during playback, double flash, odd last page).
 - 1.4 (4 November 2026): Setlist tab (show order, Stop / Continue, timed pauses, several setlists, lock, undo, right-click menu, play buttons, "Next song" action, Page area: PDF / Setlist / Setlist and PDF, "Next: ..." label); notes on the pages (colour and size per note); page-turn countdown (also before the next song); toolbar and tab items can be hidden; brightness button; Settings in 5 sections (Viewer, Playback, Control, Appearance, General); Shortcuts and external controls (Assign...); page cache limit (1 GB); "debug time" review skill (.claude/skills/debug-time).
-- 1.5 (5 November 2026): PNG / JPG images (Add PDF only); the marker list in the cue-list layout, with Record, the add buttons, the marker colour and Copy cues into markers; the 3-band setlist view; the armed exact stop; tab icons and 2-line rows when narrow; numpad zoom; the Segue conflict command. Segue 0.1 released with it.
 - 1.4.1 (4 November 2026): code clean-up with no visible change: the toolbar is built again only when it changes (R.tb_cache); the PDF 1 / PDF 2 cue list choice is always set back (Cues.with_part); named sizes in CFG and CFG.UI_SCALE for the icons; the UI test is in tools.
+- 1.5 (5 November 2026): PNG / JPG images (Add PDF only); the marker list in the cue-list layout, with Record, the add buttons, the marker colour and Copy cues into markers; the 3-band setlist view; the armed exact stop; tab icons and 2-line rows when narrow; numpad zoom; the Segue conflict command. Segue 0.1 released with it.
+- 1.5.1 (5 November 2026): clean-up with no visible change: the old keys tab_ver, sl_view, fixed_start, continue_after_end and scroll_mode=fixed removed; housekeeping skill; .gitattributes keeps LF.
 
 ## Release checklist (do before sharing a new version)
 1. Version: @version and CFG.VERSION are equal; @changelog has 1–3 user-facing lines.
@@ -55,8 +56,8 @@
 
 ## Segue (the setlist script, since 4 November 2026)
 
-- Done (0.1, not released): setlists from the regions, Stop / Continue, pauses, skip, drag and arrows,
-  the play buttons, the "now playing" area with its divider, more than 1 setlist (More...), Lock setlist,
+- 0.1 (released 5 November 2026, with Chart Cue 1.5): setlists from the regions, Stop / Continue, pauses,
+  skip, drag and arrows, the play buttons, the "now playing" area with its grip, more than 1 setlist (More...), Lock setlist,
   undo (Ctrl+Z), the "Segue - Next song" action, the gear menu (now playing options, docking, Help).
 - Done in both scripts (5 November 2026): the 3-band now playing view (status pill, current song with
   progress bar, large list with Stop / Continue icons); the armed stop (loop points + REAPER's "stop at end
@@ -64,9 +65,7 @@
   current. Segue locks itself while Chart Cue plays in setlist order ("Use Segue" / "Use Chart Cue").
 - Tested in REAPER (5 November 2026): an armed stop does not mark the project as changed; a Continue jump
   plays no part of the following region.
-- Tests: tests\segue.lua (7). Checks and deploy include Segue.
-- Before the first release: a test in REAPER (the manual tests of steps 1-3), then the ReaPack package
-  (the push builds index.xml; the package name is "Segue").
+- Tests: tests\segue.lua (10). Checks, deploy and the ReaPack package ("Segue") include Segue.
 - Ideas, not planned: a thin countdown bar, a right-click menu on the rows, a UI test for Segue.
 - Ideas from the ReaSet changelog (not planned): repeat a song N times; region colours in the list; a note
   per song; the next marker / section in the now playing area, with a 2nd thinner progress bar; an option

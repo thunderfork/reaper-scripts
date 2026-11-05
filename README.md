@@ -1,3 +1,10 @@
+# Thunderfork Scripts
+
+Scripts for playing live with REAPER, installed and updated with ReaPack:
+
+- **Chart Cue:** shows your PDF charts and turns and scrolls the pages while the song plays (Windows only).
+- **Segue:** a setlist player: plays your songs (regions) in the order of your show, with stops and pauses.
+
 # Chart Cue
 
 Chart Cue shows your sheet music or chord charts (PDF files) inside REAPER, and turns and scrolls the pages for you while the song plays.
@@ -16,7 +23,8 @@ Windows only. **Needs the free ReaImGui extension** (install it once with ReaPac
 - **Smooth or jump scrolling:** the page moves slowly between scroll points, or jumps to each one.
 - **Pages on screen:** 1 page, 2 pages side by side (turn by 1 page or by 2, like a book), or continuous: scroll through the whole PDF without jumps. The next page can slide in at a page turn.
 - **Setlist:** put the songs (regions) in the order of your show, without changing the timeline. Each song stops or goes on to the next one; add timed pauses, skip songs, keep several setlists (for example "Friday" and "Festival short"), and lock the list for the show. Play buttons and a "Next song" action for a foot pedal.
-- **Page area:** the PDF, the setlist in large text (for shows without charts), or the setlist on top and the PDF below. Near the end of a song, the page shows the next song.
+- **Page area:** the PDF, the setlist in large text (for shows without charts), or the setlist on top and the PDF below. The setlist view shows the current song with its time left and a progress bar, the next song, and the time left in the set. Near the end of a song, the page shows the next song.
+- **Exact stop:** at the end of a song with Stop, REAPER stops at the exact end, and no part of the next song is heard.
 - **Notes on the pages:** short texts such as "repeat x2", with their own colour and size. The PDF file does not change.
 - **Stage-ready:**
   - Performance mode (only the page).
@@ -79,7 +87,7 @@ The round "?" next to each heading explains its settings. The "?" at the end of 
 
 # Segue
 
-Segue is a separate, small script for a setlist only (no PDFs). It has no link to Chart Cue: it has its own window and its own data.
+Segue is a separate, small script for a setlist only (no PDFs), with its own window and its own data. When Chart Cue is open and also plays the project in setlist order, Segue locks itself and asks which script controls the songs, so they never act twice.
 
 - Plays the songs (regions) of your project in the order of your show. The timeline does not change.
 - At the end of each song: Stop (press Play to go on) or Continue (the next song plays at once). Pauses between songs count down, then play the next song. Untick a song to skip it.
@@ -89,9 +97,9 @@ Segue is a separate, small script for a setlist only (no PDFs). It has no link t
 - The "Segue - Next song" action, for a key or a foot pedal.
 - Needs ReaImGui 0.9.3 or newer, like Chart Cue. It uses only REAPER and ReaImGui, so it can also work on macOS and Linux (not tested there).
 
-Install with ReaPack: Extensions > ReaPack > Browse packages, search "Segue", right-click it > Install. Then run "Script: Segue.lua" in the Action List and click "Make a setlist". The gear button at the top right has the settings and the help.
+Install with ReaPack, after you have imported the repository (see "Install with ReaPack" above): Extensions > ReaPack > Browse packages, search "Segue", right-click it > Install. Then run "Script: Segue.lua" in the Action List and click "Make a setlist". The gear button at the top right has the settings and the help.
 
-Segue saves the setlists in the REAPER project, and its settings in REAPER's own settings (the window, the divider and the gear-menu options).
+Segue saves the setlists in the REAPER project, and its settings in REAPER's own settings (the window, the grip and the gear-menu options).
 
 ## License
 

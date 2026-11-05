@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 1.5
+-- @version 1.5.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,9 +13,8 @@
 --   [main] Chart Cue - Toggle performance mode.lua
 --   [main] Chart Cue - Next song.lua
 -- @changelog
---   PNG and JPG images as charts; a marker list with Record, add buttons, colours and "Copy cues into markers".
---   A new large setlist view (current song, time left, progress); REAPER stops at the exact end of a song.
---   Tab icons and 2-line rows in a narrow window; numpad zoom keys; works together with the new Segue script.
+--   Code clean-up with no visible change: settings and project values of old development versions are no
+--   longer read or written. Each existing project is marked as changed once, the next time Chart Cue saves it.
 
 -- MIT License
 --
@@ -101,7 +100,7 @@ CFG.WIN_MIN_W, CFG.WIN_MIN_H = 300, 200 -- smallest window size when resizing
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.5"        -- keep equal to @version in the header
+CFG.VERSION = "1.5.1"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.FEEDBACK_URL = "https://github.com/thunderfork/reaper-scripts/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
@@ -323,7 +322,6 @@ local S = {
   close_with_project = true,   -- close Chart Cue when its project closes or is replaced in the same tab
   import_copy = true,          -- copy imported PDFs into <project folder>\PDFs (else link the original)
   tab = 1, panel_open = true,
-  tab_ver = 1,                 -- 2 = tab numbers include the Cues tab; 3 = one Settings tab (before 1.0); 4 = the Setlist tab
   settings_open = "10000",     -- Settings tab sections open (1) or closed (0): Viewer, Playback, Control, Appearance, General
   folded = ",",                -- closed foldable headings (first section of Library, Regions, Cues): ",id,id,"
   panel_h = 0,                 -- 0 = automatic (~40% of free height); otherwise the user's dragged height
@@ -332,7 +330,6 @@ local S = {
   log_diag = false,            -- "Write diagnostic log" (Settings > General > Troubleshooting)
   marker_color = true,         -- "Colour PDF markers": markers that Chart Cue makes get the accent colour
   show_notes = true,           -- "Show notes": the notes on the pages (Settings > Viewer > Notes)
-  sl_view = false,             -- (before "Page area": true = the setlist instead of the PDF; read once, see UI.init)
   page_area = "pdf",           -- "Page area" (Setlist tab): "pdf", "setlist" (instead of the PDF) or "both" (setlist on top)
   sl_split = 0.5,              -- "Setlist and PDF": the share of the setlist (the divider position, 0.15 .. 0.85)
   sl_next_label = true,        -- setlist: the "Next: <song>" label on the page during playback and pauses
@@ -380,7 +377,7 @@ function Util.validate_settings()
     for _, v in ipairs({ ... }) do if S[k] == v then return end end
     S[k] = D[k]
   end
-  int("dpi", 50, 600); int("page", 1, 100000); int("tab", 1, 99); int("tab_ver", 1, 99)
+  int("dpi", 50, 600); int("page", 1, 100000); int("tab", 1, 99)
   for _, k in ipairs({ "cc_abs", "cc_rel", "cc_page_next", "cc_page_prev", "cc_add_cue", "cc_add_scroll" }) do int(k, 0, 127) end
   int("rel_encoding", 1, 4)
   num("sensitivity", 1, 200); num("dim_level", 0.25, 1); num("zoom", CFG.MIN_ZOOM, CFG.MAX_ZOOM)
@@ -395,7 +392,7 @@ function Util.validate_settings()
   one_of("note_color", "yellow", "green", "blue", "pink", "white")
   one_of("engine", "windows", "poppler")
   one_of("mode", "absolute", "relative")
-  one_of("scroll_mode", "off", "marker", "cues", "fixed") -- "fixed" (older settings) means off
+  one_of("scroll_mode", "off", "marker", "cues")
   one_of("fit_mode", "width", "height", "page", "100", "manual")
   one_of("page_layout", "single", "stack", "side")
   one_of("page_turn", "rolling", "book")
@@ -512,7 +509,6 @@ function Project.default_project()
     ignore = {},          -- region key -> true (ignored permanently)
     names = {},           -- region key -> last known region name (for display)
     auto_switch = true,
-    continue_after_end = false, -- not used any more (markers stop at the region end); still read and written, so the saved text stays the same
     active_pdf = "",
     cues = {},            -- region key (or "_project") -> list of { pos, page, scroll }
     cue_unit = "beats",   -- "beats" (quarter notes from the region start) or "seconds"
@@ -525,7 +521,6 @@ function Project.default_project()
     no2 = {},             -- region key -> true: no PDF 2 (the automatic pair was removed with the x)
     pair_off = false,     -- "Pair 2 matching PDFs" is off; written only when true
     folders = {},         -- the folders of "Add from folder" (for "Sync folders"): { path, sub = subfolders }; written only when used
-    fixed_start = 0,      -- not used any more (the Fixed speed mode was removed before 1.0); still read and written, so the saved text stays the same
     view = {},            -- pdf path -> { fit = fit mode, zoom = manual zoom } (per-PDF zoom)
     notes = {},           -- pdf path -> list of { page, x, y (0..1 of the page), text, color, size }; written only when used
     setlists = {},        -- list of { name, items }; an item: a song { key = region key, name, ending = "stop"|"continue", skip },
@@ -1181,16 +1176,14 @@ function Project.parse_cfg(lines_iter)
       local key, nm = v:match("^(.-)\t(.*)$")
       if key then p.names[key] = nm end
     elseif k == "auto_switch" then p.auto_switch = (v == "1")
-    elseif k == "continue_after_end" then p.continue_after_end = (v == "1")
     elseif k == "active_pdf" then p.active_pdf = v
     elseif k == "cue_unit" then p.cue_unit = (v == "seconds") and "seconds" or "beats"
     elseif k == "scroll_mode" then
-      p.scroll_mode = (v == "off" or v == "fixed" or v == "marker" or v == "cues") and v or ""
+      p.scroll_mode = (v == "off" or v == "marker" or v == "cues") and v or ""
     elseif k == "hint_off" then p.hint_off = (v == "1")
     elseif k == "turn_early" then p.turn_early = Util.clamp(tonumber(v) or 0, 0, 4)
     elseif k == "scroll_jump" then p.scroll_jump = (v == "1")
     elseif k == "split_off" then p.split_off = (v == "1")
-    elseif k == "fixed_start" then p.fixed_start = tonumber(v) or 0
     elseif k == "view" then
       local path, fit, zoom = v:match("^(.-)\t(.-)\t(.*)$")
       if path and fit ~= "" then p.view[path] = { fit = fit, zoom = tonumber(zoom) or 1.0 } end
@@ -1239,7 +1232,6 @@ function Project.serialize_cfg()
   local function w(k, v) t[#t + 1] = k .. "=" .. (tostring(v):gsub("[\r\n]", " ")) end
   w("version", 1)
   w("auto_switch", P.auto_switch and 1 or 0)
-  w("continue_after_end", P.continue_after_end and 1 or 0)
   w("active_pdf", P.active_pdf)
   for _, path in ipairs(P.pdfs) do w("pdf", path) end
   for _, path in ipairs(P.pdfs) do
@@ -1270,7 +1262,6 @@ function Project.serialize_cfg()
   if P.split_off then w("split_off", 1) end -- the same
   if P.pair_off then w("pair_off", 1) end -- the same
   for _, fo in ipairs(P.folders) do w("folder", fo.path .. "\t" .. (fo.sub and 1 or 0)) end -- only when used
-  if P.fixed_start ~= 0 then w("fixed_start", string.format("%.6f", P.fixed_start)) end
   for _, path in ipairs(sorted(P.view)) do
     w("view", string.format("%s\t%s\t%.3f", path, P.view[path].fit, P.view[path].zoom))
   end
@@ -2293,7 +2284,6 @@ end
 
 -- The ONE autoscroll mode state: "off" | "marker" | "cues"
 -- Saved per project (P.scroll_mode). A project without one uses the default in settings.ini.
--- "fixed" (Fixed speed, removed before 1.0) can still be saved in older projects: it means "off".
 function Nav.scroll_mode()
   local m = (P.scroll_mode ~= "") and P.scroll_mode or S.scroll_mode
   if m == "marker" or m == "cues" then return m end
@@ -9756,18 +9746,7 @@ function UI.init()
   r.SetExtState(CFG.EXT, "quit", "", false) -- a flag left by an instance that stopped before reading it
   r.SetExtState(CFG.EXT, "cmd_q", "", false) -- old action commands must not run now
   Util.load_settings()
-  if S.tab_ver < 3 then
-    if S.tab_ver < 2 and S.tab >= TAB_CUES then S.tab = S.tab + 1 end -- old numbers had no Cues tab
-    -- v2 numbers: 4..7 = Autoscroll, MIDI, Display, Project (now one Settings tab), 8 = Help
-    if S.tab >= 8 then S.tab = 5 elseif S.tab >= 4 then S.tab = 4 end -- (v3 numbers: 4 Settings, 5 Help)
-    S.tab_ver = 3; Util.mark_dirty()
-  end
-  if S.tab_ver < 4 then -- the Setlist tab came before Settings and Help
-    if S.tab >= TAB_SETLIST then S.tab = S.tab + 1 end
-    S.tab_ver = 4; Util.mark_dirty()
-  end
   S.tab = Util.clamp(math.floor(S.tab), 1, TAB_HELP)
-  if S.sl_view then S.page_area, S.sl_view = "setlist", false; Util.mark_dirty() end -- the switch before "Page area"
   R.ctx = r.ImGui_CreateContext(CFG.TITLE)
   -- the window moves only by its title bar, so a drag on Chart Cue's resize edges never moves it
   r.ImGui_SetConfigVar(R.ctx, r.ImGui_ConfigVar_WindowsMoveFromTitleBarOnly(), 1)

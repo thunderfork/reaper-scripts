@@ -75,7 +75,7 @@ end)
 test("new project: no optional keys", function()
   local P = C.get_P()
   local txt = Project.serialize_cfg()
-  for _, k in ipairs({ "scroll_mode", "hint_off", "turn_early", "fixed_start" }) do
+  for _, k in ipairs({ "scroll_mode", "hint_off", "turn_early", "scroll_jump" }) do
     ok(not txt:find("\n" .. k .. "=", 1, true), "key " .. k .. " not written")
   end
   ok(txt:find("^version=1\n"), "starts with version=1")
@@ -85,21 +85,21 @@ end)
 test("project data: save and read back", function()
   local P = C.get_P()
   local keep = Project.serialize_cfg()
-  P.scroll_mode, P.turn_early, P.fixed_start, P.hint_off = "cues", 2, 12.5, true
+  P.scroll_mode, P.turn_early, P.scroll_jump, P.hint_off = "cues", 2, true, true
   P.pdfs[#P.pdfs + 1] = "C:\\Charts\\Song A.pdf"
   P.assign["gX"] = "C:\\Charts\\Song A.pdf"
   P.names["gX"] = "Song A"
   P.cues["gX"] = { { pos = 4, page = 2, scroll = 10 } }
   local txt = Project.serialize_cfg()
   local p2 = Project.parse_cfg((txt .. "\n"):gmatch("([^\n]*)\n"))
-  eq(p2.scroll_mode, "cues"); eq(p2.turn_early, 2); eq(p2.fixed_start, 12.5); eq(p2.hint_off, true)
+  eq(p2.scroll_mode, "cues"); eq(p2.turn_early, 2); eq(p2.scroll_jump, true); eq(p2.hint_off, true)
   eq(p2.assign["gX"], "C:\\Charts\\Song A.pdf"); eq(p2.names["gX"], "Song A")
   eq(p2.cues["gX"][1].page, 2)
   -- through the real project (ExtState in the .rpp)
   C.R.proj = r.EnumProjects(-1)
   ok(Project.save_project_cfg(), "save_project_cfg")
   local p3, src = Project.load_project_cfg(C.R.proj)
-  eq(src, "rpp"); eq(p3.fixed_start, 12.5)
+  eq(src, "rpp"); eq(p3.turn_early, 2)
   -- the same data gives the same text
   for k, v in pairs(p2) do P[k] = v end
   eq(Project.serialize_cfg(), txt, "text after read back")
@@ -455,12 +455,12 @@ test("go to page: limits and blocked regions", function()
   R.empty_region, R.kept_key = nil, nil
 end)
 
-test("autoscroll mode: project, default and old values", function()
+test("autoscroll mode: project and default values", function()
   local S, P = C.S, C.get_P()
   local keep_s, keep_p = S.scroll_mode, P.scroll_mode
   P.scroll_mode, S.scroll_mode = "", "cues"; eq(C.Nav.scroll_mode(), "cues", "default for new projects")
   P.scroll_mode = "marker"; eq(C.Nav.scroll_mode(), "marker", "project value")
-  P.scroll_mode = "fixed"; eq(C.Nav.scroll_mode(), "off", "old Fixed speed")
+  P.scroll_mode = "off"; eq(C.Nav.scroll_mode(), "off", "project value off")
   S.scroll_mode, P.scroll_mode = keep_s, keep_p
 end)
 

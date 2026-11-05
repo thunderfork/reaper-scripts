@@ -6,8 +6,9 @@ ReaPack category; keep each script's files there):
 
 - **Chart Cue** (`Chart Cue/Chart Cue.lua`): a Windows-only REAPER Lua/ReaImGui script for displaying and
   scrolling PDF charts during playback.
-- **Segue** (`Segue/Segue.lua`): a setlist-only script (no PDFs). It has no link to Chart Cue: no
-  shared code, no shared data. See "Segue" at the end of this file.
+- **Segue** (`Segue/Segue.lua`): a setlist-only script (no PDFs), with its own window and its own data. It
+  reads 1 Chart Cue setting to avoid a conflict (see "Segue" at the end of this file). The 2 scripts have the
+  same setlist logic and the same now playing view (a copy in each file).
 
 The general rules (Working with me, Editing, Patch, Saved data, REAPER/Lua, Performance, Verification,
 Git) apply to both scripts. Where they name Chart Cue, read "the script being changed". The sections
@@ -51,12 +52,12 @@ Architecture, Deployment and Releasing describe Chart Cue; the "Segue" section h
 
 ## Saved data (compatibility)
 
-- Do not change the format of the project data (ExtState "ChartCue"/"cfg") or existing
-  settings.ini keys. Add new keys only, with defaults.
+- The scripts have no users yet (only me): no code for earlier development versions (no migration, no
+  old keys, no fallback to old names or folders). Write clean code for a new user.
+- Ask me before any change to the format of the project data (ExtState "ChartCue"/"cfg", "Segue"/"cfg")
+  or the settings keys. New keys get defaults.
 - Write a new project key only when it differs from its default: Chart Cue compares the saved
   text to tell "Save as" from "Open another project".
-- Keep reading and writing old project keys unchanged (e.g. `fixed_start`), for the same reason.
-- A settings.ini key that nothing reads may be removed, with my approval.
 
 ## REAPER/Lua constraints
 
@@ -105,10 +106,10 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
   1. syntax (`luac -p`, Lua 5.4.6 from winget DEVCOM.Lua),
   2. undefined globals (from the `luac -l` listing; allowed: standard Lua and `reaper`),
   3. Lua Language Server warnings (information only).
-- Compare Language Server warnings with the known false alarms (17 "Need check nil" /
-  "unknown|nil" warnings on 2026-11-04); look at every new one.
+- Compare Language Server warnings with the known false alarms (Chart Cue: 17 "Need check nil" /
+  "unknown|nil" warnings on 2026-11-04; Segue: 0); look at every new one.
 - For logic changes (navigation, autoscroll, project data, cache), also run `.\tools\test.ps1`. It runs
-  `tests\run.lua` in the portable test REAPER `C:\REAPERtest` (never the normal REAPER) and must
+  `tests\run.lua` (Chart Cue) and `tests\segue.lua` (Segue) in the portable test REAPER `C:\REAPERtest` (never the normal REAPER) and must
   end with "0 failed". Add a test for each fixed bug when practical. The test REAPER can run while
   my normal REAPER is open; never close or save my REAPER. test.ps1 starts it in the background
   (tools\background.ps1), so my window keeps the focus.
@@ -135,8 +136,7 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 
 - Deployed copy (the REAPER actions run it), the first folder that exists:
   1. `%APPDATA%\REAPER\Scripts\Thunderfork Scripts\Chart Cue\` (the ReaPack install),
-  2. `%APPDATA%\REAPER\Scripts\thunderfork\Chart Cue\` (the ReaPack install before the rename on 2026-11-03),
-  3. `%APPDATA%\REAPER\Scripts\`.
+  2. `%APPDATA%\REAPER\Scripts\`.
 - Chart Cue's data folder, on every user's computer: `%APPDATA%\REAPER\Data\Chart Cue\` (since 2026-11-03)
   (`settings.ini`, `cache\`, `tmp\`, `autostart.lua`, `Chart Cue Guide.html`; the script writes them).
   Reading it is OK. Never change, move or delete anything there without asking me first: it holds
@@ -147,10 +147,13 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 - `PLAN.md`: done work, open items and the release checklist.
 - `.claude/skills/`: `debug-time` (the review round: senior developer, UI/UX designer, cross-review, feedback,
   fixes, final full-code pass, then the commit / push question), `release` (version, commit, push, ReaPack
-  workflow, GitHub Release), `ui-test` (run and extend the UI test), `new-feature` (plan and questions before
+  workflow, GitHub Release), `ui-test` (run and extend the UI test), `housekeeping` (a read-only audit of
+  everything except the scripts: old files, duplicates, tests, docs; changes only after my approval),
+  `new-feature` (plan and questions before
   code), `help-sync` (every text that names a changed feature).
 - `README.md`: for other users. `tools\`: check.ps1 (with `.luarc.json`: the static checks), test.ps1,
-  deploy.ps1, release.ps1, shots.ps1, ui-test.ps1 (with ui-test.lua: the UI test). `tests\`: run.lua (logic tests), shots.lua, test.pdf.
+  deploy.ps1, release.ps1, shots.ps1, ui-test.ps1 (with ui-test.lua: the UI test). `tests\`: run.lua (Chart Cue logic tests), segue.lua (Segue logic tests), shots.lua, test.pdf, make_pdf.lua
+  (makes test.pdf; run it with the normal Lua, not REAPER).
 - `LICENSE` (MIT). `tools\release.ps1`: makes `release\Chart-Cue-<version>.zip` (git-ignored).
 - `.github/workflows/reapack-index.yml`: GitHub builds `index.xml` (the ReaPack repository
   file) after each push to main. Do not edit `index.xml` by hand.
@@ -173,10 +176,12 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
    thunderfork): tag `vX.Y` on main, title "Chart Cue X.Y", the changelog lines as notes, and the zip.
 
 Every time I ask to commit and push:
-- If the scripts in `Chart Cue/` changed, the commit is a new version: do steps 2-4 above
+- If the scripts in `Chart Cue/` changed, the commit is a new Chart Cue version: do steps 2-4 above
   (raise the version, commit and push, check the workflow, then create the GitHub Release and upload
   the zip) without asking again.
-- If only other files changed (CLAUDE.md, PLAN.md, README.md, tools, tests), commit and push without
+- If the scripts in `Segue/` changed, the commit is also a new Segue version (see "Segue": its version and
+  changelog; no GitHub Release unless I ask).
+- If only other files changed (CLAUDE.md, PLAN.md, README.md, tools, tests, skills), commit and push without
   a new version or release, and say so.
 
 ## Segue
@@ -189,7 +194,8 @@ Every time I ask to commit and push:
   default). It never writes Chart Cue's data, and Chart Cue never reads Segue's. The 1 exception, for
   the conflict check (`Setlist.conflict`): Segue reads Chart Cue's heartbeat and the `setlist_on` line of
   its project data, and "Use Segue" sends Chart Cue the `setlistoff` command (its `cmd_q`).
-- The setlist logic came from Chart Cue's `Setlist`; a fix in one is not copied to the other unless I ask.
+- The setlist logic (`Setlist`) and the now playing view (`UI.draw_now_view`) are the same in both scripts.
+  A fix or a change in one: list it for the other script and ask me before you make it there.
 - It uses only `reaper.*` and ReaImGui (no `io` / `os`, no files of its own), so it is not Windows-only.
 - Checks: `check.ps1` checks both folders. Tests: `tests\segue.lua` (run by `test.ps1` after
   `tests\run.lua`; it ends with "0 failed" in `tests\result_segue.txt`).

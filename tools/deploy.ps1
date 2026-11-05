@@ -2,8 +2,8 @@ $root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is
 $srcdir = Join-Path $root "Chart Cue"
 $scripts = Join-Path $env:APPDATA "REAPER\Scripts" # the standard REAPER resource folder of this Windows user
 # installed with ReaPack: the actions run the copy in the ReaPack folder, so deploy there
-# ("Thunderfork Scripts" = the ReaPack repository name; "thunderfork" = its name before 3 November 2026)
-foreach ($name in "Thunderfork Scripts", "thunderfork") {
+# ("Thunderfork Scripts" = the ReaPack repository name)
+foreach ($name in "Thunderfork Scripts") {
   $reapack = Join-Path $scripts "$name\Chart Cue"
   if (Test-Path $reapack) { $scripts = $reapack; break }
 }
@@ -19,7 +19,7 @@ $setsrc = Join-Path $root "Segue"
 if (Test-Path $setsrc) {
   $base = Join-Path $env:APPDATA "REAPER\Scripts"
   $dest = Join-Path $base "Segue"
-  foreach ($name in "Thunderfork Scripts", "thunderfork") {
+  foreach ($name in "Thunderfork Scripts") {
     $rp = Join-Path $base "$name\Segue"
     if (Test-Path $rp) { $dest = $rp; break }
   }

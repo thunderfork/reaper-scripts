@@ -1,6 +1,6 @@
 ---
 name: help-sync
-description: Find and fix every text in Chart Cue that names a feature, control, section or setting after it was added, renamed, moved or removed (Help topics, tooltips, "?" texts, messages, menu items, "Settings > ..." paths, comments, CLAUDE.md, PLAN.md, README.md). Use after any rename or move, and as a step of new-feature and debug-time.
+description: Find and fix every text in Chart Cue and Segue that names a feature, control, section or setting after it was added, renamed, moved or removed (Help topics, tooltips, "?" texts, messages, menu items, "Settings > ..." paths, comments, CLAUDE.md, PLAN.md, README.md). Use after any rename or move, and as a step of new-feature and debug-time.
 ---
 
 # Help sync
@@ -17,6 +17,7 @@ old and new place ("Settings > Display > ..." -> "Settings > Viewer > ...").
 
 - `Chart Cue/Chart Cue.lua`: Help topics (HELP_TOPICS, also "more" texts), UI.tip / tooltips,
   UI.heading "?" texts, Msg.notify messages, menu items, status bar texts, comments.
+- `Segue/Segue.lua`: HELP_TEXT, the "?" texts (SETTINGS_HELP, LIST_HELP), tooltips, the notice texts.
 - The action scripts' comments, CLAUDE.md, PLAN.md (history and checklist), README.md.
 - Every "Settings > A > B" path: A must be a section name, B a heading in that section.
   `grep -o 'Settings > [A-Z][A-Za-z]*\( > [A-Z][A-Za-z ]*\)\?'`, then compare with SETTINGS_SECTIONS
