@@ -37,9 +37,19 @@ Look for:
 - behaviour: every optional feature can be turned off; dangerous actions have an undo or a question;
   buttons and actions behave the same; locked or greyed controls are clear; stage use (dark, quick, safe).
 
+## 3b. Pass 3: pro musician (live and studio use)
+
+Look for: what goes wrong on stage under stress (a wrong click, a hidden warning, a step that needs reading),
+what the player must see at a glance, things left in a show project by mistake (tests, temporary items).
+
+## 3c. Pass 4: studio / live engineer
+
+Look for: MIDI timing and order, routing (outputs, channels, unplugged devices), what REAPER really plays (muted
+or trimmed items, lanes), project safety (undo steps, side effects on the user's own MIDI and tracks).
+
 ## 4. Cross-review
 
-Compare the 2 lists: merge duplicates, settle conflicts (for example "a question" against "an undo" on
+Compare the 4 lists: merge duplicates, settle conflicts (for example "a question" against "an undo" on
 stage), and sort by risk: bugs first, then texts (no risk), then visible changes (the user decides).
 
 ## 5. Feedback to the user

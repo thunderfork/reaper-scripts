@@ -66,6 +66,9 @@
   Presets match Regions, names, folders, the .reabank file, Send now); scenes (strip, list with bar.beat and
   time, start scene per song, gap after a preset, merge, colours, Scenes match Markers, clear); Lanes
   (controls in real units, nearest CC value, slope between values, all songs).
+- Done (6 November 2026): scene edits are exact (no gap, no automatic start scene or merge; "Fill songs" and a
+  "Merge repeated scenes" button); Scene test; new MIDI items are checked (channel, a scene at each song start;
+  Settings > Tracks > Check new MIDI items); only the MIDI that REAPER plays is read; the status bar.
 - Next: step 5 nudge (ms and note values) and the latency of each device; step 6 ramps; step 7 the state at
   the song starts (chase), live chase while open, Send state now. Then a release (ask before the first push).
 - Version 2: Record and Learn, copy scenes between songs, scenes from the keyboard, a check report, a cue

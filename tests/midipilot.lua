@@ -55,6 +55,9 @@ test("project data: tracks and the shared mode are saved and read", function()
   P.tracks = { dB = "{2}", dA = "{1}" }; P.track_mode = "shared"
   local p2 = Project.parse(Project.serialize())
   eq(p2.tracks.dA, "{1}"); eq(p2.tracks.dB, "{2}"); eq(p2.track_mode, "shared")
+  P.test_ok = { ["Song B"] = true }
+  ok(Project.parse(Project.serialize()).test_ok["Song B"], "Ignore of a Scene test hint: saved and read")
+  P.test_ok = {}
   P.tracks = {}; P.track_mode = "own"
 end)
 
@@ -172,9 +175,7 @@ test("preset changes: written as CC0, CC32, PC; read back; before / exact / 0:00
   -- the 3 events, in order, on channel 3
   local take = chs[1].take
   local _, _, ncc = r.MIDI_CountEvts(take)
-  eq(ncc, 4, "3 events + the start scene")
-  local _, _, _, _, cm4, _, a4, v4 = r.MIDI_GetCC(take, 3)
-  eq(cm4, 0xB0); eq(a4, 43, "the start scene (CC43)"); eq(v4, 0, "scene A")
+  eq(ncc, 3, "3 events (no scene)")
   local _, _, _, _, cm1, ch1, a1, v1 = r.MIDI_GetCC(take, 0)
   local _, _, _, _, _, _, a2, v2 = r.MIDI_GetCC(take, 1)
   local _, _, _, _, cm3, _, p3 = r.MIDI_GetCC(take, 2)
@@ -185,7 +186,7 @@ test("preset changes: written as CC0, CC32, PC; read back; before / exact / 0:00
   Midi.set_song(d, B, 1, 3) -- replaced, not added
   eq(#Midi.changes(d), 2); eq(Midi.song_change(d, B).index, 3)
   Midi.set_song(d, B, nil); eq(Midi.song_change(d, B), nil, "removed"); eq(#Midi.changes(d), 1)
-  eq(Midi.fill_starts(d), 1, "Song B gets the preset that goes on"); eq(Midi.song_change(d, B).index, 200)
+  eq(Midi.fill_starts(d), 3, "Song B gets the preset that goes on, and both songs a start scene"); eq(Midi.song_change(d, B).index, 200)
   Preset.set_name(d, 1, 42, "song b")
   eq(Midi.match_names(d), 1); eq(Midi.song_change(d, B).index, 42, "matched by name")
   S.pc_when = "exact"; Midi.set_song(d, B, 1, 5); eq(Midi.song_change(d, B).t, 20)
@@ -269,99 +270,192 @@ test("a kept track brings its device back (Add device: name, settings, names); u
   S.devices, R.ports, S.lib, S.fnames = keep, keepp, kl, kf
 end)
 
-test("scenes: CC43 written and read; the gap after a preset (the scene moves); names; markers; remove", function()
+test("scenes: written exactly where asked, nothing else changes; replace; change; move; remove; names; markers", function()
   local Midi, Preset = C.Midi, C.Preset
-  local keep, kl, ks, kg, kw, km = S.devices, S.lib, S.snames, S.sc_gap, S.pc_when, S.pc_ms
+  local keep, kl, ks, kw, km = S.devices, S.lib, S.snames, S.pc_when, S.pc_ms
   S.devices = { { id = "S1", name = "Gtr", model = "mini", chan = 2, port = "", latency = 0, inport = "" } }
-  S.lib, S.snames, S.sc_gap, S.pc_when, S.pc_ms = { S1 = {} }, { S1 = {} }, 100, "exact", 0
+  S.lib, S.snames, S.pc_when, S.pc_ms = { S1 = {} }, { S1 = {} }, "exact", 0
   local d = S.devices[1]
   Dev.create_track(d)
   local B = R.regions[2] -- Song B 20-50
   Midi.set_song(d, B, 1, 4) -- preset 2A at 20.0
-  eq(Midi.add_scene(d, 20, 2), 20.1, "in the gap: moved 100 ms later")
-  Midi.add_scene(d, 30, 5)
+  eq(#Midi.song_scenes(d, B), 0, "a preset change writes no scene")
+  Midi.add_scene(d, 20, 2) -- on the preset change itself: exactly there
+  ok(math.abs(Midi.song_scenes(d, B)[1].t - 20) < 0.001, "exactly at 20 (no gap)")
+  Midi.add_scene(d, 30, 5); Midi.add_scene(d, 30.123, 5)
   local list = Midi.song_scenes(d, B)
-  eq(#list, 2); eq(list[1].v, 2); eq(list[2].v, 5)
-  local _, _, ncc = r.MIDI_CountEvts(list[2].take); ok(ncc >= 5, "events")
-  Midi.add_scene(d, 30, 6); eq(#Midi.song_scenes(d, B), 2, "same time: replaced"); eq(Midi.song_scenes(d, B)[2].v, 6)
-  -- a new preset change at 30 pushes the scene there
-  Midi.set_song(d, B, 1, 4) -- (the same, at 20: no change)
+  eq(#list, 3, "nothing added or removed by itself"); ok(math.abs(list[3].t - 30.123) < 0.001, "exact time")
+  Midi.add_scene(d, 30, 6); eq(#Midi.song_scenes(d, B), 3, "same time: replaced"); eq(Midi.song_scenes(d, B)[2].v, 6)
+  Midi.change_scene(d, Midi.song_scenes(d, B)[2], 1); eq(Midi.song_scenes(d, B)[2].v, 1, "changed")
+  ok(math.abs(Midi.song_scenes(d, B)[2].t - 30) < 0.001, "at the same time")
+  Midi.move_scene(d, Midi.song_scenes(d, B)[3], 41.5)
+  ok(math.abs(Midi.song_scenes(d, B)[3].t - 41.5) < 0.001, "moved exactly"); eq(Midi.song_scenes(d, B)[3].v, 5)
+  Midi.remove_scene(d, Midi.song_scenes(d, B)[1]); eq(#Midi.song_scenes(d, B), 2, "removed; nothing comes back")
+  -- names
   Preset.set_scene_names(d, 1, 4, { "Verse", "", "Chorus" })
   eq(Preset.scene_name(d, 1, 4, 0), "Verse"); eq(Preset.scene_name(d, 1, 4, 1), "I-B", "the mini's name")
   eq(Preset.scene_name(d, nil, 0, 2), "I-C", "no preset there"); eq(Preset.has_scene_name(d, nil, 0, 2), false, "no preset: no error")
   eq(Preset.parse_snames(Preset.serialize_snames(S.snames.S1))["1:4"][3], "Chorus")
+  -- markers: exactly at the marker
   r.AddProjectMarker2(0, false, 40, 0, "Chorus", -1, 0)
   r.AddProjectMarker2(0, false, 42, 0, "PDFPAGE 2", -1, 0)
   Project.scan()
-  eq(Midi.match_markers(d), 1, "1 marker"); eq(Midi.song_scenes(d, B)[3].v, 2, "Chorus = scene 3")
+  eq(Midi.match_markers(d), 1, "1 marker"); eq(Midi.song_scenes(d, B)[2].v, 2, "Chorus = scene 3")
+  ok(math.abs(Midi.song_scenes(d, B)[2].t - 40) < 0.001, "at the marker")
   eq(Midi.match_markers(d), 0, "again: nothing new")
-  Midi.remove_scene(d, Midi.song_scenes(d, B)[3]); eq(#Midi.song_scenes(d, B), 2, "removed")
-  -- the scene before a song goes on, unless a preset change comes after it
-  local A = R.regions[1]
+  -- a song shows only its own scene changes; removing the preset keeps the scenes
   Midi.add_scene(d, 5, 7)
-  local _, sv = Midi.song_scenes(d, B); eq(sv, nil, "a preset change at 20 starts the preset's own scene")
   Midi.set_song(d, B, nil)
-  eq(#Midi.song_scenes(d, B), 2, "a song shows only its own scene changes")
-  ok(Midi.start_scene(d, B), "removing the preset: the start scene is still the start scene (no new row)")
+  eq(#Midi.song_scenes(d, B), 3, "the scenes stay")
   r.DeleteTrack(Dev.track(d))
   for i = r.CountProjectMarkers(0) - 1, 0, -1 do
     local _, isr, _, _, nm, idx = r.EnumProjectMarkers(i)
     if not isr and (nm == "Chorus" or nm == "PDFPAGE 2") then r.DeleteProjectMarker(0, idx, false) end
   end
   Project.scan()
-  S.devices, S.lib, S.snames, S.sc_gap, S.pc_when, S.pc_ms = keep, kl, ks, kg, kw, km
-  local _ = A
+  S.devices, S.lib, S.snames, S.pc_when, S.pc_ms = keep, kl, ks, kw, km
 end)
 
-test("start scenes: after the song's own preset change (timing 'after'); a scene ends at its song end", function()
+test("start scenes: only from Fill songs; after the song's own preset change (timing 'after'); tempo change; next song's change", function()
   local Midi, Preset = C.Midi, C.Preset
-  local keep, kl, ks, kg, kw, km = S.devices, S.lib, S.snames, S.sc_gap, S.pc_when, S.pc_ms
+  local keep, kl, ks, kw, km, ku = S.devices, S.lib, S.snames, S.pc_when, S.pc_ms, S.pc_unit
   S.devices = { { id = "T1", name = "Gtr", model = "qc", chan = 1, port = "", latency = 0, inport = "" } }
-  S.lib, S.snames, S.sc_gap, S.pc_when, S.pc_ms = { T1 = {} }, { T1 = {} }, 100, "after", 250
+  S.lib, S.snames, S.pc_when, S.pc_ms, S.pc_unit = { T1 = {} }, { T1 = {} }, "after", 250, "ms"
   local d = S.devices[1]
   Dev.create_track(d)
   local A, B = R.regions[1], R.regions[2] -- 0-10, 20-50
   Preset.set_scene_names(d, 1, 9, { "Clean", "Tight AF" })
   Midi.set_song(d, A, 1, 9) -- preset at 0.25
-  Midi.set_song(d, B, 1, 9) -- preset at 20.25
+  eq(Midi.start_scene(d, A), nil, "a preset change writes no start scene")
+  ok(Midi.fill_starts(d) >= 2, "Fill songs: B gets a preset, both get a start scene")
   local sa = Midi.start_scene(d, A)
-  ok(sa and math.abs(sa.t - 0.35) < 0.002, "start scene after the preset change + gap")
+  ok(sa and math.abs(sa.t - 0.35) < 0.002, "start scene 100 ms after the preset change")
   eq(Preset.scene_name(d, Midi.preset_at(d, A, sa.t).folder, Midi.preset_at(d, A, sa.t).index, sa.v), "Clean", "its name")
   ok(math.abs(Midi.start_scene(d, B).t - 20.35) < 0.002, "song B too")
-  -- a scene in song A ends at its end: song B starts on its own start scene
-  Midi.insert_scene(d, 5, 1)
-  local _, sv = Midi.song_scenes(d, B); eq(sv, nil, "nothing goes on into song B")
-  eq(Midi.song_scenes(d, B)[1].v, 0, "song B starts on Clean")
-  -- an old start scene before the preset change moves after it
-  local old = Midi.start_scene(d, B); Midi.delete_scene(d, old); R.pcs = {}
-  Midi.insert_scene(d, 20, 1); R.pcs = {}
-  ok(Midi.ensure_start_scene(d, B), "moved"); ok(math.abs(Midi.start_scene(d, B).t - 20.35) < 0.002)
-  eq(Midi.start_scene(d, B).v, 1, "the same scene")
+  eq(Midi.fill_starts(d), 0, "again: nothing")
+  -- a tempo change at the song start
+  r.SetTempoTimeSigMarker(0, -1, 20, -1, -1, 90, 0, 0, false); r.UpdateTimeline(); R.pcs = {}
+  S.pc_when, S.pc_unit = "before", "notes"
+  Midi.clear(d); Midi.clear(d, nil, true)
+  Midi.set_song(d, A, 1, 9); Midi.fill_starts(d)
+  ok(Midi.song_change(d, B), "B has a preset"); ok(Midi.start_scene(d, B), "B has a start scene")
+  r.DeleteTempoTimeSigMarker(0, r.CountTempoTimeSigMarkers(0) - 1); r.UpdateTimeline()
+  -- the next song's change "before" its start (inside this song's end) belongs to the next song
+  local ci = r.AddProjectMarker2(0, true, 50, 60, "Song C", -1, 0); Project.scan()
+  local C3 = R.regions[3]
+  S.pc_when, S.pc_unit, S.pc_ms = "before", "ms", 250
+  Midi.clear(d); Midi.clear(d, nil, true)
+  Midi.set_song(d, A, 1, 9); Midi.set_song(d, C3, 1, 9) -- at 49.75, inside song B
+  eq(Midi.song_change(d, B), nil, "not song B's change"); ok(Midi.song_change(d, C3), "song C's change")
+  Midi.fill_starts(d)
+  local sb = Midi.start_scene(d, B); ok(sb and sb.t < 21, "song B: its start scene at its start")
+  r.DeleteProjectMarker(0, ci, true); Project.scan()
   r.DeleteTrack(Dev.track(d))
-  S.devices, S.lib, S.snames, S.sc_gap, S.pc_when, S.pc_ms = keep, kl, ks, kg, kw, km
+  S.devices, S.lib, S.snames, S.pc_when, S.pc_ms, S.pc_unit = keep, kl, ks, kw, km, ku
 end)
 
-test("scenes: combine repeated scenes; move; times in m:ss and bar.beat; colours; names move with a preset", function()
+test("scene test: exactly at the cursor, 15 changes every 2 beats, 1 test; replaces its section; move; remove; no room", function()
+  local Midi = C.Midi
+  local keep, kl, ks = S.devices, S.lib, S.snames
+  S.devices = { { id = "X1", name = "Gtr", model = "qc", chan = 1, port = "", latency = 0, inport = "" } }
+  S.lib, S.snames = { X1 = {} }, { X1 = {} }
+  local d = S.devices[1]
+  Dev.create_track(d)
+  local B = R.regions[2] -- 20-50, 120 bpm: 2 beats = 1 s
+  Midi.insert_change(d, 21.5, 1, 9); R.pcs = {} -- a preset change inside the test: nothing moves
+  Midi.add_scene(d, 22.5, 3); Midi.add_scene(d, 45, 4)
+  local tend = Midi.add_test(d, B, 20)
+  ok(tend and math.abs(tend - 35) < 0.002, "its end: 2 beats after its last change")
+  local g = Midi.song_tests(d, B)
+  eq(#g, 1, "1 test"); eq(#g[1].evs, 15); ok(math.abs(g[1].t0 - 20) < 0.001, "exactly at the cursor")
+  eq(g[1].evs[8].v, 7, "II-D in the middle"); eq(g[1].evs[15].v, 0, "back to I-A")
+  eq(#Midi.song_scenes(d, B), 16, "the scene at 22.5 replaced, the one at 45 stays")
+  eq(Midi.merge_all(d), 0, "merge keeps the test")
+  ok(Midi.remove_test(d, B, g[1], 30), "moved"); ok(math.abs(Midi.song_tests(d, B)[1].t0 - 30) < 0.001)
+  eq(Midi.add_test(d, B, 40), nil, "no room at the end: nothing written")
+  eq(Midi.remove_test(d, B, Midi.song_tests(d, B)[1], 40), false, "no room to move: it stays")
+  eq(#Midi.song_tests(d, B), 1)
+  Midi.remove_test(d, B, Midi.song_tests(d, B)[1]); eq(#Midi.song_tests(d, B), 0, "removed")
+  eq(#Midi.song_scenes(d, B), 1, "the scene at 45 (the test end) stays")
+  r.DeleteTrack(Dev.track(d))
+  S.devices, S.lib, S.snames = keep, kl, ks
+end)
+
+test("new MIDI items: the channel of the item; a scene at each song start inside it (the scene that plays, else I-A)", function()
+  local Midi = C.Midi
+  local keep, kl, ks, kci = S.devices, S.lib, S.snames, S.check_items
+  S.devices = { { id = "N1", name = "Gtr", model = "qc", chan = 1, port = "", latency = 0, inport = "" } }
+  S.lib, S.snames, S.check_items = { N1 = {} }, { N1 = {} }, true
+  local d = S.devices[1]
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  R.seen = nil; Midi.find_new_items() -- (the first look: only notes the items)
+  -- a copied item from 0 to 60 on channel 5, with 1 scene change (II-B at 5 s, inside song A)
+  local item = r.CreateNewMIDIItemInProj(tr, 0, 60, false)
+  local take = r.GetActiveTake(item)
+  r.MIDI_InsertCC(take, false, false, r.MIDI_GetPPQPosFromProjTime(take, 5), 0xB0, 4, 43, 5); r.MIDI_Sort(take)
+  Midi.find_new_items()
+  eq(d.chan, 5, "the channel of the item")
+  local A, B = R.regions[1], R.regions[2]
+  local sa, sb = Midi.song_scenes(d, A)[1], Midi.song_scenes(d, B)[1]
+  ok(sa and math.abs(sa.t - 0) < 0.001 and sa.v == 0, "song A: I-A at its start (nothing before)")
+  ok(sb and math.abs(sb.t - 20) < 0.001 and sb.v == 5, "song B: the scene that plays (II-B) at its start")
+  Midi.find_new_items(); eq(#Midi.song_scenes(d, B), 1, "an item is checked only once")
+  -- more than 1 channel: a question, nothing changes before the answer
+  local item2 = r.CreateNewMIDIItemInProj(tr, 70, 80, false)
+  local t2 = r.GetActiveTake(item2)
+  r.MIDI_InsertCC(t2, false, false, 0, 0xB0, 4, 43, 1); r.MIDI_InsertCC(t2, false, false, 10, 0xB0, 6, 43, 1); r.MIDI_Sort(t2)
+  Midi.find_new_items()
+  ok(R.chq and #R.chq.chans == 2, "asks (the 2 channels of the item, 1 of them the current one)"); eq(d.chan, 5, "not changed yet")
+  R.chq = nil
+  -- the track has MIDI on channel 5: an item on channel 7 asks, it does not switch
+  local item3 = r.CreateNewMIDIItemInProj(tr, 80, 85, false)
+  local t3 = r.GetActiveTake(item3)
+  r.MIDI_InsertCC(t3, false, false, 0, 0xB0, 6, 43, 2); r.MIDI_Sort(t3)
+  Midi.find_new_items()
+  ok(R.chq and R.chq.other, "asks: MIDI on the current channel"); eq(d.chan, 5, "no switch by itself")
+  R.chq = nil
+  -- only what plays: an event after the item end and a muted item are not read
+  r.MIDI_InsertCC(t3, false, false, r.MIDI_GetPPQPosFromProjTime(t3, 88), 0xB0, 4, 43, 6); r.MIDI_Sort(t3); R.pcs = {}
+  for _, s in ipairs(Midi.scenes(d)) do ok(math.abs(s.t - 88) > 0.01, "the hidden event is not read") end
+  local n0 = #Midi.scenes(d)
+  r.SetMediaItemInfo_Value(item, "B_MUTE", 1); R.pcs = {}
+  ok(#Midi.scenes(d) < n0, "a muted item is not read")
+  r.DeleteTrack(tr)
+  -- a new track (Create track) is not new MIDI: its empty item adds nothing
+  local d2 = { id = "N2", name = "Bass", model = "qc", chan = 1, port = "", latency = 0, inport = "" }
+  S.devices[2] = d2; S.lib.N2, S.snames.N2 = {}, {}
+  Dev.create_track(d2); Project.scan(); Midi.find_new_items()
+  eq(#Midi.scenes(d2), 0, "no scenes from Create track")
+  r.DeleteTrack(Dev.track(d2))
+  S.devices, S.lib, S.snames, S.check_items = keep, kl, ks, kci
+end)
+
+test("scenes: Merge button; times in m:ss and bar.beat; clear; colours; names move with a preset", function()
   local Midi, Preset, Util = C.Midi, C.Preset, C.Util
-  local keep, kl, ks, kg, kw, km, kmg = S.devices, S.lib, S.snames, S.sc_gap, S.pc_when, S.pc_ms, S.sc_merge
+  local keep, kl, ks, kw, km = S.devices, S.lib, S.snames, S.pc_when, S.pc_ms
   S.devices = { { id = "U1", name = "Gtr", model = "qc", chan = 1, port = "", latency = 0, inport = "" } }
-  S.lib, S.snames, S.sc_gap, S.pc_when, S.pc_ms, S.sc_merge = { U1 = {} }, { U1 = {} }, 100, "exact", 0, true
+  S.lib, S.snames, S.pc_when, S.pc_ms = { U1 = {} }, { U1 = {} }, "exact", 0
   local d = S.devices[1]
   Dev.create_track(d)
   local B = R.regions[2] -- 20-50
-  Midi.set_song(d, B, 1, 0) -- preset at 20, start scene A at 20.1
-  Midi.insert_scene(d, 30, 1); Midi.insert_scene(d, 35, 1)
-  eq(Midi.merge_song(d, B), 1, "the 2nd B is removed"); eq(#Midi.song_scenes(d, B), 2)
-  local s = Midi.song_scenes(d, B)[2]
-  Midi.move_scene(d, B, s, 40); eq(Midi.song_scenes(d, B)[2].t, 40, "moved"); eq(Midi.song_scenes(d, B)[2].v, 1)
+  Midi.set_song(d, B, 1, 0)
+  Midi.add_scene(d, 20, 0); Midi.add_scene(d, 30, 1); Midi.add_scene(d, 35, 1); Midi.add_scene(d, 36, 1)
+  Midi.add_scene(d, 5, 3); Midi.add_scene(d, 6, 3)
+  eq(#Midi.song_scenes(d, B), 4, "adding never merges")
+  eq(Midi.merge_all(d), 3, "2 in song B, 1 in song A"); eq(#Midi.song_scenes(d, B), 2); eq(#Midi.song_scenes(d, R.regions[1]), 1)
+  -- song B's start scene, rounded a moment before its start, the same scene as at song A's end: Merge keeps it
+  Midi.add_scene(d, 19.9997, 3)
+  eq(Midi.start_scene(d, B).v, 3, "song B's start scene"); eq(Midi.merge_all(d), 0, "kept")
+  eq(Midi.start_scene(d, B).v, 3); Midi.remove_scene(d, Midi.start_scene(d, B))
   eq(Util.fmt_song_time(B, 32.5), "0:12.5"); eq(Util.parse_song_time(B, "0:12.5"), 32.5); eq(Util.parse_song_time(B, "12.5"), 32.5)
   -- 120 bpm 4/4: a bar = 2 s; bars and beats from the project start
   eq(Util.fmt_beats(22), "12.1"); eq(Util.fmt_beats(22.75), "12.2.5")
   ok(math.abs(Util.parse_beats("12.2") - 22.5) < 0.001, "bar.beat read"); eq(Util.parse_beats("x"), nil)
   eq(Util.parse_song_time(B, "x"), nil)
   -- clear: 1 song, then all scenes, then all presets
-  ok(Midi.clear(d, B) >= 1); eq(#Midi.song_scenes(d, B), 0)
-  Midi.insert_scene(d, 25, 3); Midi.insert_scene(d, 5, 2)
+  eq(Midi.clear(d, B), 2); eq(#Midi.song_scenes(d, B), 0, "Clear scenes: nothing left")
+  Midi.add_scene(d, 25, 3)
   eq(Midi.clear(d), 2, "all scenes"); eq(#Midi.scenes(d), 0)
   eq(Midi.clear(d, nil, true), 1, "all presets"); eq(#Midi.changes(d), 0)
   Preset.set_scene_names(d, 1, 0, { "Verse" }, { 3 })
@@ -373,12 +467,12 @@ test("scenes: combine repeated scenes; move; times in m:ss and bar.beat; colours
   eq(Preset.name(d, 1, 5), "Song B"); eq(Preset.scene_name(d, 1, 5, 0), "Verse", "the scene names moved"); eq(Preset.scene_col(d, 1, 5, 0), 3)
   eq(Preset.name(d, 1, 0), nil)
   r.DeleteTrack(Dev.track(d))
-  S.devices, S.lib, S.snames, S.sc_gap, S.pc_when, S.pc_ms, S.sc_merge = keep, kl, ks, kg, kw, km, kmg
+  S.devices, S.lib, S.snames, S.pc_when, S.pc_ms = keep, kl, ks, kw, km
 end)
 
-test("review: a new unit does not take a kept track of another unit; channel move; start scene switch; match writes start scenes", function()
+test("review: a new unit does not take a kept track of another unit; channel move; Presets match Regions", function()
   local Midi, Preset = C.Midi, C.Preset
-  local keep, keepp, kl, ks, kw, km, kst = S.devices, R.ports, S.lib, S.snames, S.pc_when, S.pc_ms, S.start_scene
+  local keep, keepp, kl, ks, kw, km = S.devices, R.ports, S.lib, S.snames, S.pc_when, S.pc_ms
   S.devices, S.lib, S.snames, S.pc_when, S.pc_ms = {}, {}, {}, "exact", 0
   R.ports = { { index = 0, name = "Quad Cortex" }, { index = 1, name = "Quad Cortex mini" } }
   local a = Dev.new(); Dev.create_track(a); eq(a.port, "Quad Cortex")
@@ -395,19 +489,14 @@ test("review: a new unit does not take a kept track of another unit; channel mov
   ok(Midi.has_channel(b, 2), "on channel 3")
   b.chan = 5
   eq(#Midi.changes(b), 0, "not on the new channel yet")
-  ok(Midi.move_channel(b, 2, 4) >= 4, "moved"); eq(#Midi.changes(b), 1); ok(not Midi.has_channel(b, 2))
-  -- start scene switch off: a preset change writes no start scene
-  S.start_scene = false
-  Midi.clear(b); Midi.set_song(b, B, 1, 5)
-  eq(Midi.start_scene(b, B), nil, "off: no start scene")
-  -- Presets match Regions writes the start scene like the dropdown
-  S.start_scene = true
+  ok(Midi.move_channel(b, 2, 4) >= 3, "moved"); eq(#Midi.changes(b), 1); ok(not Midi.has_channel(b, 2))
+  -- Presets match Regions: the preset only
   S.lib[b.id] = {}
   Preset.set_name(b, 1, 9, "Song B")
   Midi.set_song(b, B, nil); Midi.clear(b)
-  eq(Midi.match_names(b), 1); ok(Midi.start_scene(b, B), "start scene written")
+  eq(Midi.match_names(b), 1); ok(Midi.song_change(b, B), "preset written"); eq(Midi.start_scene(b, B), nil, "no scene")
   r.DeleteTrack(Dev.track(b))
-  S.devices, R.ports, S.lib, S.snames, S.pc_when, S.pc_ms, S.start_scene = keep, keepp, kl, ks, kw, km, kst
+  S.devices, R.ports, S.lib, S.snames, S.pc_when, S.pc_ms = keep, keepp, kl, ks, kw, km
 end)
 
 test("knobs: units, nearest CC value, typed values, saved and read; CC values written, changed, removed", function()
@@ -438,6 +527,7 @@ test("knobs: units, nearest CC value, typed values, saved and read; CC values wr
   Midi.set_shape(d, 1, Midi.ccs(d, 1)[1], 1); eq(Midi.ccs(d, 1)[1].shape, 1, "straight")
   Midi.remove_cc(d, 1, Midi.ccs(d, 1)[1]); eq(#Midi.ccs(d, 1), 1); eq(Midi.ccs(d, 1)[1].t, 30)
   eq(Midi.song_at(25).name, "Song B"); eq(Midi.song_at(15), nil)
+  eq(Midi.song_at(19.9995).name, "Song B", "a moment before the start (a rounded start scene): the song")
   r.DeleteTrack(Dev.track(d))
   S.devices = keep
 end)

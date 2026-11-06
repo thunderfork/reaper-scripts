@@ -7,7 +7,8 @@
 --   song starts, scenes by name, knob values in real units, nudges and ramps. The MIDI plays without the
 --   script. Requires: the free ReaImGui extension (ReaPack).
 -- @changelog
---   First version (step 1): the window, the devices (Quad Cortex or mini, MIDI output and channel) and their tracks.
+--   First version: devices and tracks, presets at the song starts, scenes by name (strip, list, Scene test), knob
+--   values in real units (Lanes), and a status bar with the state of the unit.
 
 -- MIT License
 --
@@ -67,13 +68,15 @@ CFG.PC_MS_MAX = 2000
 CFG.PC_WINDOW = 2.5            -- a preset change up to this many seconds before a song start belongs to that song
 CFG.PRESET_W = 230             -- the preset dropdown of a song row
 CFG.REABANK = "MIDI Pilot.reabank" -- in REAPER's Data\MIDI Pilot folder: the preset names for REAPER
+CFG.STATUS_SEC = 0.25          -- the status bar text (song, preset, scene at the cursor) is made again this often
 CFG.TOAST_SEC = 4              -- a notice in a title line goes away after this many seconds
-CFG.SC_GAP = 100               -- ms: a scene change at least this long after a preset change (the unit loads the preset)
-CFG.SC_GAP_MAX = 1000
+CFG.START_AFTER_PC = 0.1       -- s: a start scene from "Fill songs" comes this long after a song's preset change
 CFG.STRIP_H = 22               -- the scene strip of a song row
 CFG.SC_CC = 43                 -- the Quad Cortex scene CC (values 0-7)
+CFG.EDGE = 0.002               -- s: a scene change this close to a song start is at the start (a MIDI tick rounds it)
 CFG.START_WINDOW = 3           -- s: the first scene change in the first seconds of a song is its start scene
-CFG.END_GUARD = 0.05           -- s: no scene change in the last moment of a song (it would belong to the next song)
+CFG.TEST_SEQ = { 0, 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 0 } -- "Scene test": I-A up to II-D and back to I-A
+CFG.TEST_BEATS = 2             -- beats between 2 scene changes of a scene test
 
 local COL = {
   RED = 0xF26D6DFF, YELLOW = 0xF2C75CFF, GREEN = 0x6FCF8AFF,
@@ -104,6 +107,7 @@ local PC_WHEN = { "before", "exact", "after" }
 -- The scene colours of the Quad Cortex: yellow, orange, red, pink, purple, blue, light blue, green. Scene v (0-7)
 -- gets colour v + 1 unless you choose another (Presets > Scenes...). Light colours: the text on them is dark.
 local SC_COLS = { 0xFFE599FF, 0xF9CB9CFF, 0xEA9999FF, 0xF4B6C8FF, 0xB4A7D6FF, 0x9FC5E8FF, 0xA8DCECFF, 0xB6D7A8FF }
+local SC_TEST = 0xD5D8DEFF -- the "Scene test" block on the strip (light grey: no scene colour)
 local SC_TEXT = 0x1A1C21FF -- the text on a scene block (always dark: the colours are light)
 local SC_COL_NAMES = { "Yellow", "Orange", "Red", "Pink", "Purple", "Blue", "Light blue", "Green" }
 -- Preset timing in note values: the length in quarter notes (beats) and its name.
@@ -134,12 +138,10 @@ local S = {
   pc_ms = CFG.PC_MS,  -- ... by this many ms
   pc_unit = "ms",     -- the preset timing in "ms" or in "notes" (snaps to the beat grid)
   pc_note = 2,        -- ... the note value: an index of PC_NOTES (default 1/16 note)
+  check_items = true, -- a new MIDI item on a device's track: its channel is used, the song starts get a scene
   lib = {},         -- the preset names: device id -> { ["folder:index"] = preset name }
   fnames = {},      -- your folder names: device id -> { [folder] = name }
   snames = {},      -- scene names: device id -> { ["folder:index"] = { [1..8] = name } }
-  sc_gap = CFG.SC_GAP, -- ms between a preset change and a scene change after it
-  sc_merge = true,    -- 2 scene changes in a row with the same scene: the 2nd one is removed
-  start_scene = true, -- every song gets a start scene (with its preset, or with Fill songs)
   knobs = {},       -- the knobs (Lanes): device id -> { { cc, name, min, max, unit } }
   lane_all = false, -- Lanes: the values of all songs (else only the song at the edit cursor)
 }
@@ -278,15 +280,13 @@ local function load_settings()
   S.pc_ms = Util.clamp(math.floor(tonumber(get("pc_ms")) or CFG.PC_MS), 0, CFG.PC_MS_MAX)
   S.pc_unit = (get("pc_unit") == "notes") and "notes" or "ms"
   S.pc_note = Util.clamp(math.floor(tonumber(get("pc_note")) or 2), 1, #PC_NOTES)
+  S.check_items = get("check_items") ~= "0"
   for _, d in ipairs(S.devices) do
     S.lib[d.id] = Preset.parse_lib(get("lib_" .. d.id))
     S.fnames[d.id] = Preset.parse_fnames(get("fold_" .. d.id))
     S.snames[d.id] = Preset.parse_snames(get("scn_" .. d.id))
     S.knobs[d.id] = Knob.parse(get("knb_" .. d.id))
   end
-  S.sc_gap = Util.clamp(math.floor(tonumber(get("sc_gap")) or CFG.SC_GAP), 0, CFG.SC_GAP_MAX)
-  S.sc_merge = get("sc_merge") ~= "0"
-  S.start_scene = get("start_scene") ~= "0"
   S.lane_all = get("lane_all") == "1"
   R.dock_req = S.dock -- the window opens where it was (floating or in its docker)
 end
@@ -298,15 +298,13 @@ local function save_settings()
   r.SetExtState(CFG.EXT, "pc_ms", tostring(S.pc_ms), true)
   r.SetExtState(CFG.EXT, "pc_unit", S.pc_unit, true)
   r.SetExtState(CFG.EXT, "pc_note", tostring(S.pc_note), true)
+  r.SetExtState(CFG.EXT, "check_items", S.check_items and "1" or "0", true)
   for _, d in ipairs(S.devices) do
     r.SetExtState(CFG.EXT, "lib_" .. d.id, Preset.serialize_lib(S.lib[d.id]), true)
     r.SetExtState(CFG.EXT, "fold_" .. d.id, Preset.serialize_fnames(S.fnames[d.id]), true)
     r.SetExtState(CFG.EXT, "scn_" .. d.id, Preset.serialize_snames(S.snames[d.id]), true)
     r.SetExtState(CFG.EXT, "knb_" .. d.id, Knob.serialize(S.knobs[d.id]), true)
   end
-  r.SetExtState(CFG.EXT, "sc_gap", tostring(S.sc_gap), true)
-  r.SetExtState(CFG.EXT, "sc_merge", S.sc_merge and "1" or "0", true)
-  r.SetExtState(CFG.EXT, "start_scene", S.start_scene and "1" or "0", true)
   r.SetExtState(CFG.EXT, "lane_all", S.lane_all and "1" or "0", true)
   if R.bank_dirty then Preset.write_reabank() end
   R.sdirty = false
@@ -316,7 +314,8 @@ end
 -- PROJECT (regions, tracks and the project data)
 ---------------------------------------------------------------------------
 -- tracks: device id -> track GUID ("*" = the shared track). track_mode: "own" (1 track per device) or "shared".
-function Project.default() return { tracks = {}, track_mode = "own" } end
+-- test_ok: the regions (by name) whose Scene test needs no hint in the status bar ("Ignore").
+function Project.default() return { tracks = {}, track_mode = "own", test_ok = {} } end
 
 function Project.scan()
   R.regions, R.markers = {}, {}
@@ -350,6 +349,7 @@ function Project.parse(txt)
       local id, guid = v:match("^(.-)\t(.*)$")
       if id and id ~= "" and guid ~= "" then p.tracks[id] = guid end
     elseif k == "track_mode" and v == "shared" then p.track_mode = "shared"
+    elseif k == "test_ok" and v ~= "" then p.test_ok[v] = true
     end
   end
   return p
@@ -364,6 +364,10 @@ function Project.serialize()
   table.sort(ids) -- (the same text for the same data)
   for _, id in ipairs(ids) do w("track", Util.clean(id) .. "\t" .. Util.clean(P.tracks[id])) end
   if P.track_mode ~= "own" then w("track_mode", P.track_mode) end
+  local ok = {}
+  for nm in pairs(P.test_ok) do ok[#ok + 1] = nm end
+  table.sort(ok)
+  for _, nm in ipairs(ok) do w("test_ok", Util.clean(nm)) end
   return table.concat(t, "\n")
 end
 
@@ -389,11 +393,11 @@ function Project.update()
   if proj ~= R.proj then
     if R.pdirty then Project.save() end
     R.proj, R.state_cc = proj, -1
-    R.pick, R.scm, R.ask, R.st_text, R.sc_open = nil, nil, nil, nil, nil -- (they belong to the old project)
+    R.pick, R.scm, R.ask, R.st_text, R.sc_open, R.chq = nil, nil, nil, nil, nil, nil -- (they belong to the old project)
     Project.load()
   end
   local cc = r.GetProjectStateChangeCount(proj)
-  if cc ~= R.state_cc then R.state_cc = cc; Project.scan(); Dev.sync_from_tracks(); R.conflicts = nil end
+  if cc ~= R.state_cc then R.state_cc = cc; Project.scan(); Dev.sync_from_tracks(); R.conflicts = nil; Midi.find_new_items() end
 end
 
 ---------------------------------------------------------------------------
@@ -1048,6 +1052,15 @@ end
 function Midi.chan(d) return d.chan == 0 and 0 or (d.chan - 1) end
 function Midi.is_mine(d, chan) return d.chan == 0 or chan == d.chan - 1 end
 
+-- The part of a take that REAPER plays, in PPQ: from, to; nil when its item is muted (events outside it do not play).
+function Midi.play_range(take)
+  local item = r.GetMediaItemTake_Item(take)
+  if r.GetMediaItemInfo_Value(item, "B_MUTE") == 1 then return nil end
+  local pos = r.GetMediaItemInfo_Value(item, "D_POSITION")
+  local len = r.GetMediaItemInfo_Value(item, "D_LENGTH")
+  return r.MIDI_GetPPQPosFromProjTime(take, pos) - 0.5, r.MIDI_GetPPQPosFromProjTime(take, pos + len) - 0.5
+end
+
 -- The MIDI takes on the device's track.
 function Midi.takes(d)
   local out = {}
@@ -1070,10 +1083,11 @@ function Midi.changes(d)
   c = {}
   for _, take in ipairs(Midi.takes(d)) do
     local msb, lsb = 0, 1
-    local _, _, ncc = r.MIDI_CountEvts(take)
+    local p0, p1 = Midi.play_range(take)
+    local ncc = p0 and select(3, r.MIDI_CountEvts(take)) or 0
     for i = 0, ncc - 1 do
       local _, _, muted, ppq, cm, ch, m2, m3 = r.MIDI_GetCC(take, i)
-      if not muted and Midi.is_mine(d, ch) then
+      if not muted and Midi.is_mine(d, ch) and ppq >= p0 and ppq < p1 then
         if cm == 0xB0 and m2 == 0 then msb = m3
         elseif cm == 0xB0 and m2 == 32 then lsb = m3
         elseif cm == 0xC0 then
@@ -1091,9 +1105,17 @@ end
 -- The preset change that belongs to a song: the first one from CFG.PC_WINDOW s before its start to its end.
 function Midi.song_change(d, rg)
   for _, ch in ipairs(Midi.changes(d)) do
-    if ch.t >= rg.start - CFG.PC_WINDOW and ch.t < rg.stop then return ch end
+    -- (a change just before the next song belongs to the next song: its timing "before")
+    if ch.t >= rg.start - CFG.PC_WINDOW and ch.t < rg.stop and not Midi.next_song_at(ch.t, rg) then return ch end
   end
   return nil
+end
+-- True when a song after rg starts in the CFG.PC_WINDOW s after time t (a change at t is that song's change).
+function Midi.next_song_at(t, rg)
+  for _, x in ipairs(R.regions) do
+    if x.start > rg.start + 0.0001 and x.start >= t - 0.0001 and x.start <= t + CFG.PC_WINDOW then return true end
+  end
+  return false
 end
 -- The preset that is active at a time (the last change at or before it).
 function Midi.active_at(d, t)
@@ -1104,7 +1126,7 @@ function Midi.active_at(d, t)
   return last
 end
 
--- The time of a song's preset change (Settings > Preset and scene timing), and whether it was moved to 0:00.
+-- The time of a song's preset change (Settings > Preset timing), and whether it was moved to 0:00.
 function Midi.pc_time(rg)
   local sign = (S.pc_when == "before" and -1) or (S.pc_when == "after" and 1) or 0
   local t
@@ -1142,6 +1164,7 @@ function Midi.take_at(d, t)
     return r.GetActiveTake(first)
   end
   local item = r.CreateNewMIDIItemInProj(tr, math.max(0, t), Dev.item_end(), false)
+  if item then Midi.mark_seen(item) end -- (MIDI Pilot's own item: not a new item to check)
   return item and r.GetActiveTake(item)
 end
 
@@ -1173,16 +1196,14 @@ function Midi.insert_change(d, t, folder, index)
 end
 
 -- Writes the preset of a song (no undo step): its old change goes, the new one is written at the time of
--- Settings > Preset and scene timing, a scene change in the gap moves, and the song gets its start scene.
--- With folder nil: the change is removed. Returns true when the time had to be moved to 0:00.
+-- Settings > Preset timing (the scenes do not change). With folder nil: the change is removed.
+-- Returns true when the time had to be moved to 0:00.
 function Midi.write_song(d, rg, folder, index)
   local old = Midi.song_change(d, rg)
   if old then Midi.delete_change(d, old); R.pcs = {} end
   local t, moved = Midi.pc_time(rg)
   if folder then
-    Midi.insert_change(d, t, folder, index); Midi.push_scenes(d, t)
-    R.pcs = {}
-    Midi.ensure_start_scene(d, rg)
+    Midi.insert_change(d, t, folder, index)
   end
   R.pcs = {}
   return moved
@@ -1243,8 +1264,12 @@ function Midi.match_names(d)
   return n
 end
 
--- The scene changes of a device (CC#43, values 0-7), read from its MIDI (cached like Midi.changes):
--- sorted by time, { t, v, take, ppq }.
+-- ---------------------------------------------------------------------------------------------------------
+-- Scenes. The rule: an edit writes exactly what you choose, where you choose it, and nothing else. A scene change is
+-- 1 CC#43 event (values 0-7); no edit moves, adds or removes other scene changes. Start scenes ("Fill songs") and
+-- merging ("Merge repeated scenes") happen only with their buttons.
+
+-- The scene changes of a device, read from its MIDI (cached like Midi.changes): sorted by time, { t, v, take, ppq }.
 function Midi.scenes(d)
   R.pcs = R.pcs or {}
   local key = "s" .. d.id
@@ -1252,10 +1277,11 @@ function Midi.scenes(d)
   if c then return c end
   c = {}
   for _, take in ipairs(Midi.takes(d)) do
-    local _, _, ncc = r.MIDI_CountEvts(take)
+    local p0, p1 = Midi.play_range(take)
+    local ncc = p0 and select(3, r.MIDI_CountEvts(take)) or 0
     for i = 0, ncc - 1 do
       local _, _, muted, ppq, cm, ch, m2, m3 = r.MIDI_GetCC(take, i)
-      if not muted and cm == 0xB0 and m2 == CFG.SC_CC and m3 <= 7 and Midi.is_mine(d, ch) then
+      if not muted and cm == 0xB0 and m2 == CFG.SC_CC and m3 <= 7 and Midi.is_mine(d, ch) and ppq >= p0 and ppq < p1 then
         c[#c + 1] = { t = r.MIDI_GetProjTimeFromPPQPos(take, ppq), v = m3, take = take, ppq = ppq }
       end
     end
@@ -1265,56 +1291,130 @@ function Midi.scenes(d)
   return c
 end
 
--- The scene changes of a song (from its start to its end). A song shows only its own scene changes.
+-- The scene changes of a song (from its start to its end).
 function Midi.song_scenes(d, rg)
   local list = {}
   for _, s in ipairs(Midi.scenes(d)) do
-    if s.t >= rg.start - 0.0001 and s.t < rg.stop then list[#list + 1] = s end
+    if s.t >= rg.start - CFG.EDGE and s.t < rg.stop - CFG.EDGE then list[#list + 1] = s end
   end
   return list
 end
 
--- "Merge repeated scenes" (Settings): in a song, a scene change to the scene that already plays is removed
--- (not the start scene). Returns the number removed.
-function Midi.merge_song(d, rg)
-  if not S.sc_merge or not rg then return 0 end
-  local n, prev = 0, nil
-  local st = Midi.start_scene(d, rg)
-  for _, s in ipairs(Midi.song_scenes(d, rg)) do
-    if prev ~= nil and s.v == prev and s ~= st then Midi.delete_scene(d, s); n = n + 1
-    else prev = s.v end
-  end
-  if n > 0 then R.pcs = {} end
-  return n
-end
-
--- Removes the scene changes of a song ("Clear scenes"), or with rg nil: all scene changes of the device
--- ("Clear all scenes"); with presets: all preset changes ("Clear all presets"). Returns the number removed.
-function Midi.clear(d, rg, presets)
-  local n = 0
-  r.Undo_BeginBlock()
-  if presets then
-    for _, ch in ipairs(Midi.changes(d)) do Midi.delete_change(d, ch); n = n + 1 end
-  else
-    for _, s in ipairs(rg and Midi.song_scenes(d, rg) or Midi.scenes(d)) do Midi.delete_scene(d, s); n = n + 1 end
+-- Removes 1 scene change (no undo step).
+function Midi.delete_scene(d, s)
+  if not r.ValidatePtr2(R.proj, s.take, "MediaItem_Take*") then return end
+  local _, _, ncc = r.MIDI_CountEvts(s.take)
+  for i = ncc - 1, 0, -1 do
+    local _, _, _, ppq, cm, chn, m2 = r.MIDI_GetCC(s.take, i)
+    if math.abs(ppq - s.ppq) < 0.5 and cm == 0xB0 and m2 == CFG.SC_CC and Midi.is_mine(d, chn) then r.MIDI_DeleteCC(s.take, i) end
   end
   R.pcs = {}
-  r.UpdateArrange()
-  r.Undo_EndBlock(presets and "MIDI Pilot: clear all presets" or (rg and ("MIDI Pilot: clear the scenes of " .. rg.name)
-    or "MIDI Pilot: clear all scenes"), -1)
-  return n
 end
 
--- Moves a scene change to time t (the scene stays).
-function Midi.move_scene(d, rg, s, t)
+-- Writes scene v exactly at time t (no undo step). A scene change on the same MIDI tick is replaced.
+function Midi.put_scene(d, t, v)
+  local take = Midi.take_at(d, t)
+  if not take then return end
+  local ppq = math.floor(r.MIDI_GetPPQPosFromProjTime(take, t) + 0.5)
+  local _, _, ncc = r.MIDI_CountEvts(take)
+  for i = ncc - 1, 0, -1 do
+    local _, _, _, p, cm, chn, m2 = r.MIDI_GetCC(take, i)
+    if math.abs(p - ppq) < 0.5 and cm == 0xB0 and m2 == CFG.SC_CC and Midi.is_mine(d, chn) then r.MIDI_DeleteCC(take, i) end
+  end
+  r.MIDI_InsertCC(take, false, false, ppq, 0xB0, Midi.chan(d), CFG.SC_CC, v)
+  r.MIDI_Sort(take)
+  R.pcs = {}
+end
+
+-- 1 undo step around an edit of the scenes.
+function Midi.scene_edit(name, fn)
   r.Undo_BeginBlock()
-  local v = s.v
-  Midi.delete_scene(d, s); R.pcs = {}
-  local used = Midi.insert_scene(d, t, v)
-  Midi.merge_song(d, rg)
+  local res = fn()
+  R.pcs = {}
   r.UpdateArrange()
-  r.Undo_EndBlock("MIDI Pilot: move a scene change", -1)
-  return used
+  r.Undo_EndBlock("MIDI Pilot: " .. name, -1)
+  return res
+end
+
+-- The edits of single scene changes (each 1 undo step).
+function Midi.add_scene(d, t, v)
+  Midi.scene_edit("add a scene change", function() Midi.put_scene(d, t, v) end)
+end
+function Midi.change_scene(d, s, v)
+  Midi.scene_edit("change a scene", function() Midi.delete_scene(d, s); Midi.put_scene(d, s.t, v) end)
+end
+function Midi.move_scene(d, s, t)
+  Midi.scene_edit("move a scene change", function() Midi.delete_scene(d, s); Midi.put_scene(d, t, s.v) end)
+end
+function Midi.remove_scene(d, s)
+  Midi.scene_edit("remove a scene change", function() Midi.delete_scene(d, s) end)
+end
+
+-- Scene test: CFG.TEST_SEQ (I-A up to II-D and back to I-A), a change every CFG.TEST_BEATS beats from time t.
+-- The times of its changes, and its end (CFG.TEST_BEATS after its last change).
+function Midi.test_times(t)
+  local q0 = r.TimeMap2_timeToQN(R.proj, t)
+  local times = {}
+  for k = 1, #CFG.TEST_SEQ do times[k] = r.TimeMap2_QNToTime(R.proj, q0 + (k - 1) * CFG.TEST_BEATS) end
+  return times, r.TimeMap2_QNToTime(R.proj, q0 + #CFG.TEST_SEQ * CFG.TEST_BEATS)
+end
+-- True when a test from time t fits in the song (its last change before the song end).
+function Midi.test_fits(rg, t)
+  local times = Midi.test_times(t)
+  return t >= rg.start - 0.0001 and times[#times] < rg.stop
+end
+-- Writes a test from time t (no undo step): the scene changes in its section are replaced.
+local function write_test(d, rg, t)
+  local times, tend = Midi.test_times(t)
+  for _, s in ipairs(Midi.song_scenes(d, rg)) do
+    if s.t >= t - 0.0001 and s.t < tend - 0.0001 then Midi.delete_scene(d, s) end
+  end
+  for k, v in ipairs(CFG.TEST_SEQ) do Midi.put_scene(d, times[k], v) end
+  return tend
+end
+-- Adds a test at time t (1 undo step). Returns its end time, or nil when it does not fit (nothing written).
+function Midi.add_test(d, rg, t)
+  if not Midi.test_fits(rg, t) then return nil end
+  return Midi.scene_edit("scene test in " .. rg.name, function() return write_test(d, rg, t) end)
+end
+-- Removes a test; with t: moves it there (1 undo step). Returns false when it does not fit there (nothing changed).
+function Midi.remove_test(d, rg, g, t)
+  if t and not Midi.test_fits(rg, t) then return false end
+  Midi.scene_edit(t and "move a scene test" or "remove a scene test", function()
+    for _, s in ipairs(g.evs) do Midi.delete_scene(d, s) end
+    if t then write_test(d, rg, t) end
+  end)
+  return true
+end
+
+-- The scene tests of a song (cached until the MIDI changes): runs of scene changes with the values CFG.TEST_SEQ,
+-- CFG.TEST_BEATS beats apart. Each: { evs, t0 (its 1st change), t1 (its end) }; of[ev] = the test of a change.
+function Midi.song_tests(d, rg)
+  R.pcs = R.pcs or {}
+  local key = "t" .. d.id .. ":" .. rg.start
+  local c = R.pcs[key]
+  if c then return c end
+  c = { of = {} }
+  local list, seq, n = Midi.song_scenes(d, rg), CFG.TEST_SEQ, #CFG.TEST_SEQ
+  local i = 1
+  while i <= #list - n + 1 do
+    local good = true
+    local q0 = r.TimeMap2_timeToQN(R.proj, list[i].t)
+    for k = 1, n do
+      local s = list[i + k - 1]
+      if s.v ~= seq[k] or math.abs(r.TimeMap2_timeToQN(R.proj, s.t) - (q0 + (k - 1) * CFG.TEST_BEATS)) > 0.02 then
+        good = false; break
+      end
+    end
+    if good then
+      local g = { evs = {}, t0 = list[i].t, t1 = math.min(rg.stop, r.TimeMap2_QNToTime(R.proj, q0 + n * CFG.TEST_BEATS)) }
+      for k = 1, n do g.evs[k] = list[i + k - 1]; c.of[list[i + k - 1]] = g end
+      c[#c + 1] = g
+      i = i + n
+    else i = i + 1 end
+  end
+  R.pcs[key] = c
+  return c
 end
 
 -- The preset of a song at time t: the song's own preset change when t is before it (the start scene and the first
@@ -1324,26 +1424,24 @@ function Midi.preset_at(d, rg, t)
   if own and t < own.t + 0.0002 then return own end
   return Midi.active_at(d, t + 0.0002)
 end
--- The time of a song's start scene: the song start, but always after the song's own preset change and its gap
--- (a preset load starts the preset's own scene, so the start scene must come after it).
+-- The time of a new start scene ("Fill songs"): the song start, or CFG.START_AFTER_PC after the song's own preset
+-- change when that change comes after the start (the unit first loads the preset).
 function Midi.start_time(d, rg)
-  local t0 = rg.start
   local own = Midi.song_change(d, rg)
-  if own and own.t + S.sc_gap / 1000 > t0 then t0 = own.t + S.sc_gap / 1000 end
-  return Midi.scene_time(d, t0)
+  if own and own.t + CFG.START_AFTER_PC > rg.start then return own.t + CFG.START_AFTER_PC end
+  return rg.start
 end
 -- The next song after a song (in timeline order), or nil.
 function Midi.next_song(rg)
   for i, x in ipairs(R.regions) do if x == rg then return R.regions[i + 1] end end
   return nil
 end
-
--- The start scene of a song: its first scene change, when it is in the first CFG.START_WINDOW seconds
--- (or a little before the start).
+-- The start scene of a song: its first scene change, when it is in its first CFG.START_WINDOW seconds
+-- (or before its new start scene time).
 function Midi.start_scene(d, rg)
   local hi = math.min(rg.stop, math.max(Midi.start_time(d, rg) + 0.01, rg.start + CFG.START_WINDOW))
   for _, s in ipairs(Midi.scenes(d)) do
-    if s.t >= rg.start - 0.0001 and s.t < hi then return s end
+    if s.t >= rg.start - CFG.EDGE and s.t < hi then return s end
     if s.t >= hi then break end
   end
   return nil
@@ -1355,82 +1453,176 @@ function Midi.default_start(d, pc)
   end
   return 0
 end
--- A song without a start scene gets the default one (so a scene never goes on into the next song).
+-- "Fill songs": a song without a start scene gets the default one (no undo step). Returns true when written.
 function Midi.ensure_start_scene(d, rg)
-  if not rg or not S.start_scene then return false end
+  if not rg or Midi.start_scene(d, rg) then return false end
   local t = Midi.start_time(d, rg)
-  local s = Midi.start_scene(d, rg)
-  if s then
-    if s.t >= t - 0.001 then return false end
-    local v = s.v -- before the song's preset change (an older start scene): it moves after it
-    Midi.delete_scene(d, s); R.pcs = {}
-    Midi.insert_scene(d, t, v)
-    return true
-  end
-  Midi.insert_scene(d, t, Midi.default_start(d, Midi.preset_at(d, rg, t)))
+  Midi.put_scene(d, t, Midi.default_start(d, Midi.preset_at(d, rg, t)))
   return true
 end
 
--- The time of a new scene change: never in the gap after a preset change (the preset stays, the scene moves).
-function Midi.scene_time(d, t)
-  local gap = S.sc_gap / 1000
-  for _, ch in ipairs(Midi.changes(d)) do
-    if t >= ch.t - 0.0001 and t < ch.t + gap then return ch.t + gap end
-  end
-  return t
+-- ---------------------------------------------------------------------------------------------------------
+-- New MIDI items (Settings > Tracks > Check new MIDI items): a MIDI item that appears on a device's track (copied,
+-- dragged or recorded) is checked once: its MIDI channel becomes the device's channel (more than 1 channel: a
+-- question), then each song that starts inside it gets a scene change at its start when it has none there.
+local function item_guid(item)
+  local _, g = r.GetSetMediaItemInfo_String(item, "GUID", "", false)
+  return g
 end
-
--- Removes a scene change.
-function Midi.delete_scene(d, s)
-  if not r.ValidatePtr2(R.proj, s.take, "MediaItem_Take*") then return end
-  local _, _, ncc = r.MIDI_CountEvts(s.take)
-  for i = ncc - 1, 0, -1 do
-    local _, _, _, ppq, cm, chn, m2 = r.MIDI_GetCC(s.take, i)
-    if math.abs(ppq - s.ppq) < 0.5 and cm == 0xB0 and m2 == CFG.SC_CC and Midi.is_mine(d, chn) then r.MIDI_DeleteCC(s.take, i) end
-  end
+-- The items seen in this project (in this session): an item is new only once (also after an undo).
+-- R.seen[project] = { items = { [item GUID] = true }, tracks = { [track GUID] = true } }
+local function seen_of_proj()
+  R.seen = R.seen or {}
+  R.seen[R.proj] = R.seen[R.proj] or { items = {}, tracks = {} }
+  return R.seen[R.proj]
 end
-
--- Writes a scene change (a change at the same time is replaced). Returns the time used.
-function Midi.insert_scene(d, t, v)
-  t = Midi.scene_time(d, t)
-  for _, s in ipairs(Midi.scenes(d)) do
-    if math.abs(s.t - t) < 0.001 then Midi.delete_scene(d, s) end
-  end
-  local take = Midi.take_at(d, t)
-  if not take then return t end
-  local ppq = math.floor(r.MIDI_GetPPQPosFromProjTime(take, t) + 0.5)
-  r.MIDI_InsertCC(take, false, false, ppq, 0xB0, Midi.chan(d), CFG.SC_CC, v)
-  r.MIDI_Sort(take)
-  R.pcs = {}
-  return t
-end
-
--- Undo steps for the strip: add (or change) a scene at t; remove a scene change.
-function Midi.add_scene(d, t, v)
-  r.Undo_BeginBlock()
-  local used = Midi.insert_scene(d, t, v)
-  r.UpdateArrange()
-  r.Undo_EndBlock("MIDI Pilot: scene change", -1)
-  return used
-end
-function Midi.remove_scene(d, s)
-  r.Undo_BeginBlock()
-  Midi.delete_scene(d, s); R.pcs = {}
-  r.UpdateArrange()
-  r.Undo_EndBlock("MIDI Pilot: remove a scene change", -1)
-end
-
--- After a preset change at time t: the scene changes in its gap move to the end of the gap.
-function Midi.push_scenes(d, t)
-  local gap = S.sc_gap / 1000
-  R.pcs = {}
-  for _, s in ipairs(Midi.scenes(d)) do
-    if s.t >= t - 0.0001 and s.t < t + gap then
-      local v = s.v
-      Midi.delete_scene(d, s); R.pcs = {}
-      Midi.insert_scene(d, t + gap, v)
+function Midi.mark_seen(item) seen_of_proj().items[item_guid(item)] = true end
+-- After each project change: the MIDI items not seen before on the device tracks. A track seen for the first time
+-- (the project was opened, a track was created or linked) only notes its items: they are not new.
+function Midi.find_new_items()
+  local sp = seen_of_proj()
+  local seen = sp.items
+  local found = {}
+  for _, d in ipairs(S.devices) do
+    local tr = Dev.track(d)
+    if tr then
+      local tg = r.GetTrackGUID(tr)
+      local first = not sp.tracks[tg]
+      sp.tracks[tg] = true
+      for i = 0, r.CountTrackMediaItems(tr) - 1 do
+        local item = r.GetTrackMediaItem(tr, i)
+        local g = item_guid(item)
+        if not seen[g] then
+          seen[g] = true
+          local take = r.GetActiveTake(item)
+          if not first and S.check_items and take and r.TakeIsMIDI(take) then
+            found[d] = found[d] or {}
+            found[d][#found[d] + 1] = item
+          end
+        end
+      end
     end
   end
+  for d, items in pairs(found) do
+    if not R.chq then Midi.check_items(d, items) end
+  end
+end
+
+-- The MIDI channels (0-15) used in some items: a sorted list.
+function Midi.item_channels(items)
+  local set, list = {}, {}
+  for _, item in ipairs(items) do
+    local take = r.GetActiveTake(item)
+    local _, nn, ncc = r.MIDI_CountEvts(take)
+    for i = 0, ncc - 1 do
+      local _, _, _, _, _, ch = r.MIDI_GetCC(take, i); set[ch] = true
+    end
+    for i = 0, nn - 1 do
+      local _, _, _, _, _, ch = r.MIDI_GetNote(take, i); set[ch] = true
+    end
+  end
+  for ch in pairs(set) do list[#list + 1] = ch end
+  table.sort(list)
+  return list
+end
+
+-- Checks new items of a device: first the channel (own track, not "All channels"), then the song starts.
+function Midi.check_items(d, items)
+  if P.track_mode ~= "shared" and d.chan ~= 0 then
+    local chans = Midi.item_channels(items)
+    -- the device's MIDI that is already on the track (other items, the current channel): a switch would leave it
+    local is_new, other = {}, false
+    for _, item in ipairs(items) do is_new[r.GetActiveTake(item)] = true end
+    for _, take in ipairs(Midi.takes(d)) do
+      if not is_new[take] then
+        local _, _, ncc = r.MIDI_CountEvts(take)
+        for i = 0, ncc - 1 do
+          local _, _, _, _, _, ch = r.MIDI_GetCC(take, i)
+          if ch == d.chan - 1 then other = true; break end
+        end
+      end
+      if other then break end
+    end
+    local switch = #chans == 1 and chans[1] ~= d.chan - 1
+    if #chans > 1 or (switch and other) then
+      local list = { d.chan - 1 }
+      for _, ch in ipairs(chans) do if ch ~= d.chan - 1 then list[#list + 1] = ch end end
+      table.sort(list)
+      R.chq = { d = d, items = items, chans = list, other = other, open = true } -- (the question: UI.draw_chan_ask)
+      return
+    elseif switch then
+      Midi.set_channel(d, chans[1] + 1)
+      if UI.toast then UI.toast(string.format("%s: channel %d (the channel of the new MIDI item).", d.name, d.chan)) end
+    end
+  end
+  Midi.fill_item_starts(d, items)
+end
+-- The channel of a device (1-16), saved.
+function Midi.set_channel(d, ch)
+  d.chan = ch
+  R.pcs, R.conflicts = {}, nil
+  Util.mark_sdirty()
+  Dev.apply_out(d)
+end
+
+-- Each song that starts inside the items and has no scene change at its start gets one, exactly at its start:
+-- the scene that plays there (from a scene change before it), else I-A. 1 undo step. Returns the number added.
+function Midi.fill_item_starts(d, items)
+  local n = 0
+  Midi.scene_edit("scenes at the song starts", function()
+    for _, rg in ipairs(R.regions) do
+      local inside = false
+      for _, item in ipairs(items) do
+        local pos = r.GetMediaItemInfo_Value(item, "D_POSITION")
+        local len = r.GetMediaItemInfo_Value(item, "D_LENGTH")
+        if rg.start >= pos - 0.0001 and rg.start < pos + len then inside = true end
+      end
+      if inside then
+        local has, v = false, 0
+        for _, s in ipairs(Midi.scenes(d)) do
+          if math.abs(s.t - rg.start) < CFG.EDGE then has = true end
+          if s.t < rg.start - CFG.EDGE then v = s.v end
+        end
+        if not has then Midi.put_scene(d, rg.start, v); n = n + 1 end
+      end
+    end
+  end)
+  if n > 0 and UI.toast then UI.toast(string.format("%s: %d scene change(s) added at the song starts.", d.name, n)) end
+  return n
+end
+
+-- "Merge repeated scenes" (button): in each song, a scene change to the scene that already plays is removed (not the
+-- start scene, not a part of a scene test), in 1 undo step. Returns the number removed.
+function Midi.merge_all(d)
+  local n = 0
+  Midi.scene_edit("merge repeated scenes", function()
+    for _, rg in ipairs(R.regions) do
+      local prev
+      local st = Midi.start_scene(d, rg)
+      local tests = Midi.song_tests(d, rg).of
+      for _, s in ipairs(Midi.song_scenes(d, rg)) do
+        if prev ~= nil and s.v == prev and s ~= st and not tests[s] and s.t > rg.start + CFG.EDGE then
+          Midi.delete_scene(d, s); n = n + 1
+        else prev = s.v end
+      end
+    end
+  end)
+  return n
+end
+
+-- Removes the scene changes of a song ("Clear scenes"), or with rg nil: all scene changes of the device
+-- ("Clear all scenes"); with presets: all preset changes ("Clear all presets"). Returns the number removed.
+function Midi.clear(d, rg, presets)
+  local n = 0
+  Midi.scene_edit(presets and "clear all presets" or (rg and ("clear the scenes of " .. rg.name) or "clear all scenes"),
+    function()
+      if presets then
+        for _, ch in ipairs(Midi.changes(d)) do Midi.delete_change(d, ch); n = n + 1 end
+      else
+        for _, s in ipairs(rg and Midi.song_scenes(d, rg) or Midi.scenes(d)) do Midi.delete_scene(d, s); n = n + 1 end
+      end
+    end)
+  return n
 end
 
 -- "Scenes match Markers": a marker inside a song whose name is a scene name of the preset there (or the
@@ -1449,11 +1641,8 @@ function Midi.match_markers(d)
         local sn = Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, v):lower()
         if sn == nm or MODELS[d.model].scenes[v + 1]:lower() == nm then
           local cur
-          for _, s in ipairs(Midi.scenes(d)) do if math.abs(s.t - Midi.scene_time(d, mk.pos)) < 0.001 then cur = s end end
-          if not (cur and cur.v == v) then
-            Midi.insert_scene(d, mk.pos, v); n = n + 1
-            for _, rg in ipairs(R.regions) do if mk.pos >= rg.start and mk.pos < rg.stop then Midi.merge_song(d, rg) end end
-          end
+          for _, s in ipairs(Midi.scenes(d)) do if math.abs(s.t - mk.pos) < 0.001 then cur = s end end
+          if not (cur and cur.v == v) then Midi.put_scene(d, mk.pos, v); n = n + 1 end
           break
         end
       end
@@ -1472,10 +1661,11 @@ function Midi.ccs(d, cc)
   if c then return c end
   c = {}
   for _, take in ipairs(Midi.takes(d)) do
-    local _, _, ncc = r.MIDI_CountEvts(take)
+    local p0, p1 = Midi.play_range(take)
+    local ncc = p0 and select(3, r.MIDI_CountEvts(take)) or 0
     for i = 0, ncc - 1 do
       local _, _, muted, ppq, cm, ch, m2, m3 = r.MIDI_GetCC(take, i)
-      if not muted and cm == 0xB0 and m2 == cc and Midi.is_mine(d, ch) then
+      if not muted and cm == 0xB0 and m2 == cc and Midi.is_mine(d, ch) and ppq >= p0 and ppq < p1 then
         local _, shape, tension = r.MIDI_GetCCShape(take, i)
         c[#c + 1] = { t = r.MIDI_GetProjTimeFromPPQPos(take, ppq), v = m3, take = take, ppq = ppq,
           shape = shape or 0, tension = tension or 0 }
@@ -1555,6 +1745,8 @@ function Midi.send_cc(d, cc, val)
 end
 -- The song (region) at a time, or nil.
 function Midi.song_at(t)
+  -- (a time up to CFG.EDGE before a song start is that song: a scene there is rounded to a MIDI tick)
+  for _, rg in ipairs(R.regions) do if t >= rg.start - CFG.EDGE and t < rg.stop - CFG.EDGE then return rg end end
   for _, rg in ipairs(R.regions) do if t >= rg.start and t < rg.stop then return rg end end
   return nil
 end
@@ -1643,11 +1835,13 @@ Lanes: a control is a CC that moves a knob of the unit (for example Expression 1
 
 Songs: each region is a song. The dropdown sets the song's preset: MIDI Pilot writes a preset change (CC#0, CC#32 and a Program Change, as REAPER's Bank/Program Select lane) near the song start, in the device's MIDI item. It also reads the preset changes that are already there. Grey: the song has no change, and the preset from before goes on. "Choose by number..." picks a preset without a name. ">" sends the preset to the unit now. The red X removes the change. "Fill songs" gives each song without a change the preset that is already playing there, and a start scene, so playback can start in any song. "Presets match Regions" gives a song (region) the preset with its name.
 
-Scenes: the strip under each song shows its scene changes (CC#43), with the scene names of the preset that plays there; a click on a block moves the edit cursor there. The arrow at the song number opens the song's scene list: the Start scene, then each scene change with its time in the song, the scene, ">" (send it now) and the red X. "Add scene at edit cursor": put REAPER's edit cursor where the scene must change (during playback: the play position), then choose the scene. Every song gets a start scene (with its preset, or with "Fill songs"; Settings > Start scene per song turns this off); the strip shows it from the song start. A song without scene changes shows an empty strip. In the list, each scene change shows its position in bars and beats (in the project, as REAPER's ruler) and its time from the song start: type a new one in either field to move it. "Clear scenes" removes the scene changes of a song; "Clear all scenes" and "Clear all presets" remove them from the whole project (they ask first). A click on a song name opens its list too. Right-click a block of the strip to change or remove its scene. "Merge repeated scenes" (Settings) removes a change to the scene that already plays. The colours of the scenes are the colours of the unit (Presets > Scenes...). "Scenes match Markers" gives a marker inside a song the scene with its name (for example a marker "Chorus"). A scene change comes at least "Scene after a preset" ms (Settings) after a preset change: the preset change stays, the scene change moves.
+Scenes: the strip under each song shows its scene changes (CC#43), with the scene names of the preset that plays there; a click on a block moves the edit cursor there. The arrow at the song number opens the song's scene list: the Start scene, then each scene change with its position in bars and beats and its time in the song, the scene, ">" (send it now) and the red X. "Add scene at edit cursor": put REAPER's edit cursor where the scene must change (during playback: the play position), then choose the scene; it is written exactly there, and nothing else changes. "Scene test" in that list adds every scene from I-A to II-D and back to I-A, a change every 2 beats from the edit cursor, to hear all scenes of the preset; the strip and the list show it as 1 "Scene test" (type a new position to move it; its red X removes it), and the edit cursor goes to its end. Type a new position or time in a row to move that scene change. A song without scene changes shows an empty strip. "Fill songs" gives each song without a start scene its default start scene (at the song start, or just after the song's preset change); the strip shows it from the song start. "Merge repeated scenes" (button) removes a scene change to the scene that already plays. "Clear scenes" removes the scene changes of a song; "Clear all scenes" and "Clear all presets" remove them from the whole project (they ask first). A click on a song name opens its list too. Right-click a block of the strip to change or remove its scene. The colours of the scenes are the colours of the unit (Presets > Scenes...). "Scenes match Markers" gives a marker inside a song the scene with its name (for example a marker "Chorus"). A MIDI item that you add to a device's track is checked once (Settings > Tracks > Check new MIDI items): its MIDI channel becomes the device's channel (more than 1 channel: MIDI Pilot asks), and each song that starts inside it gets a scene change exactly at its start when it has none there (the scene that plays there, else I-A).
+
+Status bar (at the bottom): line 1 shows the device, its MIDI output and channel (green: READY; red: NOT AVAILABLE), and the song, preset and scene at the play position (stopped: at the edit cursor). Line 2 shows the most important message: red for a problem (for example 2 devices on the same output and channel), yellow for a hint (songs without a preset or a start scene, a Scene test that is still in a song: "Ignore" hides it for that song, saved in the project), else "Ready".
 
 Presets: the names of your presets (3B = Song One), of their scenes (Scenes...) and of your folders, for each device. Saved on this computer, for all projects.
 
-Preset and scene timing (Settings): the preset change before, exactly at or after the song start, by milliseconds or by a note value (on the beat grid); before (250 ms) gives the unit time to load the preset. Also the least time between a preset change and a scene change, the start scenes and Merge repeated scenes.
+Preset timing (Settings): the preset change before, exactly at or after the song start, by milliseconds or by a note value (on the beat grid); before (250 ms) gives the unit time to load the preset.
 
 Device channel: when you change it, MIDI Pilot asks whether the presets and scenes already written move to the new channel too.
 
@@ -1976,6 +2170,38 @@ function UI.draw_ask()
   end
 end
 
+-- The question after a new MIDI item with more than 1 MIDI channel (R.chq): which channel the device uses.
+function UI.draw_chan_ask()
+  local q = R.chq
+  if not q then return end
+  if q.open then ImGui.OpenPopup(ctx, "MIDI channel##chq"); q.open = false end
+  local wx, wy = ImGui.GetWindowPos(ctx)
+  local ww, wh = ImGui.GetWindowSize(ctx)
+  ImGui.SetNextWindowPos(ctx, wx + ww / 2, wy + wh / 2, ImGui.Cond_Appearing(), 0.5, 0.5)
+  if not ImGui.BeginPopupModal(ctx, "MIDI channel##chq", nil, ImGui.WindowFlags_AlwaysAutoResize()) then return end
+  ImGui.PushTextWrapPos(ctx, 360)
+  ImGui.Text(ctx, string.format("The new MIDI item uses another MIDI channel than %s (now: channel %d)%s.\n"
+    .. "Which channel does %s use?%s", q.d.name, q.d.chan,
+    #q.chans > 2 and ", or more than 1 channel" or "", q.d.name,
+    q.other and ("\n\nThe track already has MIDI on channel " .. q.d.chan .. ": with another channel, MIDI Pilot no "
+      .. "longer shows it (it still plays). Settings > Devices > Channel can move it to the new channel.") or ""))
+  ImGui.PopTextWrapPos(ctx)
+  UI.vgap(8)
+  local pick
+  for k, ch in ipairs(q.chans) do
+    if k > 1 then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP) end
+    local label = "Channel " .. (ch + 1)
+    if UI.button(label .. "##chq" .. ch, UI.btn_w(label, 90), nil, (ch + 1 == q.d.chan) and "primary" or nil) then pick = ch + 1 end
+  end
+  if pick then
+    if pick ~= q.d.chan then Midi.set_channel(q.d, pick) end
+    R.chq = nil
+    ImGui.CloseCurrentPopup(ctx)
+    Midi.fill_item_starts(q.d, q.items)
+  end
+  ImGui.EndPopup(ctx)
+end
+
 -- The tab strip, as in Chart Cue: the text tabs, then the Settings (gear) and Help ("?") tabs.
 -- The selected tab joins the panel below it.
 function UI.draw_tabs()
@@ -2224,20 +2450,42 @@ function UI.draw_scene_strip(d, rg, sx, w)
   local st = Midi.start_scene(d, rg)
   local function xt(t) return sx + Util.clamp((t - rg.start) / len, 0, 1) * w end
   -- the blocks: { t0, t1, v (nil: no scene change yet), ev }; the start scene is drawn from the song start
-  -- (it comes a moment later, after the preset change and the gap)
+  -- (it can come a moment later, after the song's preset change)
+  local tests = Midi.song_tests(d, rg).of
   local blocks, t0, v, ev = {}, rg.start, nil, nil
+  local skip
   for _, s in ipairs(list) do
-    local ts = (s == st) and rg.start or s.t
-    if ts > t0 + 0.0001 then blocks[#blocks + 1] = { t0 = t0, t1 = ts, v = v, ev = ev } end
-    t0, v, ev = math.max(ts, rg.start), s.v, s
+    local g = tests[s]
+    if g and g == skip then
+      -- (inside a scene test: drawn as 1 block)
+    else
+      local ts = (s == st) and rg.start or s.t
+      if ts > t0 + 0.0001 then blocks[#blocks + 1] = { t0 = t0, t1 = ts, v = v, ev = ev } end
+      if g then
+        blocks[#blocks + 1] = { t0 = math.max(ts, rg.start), t1 = g.t1, test = g }
+        skip, t0, v, ev = g, g.t1, CFG.TEST_SEQ[#CFG.TEST_SEQ], g.evs[#g.evs]
+      else
+        t0, v, ev = math.max(ts, rg.start), s.v, s
+      end
+    end
   end
-  blocks[#blocks + 1] = { t0 = t0, t1 = rg.stop, v = v, ev = ev }
+  if rg.stop > t0 + 0.0001 then blocks[#blocks + 1] = { t0 = t0, t1 = rg.stop, v = v, ev = ev } end
   ImGui.DrawList_AddRectFilled(dl, sx, sy, sx + w, sy + h, COL.FIELD, 5)
   local mx = ImGui.GetMousePos(ctx)
   local hb
   for _, bl in ipairs(blocks) do
     local x0, x1 = xt(bl.t0), xt(bl.t1)
-    if bl.v then
+    if bl.test then
+      ImGui.DrawList_AddRectFilled(dl, x0 + 1, sy + 1, x1 - 1, sy + h - 1, SC_TEST, 4)
+      if x1 - x0 > 14 then
+        ImGui.DrawList_PushClipRect(dl, x0 + 3, sy, x1 - 3, sy + h, true)
+        local label = UI.trunc("Scene test", math.max(8, x1 - x0 - 8))
+        local tw = ImGui.CalcTextSize(ctx, label)
+        ImGui.DrawList_AddText(dl, math.max(x0 + 5, math.floor((x0 + x1 - tw) / 2)),
+          math.floor(sy + h / 2 - ImGui.GetFontSize(ctx) * CFG.TEXT_MID + 0.5), SC_TEXT, label)
+        ImGui.DrawList_PopClipRect(dl)
+      end
+    elseif bl.v then
       local pc = Midi.preset_at(d, rg, bl.t0)
       local ci = Preset.scene_col(d, pc and pc.folder, pc and pc.index or 0, bl.v)
       ImGui.DrawList_AddRectFilled(dl, x0 + 1, sy + 1, x1 - 1, sy + h - 1, SC_COLS[ci], 4)
@@ -2260,10 +2508,18 @@ function UI.draw_scene_strip(d, rg, sx, w)
   if not hb then return end
   ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand())
   local pc = Midi.preset_at(d, rg, hb.t0)
+  if hb.test then
+    ImGui.SetTooltip(ctx, "Scene test: every scene from I-A to II-D and back to I-A, a change every "
+      .. CFG.TEST_BEATS .. " beats,\nfrom " .. Util.fmt_song_time(rg, hb.t0) .. " to " .. Util.fmt_song_time(rg, hb.t1)
+      .. ". Then the song stays on I-A.\nClick: move the edit cursor here. The red X in the scene list removes it.")
+    if clicked then r.SetEditCurPos(hb.t0, true, false) end
+    return
+  end
   ImGui.SetTooltip(ctx, (hb.v and (Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, hb.v) .. "  (scene "
     .. MODELS[d.model].scenes[hb.v + 1] .. ")  from " .. Util.fmt_song_time(rg, hb.t0)) or "No scene change.")
     .. "\nClick: move the edit cursor here." .. (hb.ev and " Right-click: change or remove this scene." or ""))
-  if clicked then r.SetEditCurPos(hb.ev and hb.ev.t or hb.t0, true, false) end
+  -- (the start scene: the song start, so the cursor is inside the song)
+  if clicked then r.SetEditCurPos(hb.ev and math.max(hb.ev.t, rg.start) or hb.t0, true, false) end
   if hb.ev and ImGui.IsItemClicked(ctx, 1) then R.scm = { d = d, rg = rg, ev = hb.ev, open = true } end
 end
 
@@ -2279,13 +2535,7 @@ function UI.draw_scene_menu()
     for v = 0, 7 do
       local nm = Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, v)
       if ImGui.Selectable(ctx, nm .. "##sm" .. v, ev.v == v) and ev.v ~= v then
-        r.Undo_BeginBlock()
-        Midi.delete_scene(d, ev); R.pcs = {}
-        Midi.insert_scene(d, ev.t, v)
-        Midi.merge_song(d, m.rg)
-        r.UpdateArrange()
-        r.Undo_EndBlock("MIDI Pilot: scene change", -1)
-        R.scm = nil
+        Midi.change_scene(d, ev, v); R.scm = nil
       end
     end
     ImGui.Separator(ctx)
@@ -2293,7 +2543,7 @@ function UI.draw_scene_menu()
       UI.toast(d.name .. ": the MIDI output is not available.", true)
     end
     if ImGui.Selectable(ctx, "Remove this scene change##smrm") then
-      Midi.remove_scene(d, ev); Midi.merge_song(d, m.rg); R.scm = nil
+      Midi.remove_scene(d, ev); R.scm = nil
     end
   end
   ImGui.EndPopup(ctx)
@@ -2308,8 +2558,15 @@ function UI.draw_scene_list(d, rg, x0, w)
   local pcs = Midi.preset_at(d, rg, rg.start)
   local rows = {}
   if not st then rows[1] = { start = true } end -- (no start scene yet: the Start row only shows it)
-  for _, s in ipairs(list) do rows[#rows + 1] = { ev = s, start = (s == st) } end
-  local change, remove, movem
+  local tests = Midi.song_tests(d, rg).of
+  local skip
+  for _, s in ipairs(list) do
+    local g = tests[s]
+    if g then
+      if g ~= skip then rows[#rows + 1] = { ev = s, test = g }; skip = g end
+    else rows[#rows + 1] = { ev = s, start = (s == st) } end
+  end
+  local change, remove, movem, test_rm, test_mv
   for n, row in ipairs(rows) do
     ImGui.PushID(ctx, n)
     ImGui.SetCursorScreenPos(ctx, x0, select(2, ImGui.GetCursorScreenPos(ctx)))
@@ -2324,8 +2581,10 @@ function UI.draw_scene_list(d, rg, x0, w)
       elseif ImGui.IsItemDeactivated(ctx) then
         local tn = parse(R.st_text[id] or nt)
         R.st_text[id] = nil
-        if tn and tn >= rg.start and tn < rg.stop - CFG.END_GUARD then
-          if math.abs(tn - ev.t) > 0.0005 then movem = { ev = ev, t = tn } end
+        if tn and tn >= rg.start and tn < rg.stop then
+          if math.abs(tn - ev.t) > 0.0005 then
+            if row.test then test_mv = { g = row.test, t = tn } else movem = { ev = ev, t = tn } end
+          end
         else UI.toast("Type a time inside the song, before its end.", true) end
       else R.st_text[id] = nil end
       UI.tip(tip)
@@ -2343,7 +2602,23 @@ function UI.draw_scene_list(d, rg, x0, w)
     ImGui.SameLine(ctx, x0 - ImGui.GetWindowPos(ctx) + 70 + 64 + 2 * CFG.CTRL_GAP)
     local pc = Midi.preset_at(d, rg, t) or pcs
     local cur = ev and ev.v
-    ImGui.SetNextItemWidth(ctx, math.max(80, math.min(220, w - 70 - 64 - 2 * CFG.CTRL_GAP - 2 * (fh + CFG.CTRL_GAP))))
+    local cw = math.max(80, math.min(220, w - 70 - 64 - 2 * CFG.CTRL_GAP - 2 * (fh + CFG.CTRL_GAP)))
+    if row.test then
+      -- a scene test: 1 row, its name, no scene choice and no ">"; the red X removes the whole test
+      ImGui.PushStyleColor(ctx, ImGui.Col_Button(), COL.FIELD)
+      ImGui.BeginDisabled(ctx, true)
+      UI.button("Scene test##sctest", cw, fh)
+      ImGui.EndDisabled(ctx)
+      ImGui.PopStyleColor(ctx)
+      UI.tip("Every scene from I-A to II-D and back to I-A, a change every " .. CFG.TEST_BEATS .. " beats. Then the song stays on I-A.\n"
+        .. "Type a new position to move the whole test.")
+      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP + fh + CFG.CTRL_GAP)
+      if UI.remove_x_button("##sctx", fh) then test_rm = row.test end
+      UI.tip("Remove this scene test (all its scene changes).")
+      ImGui.PopID(ctx)
+      goto next_row
+    end
+    ImGui.SetNextItemWidth(ctx, cw)
     local preview = cur and Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, cur)
       or ("(" .. Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, Midi.default_start(d, pc)) .. ")")
     if not cur then ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.TEXT_DIM) end
@@ -2357,7 +2632,7 @@ function UI.draw_scene_list(d, rg, x0, w)
       end
       ImGui.EndCombo(ctx)
     end
-    UI.tip(row.start and not ev and "No start scene yet. Choose one; a preset change for this song also adds one." or "The scene from here on.")
+    UI.tip(row.start and not ev and "No start scene yet. Choose one (or click Fill songs)." or "The scene from here on.")
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
     local sv = cur or Midi.default_start(d, pc)
     if UI.button(">##scs", fh, fh) and not Midi.send_scene(d, sv) then UI.toast(d.name .. ": the MIDI output is not available.", true) end
@@ -2368,27 +2643,39 @@ function UI.draw_scene_list(d, rg, x0, w)
     ImGui.EndDisabled(ctx)
     UI.tip("Remove this scene change.")
     ImGui.PopID(ctx)
+    ::next_row::
   end
   -- add at the edit cursor (during playback: at the play position)
   ImGui.SetCursorScreenPos(ctx, x0, select(2, ImGui.GetCursorScreenPos(ctx)))
   ImGui.SetNextItemWidth(ctx, math.min(220, w))
-  if ImGui.BeginCombo(ctx, "##scadd", "Add scene at edit cursor") then
+  if ImGui.BeginCombo(ctx, "##scadd", "Add scene at edit cursor", ImGui.ComboFlags_HeightLargest()) then
     local tc = Util.playing() and r.GetPlayPosition() or r.GetCursorPosition()
     local pc = Midi.preset_at(d, rg, tc) or pcs
     for v = 0, 7 do
       local nm = Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, v)
       if ImGui.Selectable(ctx, nm .. "##a" .. v) then
-        local ts = r.SnapToGrid(R.proj, tc)
-        if ts >= rg.stop - CFG.END_GUARD then ts = tc end
-        if tc < rg.start or ts >= rg.stop - CFG.END_GUARD then
-          UI.toast("Put the edit cursor inside '" .. rg.name .. "', before its end.", true)
-        else change = { t = ts, v = v, add = true } end
+        local ts = UI.cursor_in_song(rg, tc)
+        if ts then Midi.add_scene(d, ts, v) end
       end
+    end
+    ImGui.Separator(ctx)
+    if ImGui.Selectable(ctx, "Scene test##atest") then
+      local ts = UI.cursor_in_song(rg, tc)
+      local tend = ts and Midi.add_test(d, rg, ts)
+      if tend then
+        r.SetEditCurPos(tend, true, false) -- (the edit cursor goes to the test end, to add the next scene there)
+      elseif ts then
+        UI.toast("No room for a scene test here: it needs " .. (#CFG.TEST_SEQ * CFG.TEST_BEATS) .. " beats before the song end.", true)
+      end
+    end
+    if ImGui.IsItemHovered(ctx) then
+      ImGui.SetTooltip(ctx, "Every scene from I-A to II-D and back to I-A, a change every " .. CFG.TEST_BEATS
+        .. " beats from the edit cursor.\nThe scene changes already there are replaced.")
     end
     ImGui.EndCombo(ctx)
   end
   UI.tip("Put REAPER's edit cursor where the scene must change (during playback: the play position),\n"
-    .. "then choose the scene. It snaps to the grid when snapping is on.")
+    .. "then choose the scene. It goes exactly at the edit cursor.")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   local has = #list > 0
   ImGui.BeginDisabled(ctx, not has)
@@ -2398,27 +2685,25 @@ function UI.draw_scene_list(d, rg, x0, w)
   ImGui.EndDisabled(ctx)
   UI.tip("Removes all scene changes of this song (Ctrl+Z brings them back).")
   if change then
-    r.Undo_BeginBlock()
-    if change.ev then Midi.delete_scene(d, change.ev); R.pcs = {} end
-    local tt = change.t
-    if change.add and (tt < rg.start or tt >= rg.stop) then tt = math.max(rg.start, math.min(tt, rg.stop - 0.01)) end
-    local used = Midi.insert_scene(d, tt, change.v)
-    if used >= rg.stop - CFG.END_GUARD then -- (the gap after a preset change pushed it past the song end)
-      for _, s in ipairs(Midi.scenes(d)) do if math.abs(s.t - used) < 0.001 then Midi.delete_scene(d, s) end end
-      R.pcs = {}
-      UI.toast("No room for a scene change at the end of the song.", true)
-    end
-    Midi.ensure_start_scene(d, rg)
-    Midi.merge_song(d, rg)
-    r.UpdateArrange()
-    r.Undo_EndBlock("MIDI Pilot: scene change", -1)
-    if change.add and used > tt + 0.0005 then UI.toast(string.format("The scene is %d ms after the preset change.", S.sc_gap)) end
+    if change.ev then Midi.change_scene(d, change.ev, change.v) else Midi.add_scene(d, change.t, change.v) end
   end
-  if remove then Midi.remove_scene(d, remove); Midi.merge_song(d, rg) end
-  if movem then
-    local used = Midi.move_scene(d, rg, movem.ev, movem.t)
-    if used > movem.t + 0.0005 then UI.toast(string.format("The scene is %d ms after the preset change.", S.sc_gap)) end
+  if remove then Midi.remove_scene(d, remove) end
+  if test_rm then Midi.remove_test(d, rg, test_rm) end
+  if test_mv and not Midi.remove_test(d, rg, test_mv.g, test_mv.t) then
+    UI.toast("No room for the scene test there: it needs " .. (#CFG.TEST_SEQ * CFG.TEST_BEATS) .. " beats before the song end.", true)
   end
+  if movem then Midi.move_scene(d, movem.ev, movem.t) end
+end
+
+-- The edit cursor (or the play position) for a new scene in a song, exactly (never snapped again: REAPER's own
+-- snap already placed the edit cursor, and the grid on the screen changes with the zoom). Nil, with a notice,
+-- when it is not inside the song.
+function UI.cursor_in_song(rg, tc)
+  if tc < rg.start - CFG.EDGE or tc >= rg.stop then
+    UI.toast("Put the edit cursor inside '" .. rg.name .. "'.", true)
+    return nil
+  end
+  return tc
 end
 
 -- Songs: the regions of the project, each with its preset, its scene strip and (opened) its scene list.
@@ -2432,11 +2717,12 @@ function UI.draw_songs_tab()
   end
   UI.heading(string.format("Songs (%d)", #R.regions) , "Each song is a region of the project, in timeline order, "
     .. "with its preset. A preset change is written as normal MIDI (Bank/Program Select) at the song start "
-    .. "(Settings > Preset and scene timing). Grey: the song has no preset change, and the preset from before goes on.\n\n"
+    .. "(Settings > Preset timing). Grey: the song has no preset change, and the preset from before goes on.\n\n"
     .. "Fill songs: each song without its own change gets the preset that is already playing there, at its "
     .. "start, and a start scene. Then playback can start in any song, and the unit loads the right preset.\n"
     .. "Presets match Regions: a song (region) with the name of a preset (Presets tab) gets that preset.\n"
-    .. "Scenes match Markers: a marker in a song with the name of a scene gets that scene change.", UI.toast_note())
+    .. "Scenes match Markers: a marker in a song with the name of a scene gets that scene change.\n"
+    .. "Merge repeated scenes: a scene change to the scene that already plays is removed.", UI.toast_note())
   if #R.regions == 0 then
     UI.note("This project has no regions. Make 1 region for each song (Insert > Region from time selection).")
     return
@@ -2468,6 +2754,12 @@ function UI.draw_songs_tab()
   end
   UI.tip("A marker inside a song whose name is a scene name of the preset there (for example 'Chorus'),\n"
     .. "or a scene letter (A, B ... on the mini I-A, II-B), gets that scene change.")
+  if UI.button("Merge repeated scenes", flow("Merge repeated scenes")) then
+    local n = Midi.merge_all(d)
+    UI.toast(n == 0 and "No repeated scenes to merge." or string.format("%d repeated scene change(s) merged.", n))
+  end
+  UI.tip("In each song, a scene change to the scene that already plays is removed, so 2 blocks of the same scene\n"
+    .. "become 1 (not the start scene, not a scene test). Ctrl+Z brings them back.")
   if UI.button("Clear all scenes", flow("Clear all scenes"), nil, "danger") then
     UI.ask("Remove all scene changes of " .. d.name .. " in this project? Ctrl+Z brings them back.", "Yes, clear",
       function() UI.toast(string.format("%d scene change(s) removed.", Midi.clear(d))) end)
@@ -2682,13 +2974,12 @@ function UI.draw_lanes_tab()
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   ImGui.BeginDisabled(ctx, val == nil)
   if UI.button("Add at edit cursor", UI.btn_w("Add at edit cursor", 0), nil, "primary") and val then
-    local ts = r.SnapToGrid(R.proj, tc)
-    if ts < rg.start or ts >= rg.stop then ts = tc end
+    local ts = tc -- (exactly at the edit cursor: never snapped again)
     Midi.set_cc(d, k.cc, ts, Knob.to_cc(k, val))
     UI.toast("Added " .. Knob.fmt(k, Knob.from_cc(k, Knob.to_cc(k, val))) .. " at " .. Util.fmt_beats(ts) .. ".")
   end
   ImGui.EndDisabled(ctx)
-  UI.tip("Writes the value at the edit cursor (during playback: the play position). It snaps to the grid when snapping is on.")
+  UI.tip("Writes the value at the edit cursor (during playback: the play position), exactly there.")
   if val then
     local c = Knob.to_cc(k, val)
     local near = Knob.from_cc(k, c)
@@ -3124,11 +3415,16 @@ function UI.draw_settings_tab()
     for _, d in ipairs(S.devices) do Dev.apply_out(d) end
   end
   UI.tip("One shared track: the devices must use different channels, and the same MIDI output.")
-  UI.heading("Preset and scene timing", "Where a song's preset change goes. The unit needs a moment to load a preset, "
+  local cich
+  cich, S.check_items = UI.checkbox("Check new MIDI items", S.check_items,
+    "On: a MIDI item that you add to a device's track (copy, drag or record) is checked once:\n"
+    .. "its MIDI channel becomes the device's channel (more than 1 channel: MIDI Pilot asks),\n"
+    .. "and each song that starts inside it gets a scene change at its start when it has none there\n"
+    .. "(the scene that plays there, else I-A). Ctrl+Z removes the added scenes.")
+  if cich then Util.mark_sdirty() end
+  UI.heading("Preset timing", "Where a song's preset change goes. The unit needs a moment to load a preset, "
     .. "so 'Before the song start' (default: 250 ms before) has it ready when the song starts. A song that starts at "
-    .. "0:00 gets its change at 0:00.\n\nScene after a preset: the least time between a preset change and a scene "
-    .. "change. Start scene per song: each song starts on a known scene. Merge repeated scenes: a change to "
-    .. "the scene that already plays is removed.\n\nUsed for new changes. Saved on this computer.")
+    .. "0:00 gets its change at 0:00.\n\nThe timing is used for new changes. Saved on this computer.", UI.toast_note())
   _, cw = UI.row_start("Preset change")
   ImGui.SetNextItemWidth(ctx, math.min(cw, 220))
   local wi = 0
@@ -3157,22 +3453,6 @@ function UI.draw_settings_tab()
     UI.tip("How many milliseconds before or after the song start (0-2000).")
   end
   ImGui.EndDisabled(ctx)
-  _, cw = UI.row_start("Scene after a preset")
-  ImGui.SetNextItemWidth(ctx, math.min(cw, 160))
-  local gp
-  ch, gp = ImGui.InputInt(ctx, "##scgap", S.sc_gap, 25, 100)
-  if ch then S.sc_gap = Util.clamp(gp, 0, CFG.SC_GAP_MAX); Util.mark_sdirty() end
-  UI.tip("A scene change comes at least this many ms after a preset change, so the unit has loaded the preset.\n"
-    .. "The preset change stays in place; the scene change moves later.")
-  local sch
-  sch, S.start_scene = UI.checkbox("Start scene per song", S.start_scene,
-    "On: a song gets a start scene with its preset (and with Fill songs), so a scene never goes on into the next song.\n"
-    .. "Off: a song gets a start scene only when you choose one in its Start row.")
-  if sch then Util.mark_sdirty() end
-  local mch
-  mch, S.sc_merge = UI.checkbox("Merge repeated scenes", S.sc_merge,
-    "On: a scene change to the scene that already plays is removed, so 2 blocks of the same scene become 1.")
-  if mch then Util.mark_sdirty() end
 
   UI.heading("General", "Preset names in REAPER: MIDI Pilot writes your preset names into a bank file. Load it "
     .. "in ReaControlMIDI on a device's track (Bank/Program Select > Load File); REAPER then shows '3B Song One' "
@@ -3203,10 +3483,121 @@ function UI.draw_help_tab()
 end
 
 -- The window: the tab strip and the panel of the open tab (a rounded area that scrolls).
+-- The status bar (as in Chart Cue), at the bottom of the window. Line 1: the device, its output and channel, and
+-- the song, preset and scene at the play position (stopped: the edit cursor). Line 2: the most important message
+-- (problems first, then hints), else a short help line. Made again every CFG.STATUS_SEC, not every frame.
+function UI.status_lines()
+  local now = Util.now()
+  local c = R.status
+  if c and now - c.t0 < CFG.STATUS_SEC and c.pcs == R.pcs then return c end
+  if not R.ports_t or now - R.ports_t > CFG.PORTS_SEC then Dev.read_ports() end -- (an output that was unplugged)
+  c = { t0 = now, pcs = R.pcs }
+  R.cur_dev = Util.clamp(R.cur_dev or 1, 1, math.max(1, #S.devices))
+  local d = S.devices[R.cur_dev]
+  if not d then
+    c.dev, c.dev_col, c.l1, c.l2, c.col = "No device yet.", COL.YELLOW, "", "Add your Quad Cortex in Settings > Devices.", COL.YELLOW
+    R.status = c; return c
+  end
+  local playing = Util.playing()
+  local tc = playing and r.GetPlayPosition() or r.GetCursorPosition()
+  -- the device and its state: green READY, red NOT AVAILABLE (line 2 does not repeat it)
+  local ready = d.port ~= "" and (#R.ports == 0 or Dev.port_index(d.port) ~= nil)
+  local chan = d.chan == 0 and "all channels" or ("channel " .. d.chan)
+  if d.port == "" then c.dev = d.name .. ": no MIDI output selected (Settings > Devices)"
+  else
+    c.dev = d.name .. ": " .. d.port .. ", " .. chan .. (ready and " is READY" or " is NOT AVAILABLE")
+      .. ((not ready and playing) and ": the unit gets nothing" or "")
+  end
+  c.dev_col = ready and COL.GREEN or COL.RED
+  local parts = {}
+  local rg = Midi.song_at(tc)
+  local tr = Dev.track(d)
+  if rg and tr then
+    local pc = Midi.preset_at(d, rg, tc)
+    local sv
+    for _, s in ipairs(Midi.scenes(d)) do if s.t <= tc + CFG.EDGE then sv = s.v else break end end
+    local st = Midi.start_scene(d, rg) -- (before the start scene, at the song start: the song's own start scene)
+    if st and tc < st.t then sv = st.v end
+    parts[#parts + 1] = (playing and "Playing: " or "At the cursor: ") .. (rg.name ~= "" and rg.name or "(no name)")
+      .. ", " .. (pc and Preset.text(d, pc.folder, pc.index) or "no preset")
+      .. (sv and (", " .. Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, sv)) or "")
+  elseif not rg and #R.regions > 0 then
+    parts[#parts + 1] = (playing and "Playing" or "The cursor is") .. " outside the songs"
+  end
+  c.l1 = #parts > 0 and ("   |   " .. table.concat(parts, "   |   ")) or ""
+  -- line 2, by priority: device problems > no track > no songs > hints
+  local warns = {}
+  local own = d.name .. ": " -- (the selected device's own output state is on line 1)
+  for _, w in ipairs(Dev.conflicts()) do
+    local mine = w:sub(1, #own) == own and (w:find("not available", 1, true) or w:find("no MIDI output", 1, true))
+    if not mine then warns[#warns + 1] = w end
+  end
+  if #warns > 0 then
+    c.l2 = warns[1] .. (#warns > 1 and string.format("  (+%d more: Settings > Devices)", #warns - 1) or "")
+    c.col = COL.RED
+  elseif not tr then
+    c.l2, c.col = d.name .. " has no track in this project yet: Settings > Devices > Create track.", COL.YELLOW
+  elseif #R.regions == 0 then
+    c.l2, c.col = "This project has no regions: make 1 region for each song.", COL.YELLOW
+  else
+    local nopre, nostart, test_song = 0, 0, nil
+    for _, x in ipairs(R.regions) do
+      if not Midi.song_change(d, x) then nopre = nopre + 1 end
+      if not Midi.start_scene(d, x) then nostart = nostart + 1 end
+      if not test_song and not P.test_ok[x.name] and #Midi.song_tests(d, x) > 0 then test_song = x end
+    end
+    if test_song then
+      c.l2, c.col = "'" .. (test_song.name ~= "" and test_song.name or "A song") .. "' still has a Scene test (its red X in the scene list removes it).", COL.YELLOW
+      c.ignore = test_song
+    elseif nopre > 0 then
+      c.l2, c.col = string.format("%d song(s) without their own preset (grey): Songs > Fill songs gives them the preset that plays.", nopre), COL.YELLOW
+    elseif nostart > 0 then
+      c.l2, c.col = string.format("%d song(s) without a start scene: Songs > Fill songs adds them.", nostart), COL.YELLOW
+    else
+      c.l2, c.col = "Ready: every song has its preset and start scene. REAPER plays them from the track; this window can stay closed.", COL.TEXT_DIM
+    end
+  end
+  R.status = c
+  return c
+end
+
+function UI.draw_status(y)
+  local c = UI.status_lines()
+  local aw = ImGui.GetContentRegionAvail(ctx)
+  ImGui.SetCursorPosY(ctx, y)
+  ImGui.Indent(ctx, 6)
+  local dev = UI.trunc(c.dev, aw - 12)
+  ImGui.TextColored(ctx, c.dev_col, dev)
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, c.dev) end
+  if c.l1 ~= "" and dev == c.dev then
+    local left = aw - 12 - (ImGui.CalcTextSize(ctx, dev))
+    if left > 40 then
+      ImGui.SameLine(ctx, 0, 0)
+      ImGui.TextColored(ctx, COL.TEXT_MAIN, UI.trunc(c.l1, left))
+      if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, c.l1:sub(8)) end
+    end
+  end
+  local bw = c.ignore and (ImGui.CalcTextSize(ctx, "Ignore") + 16) or 0
+  ImGui.TextColored(ctx, c.col, UI.trunc(c.l2, aw - 12 - bw))
+  if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, c.l2) end
+  if c.ignore then
+    ImGui.SameLine(ctx, 0, 8)
+    if ImGui.SmallButton(ctx, "Ignore##sttest") then
+      P.test_ok[c.ignore.name] = true; Util.mark_pdirty(); R.status = nil
+    end
+    if ImGui.IsItemHovered(ctx) then
+      ImGui.SetTooltip(ctx, "No Scene test hint for '" .. c.ignore.name .. "' (all its Scene tests). Saved in this project.")
+    end
+  end
+  ImGui.Unindent(ctx, 6)
+end
+
 function UI.draw_main()
   UI.draw_tabs()
   local aw, ah = ImGui.GetContentRegionAvail(ctx)
-  ah = ah - CFG.SP_EDGE
+  local status_h = 2 * ImGui.GetTextLineHeightWithSpacing(ctx) + 4
+  local status_y = ImGui.GetCursorPosY(ctx) + ah - status_h
+  ah = ah - CFG.SP_EDGE - status_h
   local px, py = ImGui.GetCursorScreenPos(ctx)
   ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), px, py, px + aw, py + ah, COL.PANEL_BG, 8,
     ImGui.DrawFlags_RoundCornersBottom())
@@ -3222,6 +3613,7 @@ function UI.draw_main()
     ImGui.Dummy(ctx, 0, CFG.SP_PANEL)
     ImGui.EndChild(ctx)
   end
+  UI.draw_status(status_y)
 end
 
 ---------------------------------------------------------------------------
@@ -3304,6 +3696,7 @@ local function loop()
     if id ~= S.dock then S.dock = id; R.sdirty = true end
     UI.draw_main()
     UI.draw_ask()
+    UI.draw_chan_ask()
     if not R.docked then UI.edges() else R.rs = nil end -- resize edges: floating only
     ImGui.End(ctx)
   end
