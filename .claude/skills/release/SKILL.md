@@ -1,6 +1,6 @@
 ---
 name: release
-description: Commit, push and release Chart Cue and Segue (a new version on ReaPack, and a GitHub Release for Chart Cue). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
+description: Commit, push and release Chart Cue, Segue and MIDI Pilot (a new version on ReaPack, and a GitHub Release for Chart Cue). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
 ---
 
 # Release
@@ -16,6 +16,9 @@ restart of VS Code fixes it.
 
 - `git status` and `git log <last tag>..HEAD`: what is new. Scripts in `Chart Cue/` changed = a new
   Chart Cue version; scripts in `Segue/` changed = a new Segue version (both can change in one commit).
+  MIDI Pilot (`MIDI Pilot/`): in development. A push publishes it on ReaPack (the workflow indexes every
+  script with a header): ask the user before its first push; after that, a change is a new MIDI Pilot version
+  (`@version` and `CFG.VERSION`), with no GitHub Release unless the user asks.
   Only other files (CLAUDE.md, PLAN.md, README.md, tools, tests, .claude): commit and push without a
   version or a release, and say so.
 - A commit that is already made (the user said "commit only" before): do not raise the version again.

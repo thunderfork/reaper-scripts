@@ -81,6 +81,8 @@ CFG.UNDO_MAX = 50              -- undo steps of the setlist rows
 CFG.CONFLICT_SEC = 0.5         -- how often Segue checks whether Chart Cue also plays in setlist order
 CFG.MORE_W = 110               -- the "More..." dropdown
 CFG.PICK_W = 220               -- the setlist dropdown (at most)
+CFG.TIP_DELAY = 0.5            -- seconds on an item before its tooltip shows (as in Chart Cue)
+CFG.TIP_WRAP_EM = 32           -- tooltip lines wrap at this many font sizes
 
 local COL = {
   RED = 0xF26D6DFF, YELLOW = 0xF2C75CFF, GREEN = 0x6FCF8AFF,
@@ -140,6 +142,26 @@ if not pcall(function() dofile(IMGUI_SHIM)("0.9.3") end) then imgui_missing(); r
 
 local ImGui = {}
 setmetatable(ImGui, { __index = function(_, k) return r["ImGui_" .. k] end })
+-- Every tooltip: shows after the mouse stays CFG.TIP_DELAY s on the same item, and long lines wrap (as in Chart Cue).
+-- The item is known by its position (a tooltip asked for in the frame before, at the same place: the same item).
+local raw_set_tooltip = r.ImGui_SetTooltip
+function ImGui.SetTooltip(ctx_, text)
+  local x, y = r.ImGui_GetItemRectMin(ctx_)
+  local now = r.time_precise()
+  if R.tip_frame == nil or R.tip_frame < R.frames - 1 or R.tip_x ~= x or R.tip_y ~= y then
+    R.tip_t0, R.tip_x, R.tip_y = now, x, y
+  end
+  R.tip_frame = R.frames
+  if now - R.tip_t0 < CFG.TIP_DELAY then return end
+  if r.ImGui_BeginTooltip(ctx_) then
+    r.ImGui_PushTextWrapPos(ctx_, r.ImGui_GetFontSize(ctx_) * CFG.TIP_WRAP_EM)
+    r.ImGui_Text(ctx_, text)
+    r.ImGui_PopTextWrapPos(ctx_)
+    r.ImGui_EndTooltip(ctx_)
+  else
+    raw_set_tooltip(ctx_, text)
+  end
+end
 
 ---------------------------------------------------------------------------
 -- UTIL
@@ -1087,6 +1109,10 @@ function UI.draw_ask()
   local a = R.ask
   if not a then return end
   if a.open then ImGui.OpenPopup(ctx, "Segue##ask"); a.open = false end
+  -- always in the centre of the window when it opens (a moved question does not keep its place)
+  local wx, wy = ImGui.GetWindowPos(ctx)
+  local ww, wh = ImGui.GetWindowSize(ctx)
+  ImGui.SetNextWindowPos(ctx, wx + ww / 2, wy + wh / 2, ImGui.Cond_Appearing(), 0.5, 0.5)
   if ImGui.BeginPopupModal(ctx, "Segue##ask", nil, ImGui.WindowFlags_AlwaysAutoResize()) then
     ImGui.PushTextWrapPos(ctx, 360)
     ImGui.Text(ctx, a.text)

@@ -40,7 +40,7 @@ Windows only. **Needs the free ReaImGui extension** (install it once with ReaPac
   - MIDI buttons for page turns and cues.
   - REAPER actions for foot pedals, keys, MIDI buttons or OSC, which work when the Chart Cue window is not active. Settings > Control assigns them with one click.
 - **Portable projects:** the PDFs can be copied into the project folder, and the library, regions and cues are saved in the project.
-- **Folder sync:** Chart Cue remembers the folders you add PDFs from; one click adds new charts and updates changed ones.
+- **Folder sync:** Chart Cue remembers the folders you add PDFs from; choose 1 folder or all of them, and one click adds new charts and updates changed ones.
 
 ## What you need
 

@@ -771,6 +771,30 @@ test("setlist: Segue's 'Use Segue' command turns Play in setlist order off", fun
   eq(r.GetExtState(C.CFG.EXT, "cmd_q"), "", "queue read")
 end)
 
+test("sync folder: the last added folder is selected; 1 or all; remove 1 or all; saved only when needed", function()
+  local P, Project = C.get_P(), C.Project
+  local keep_f, keep_s = P.folders, P.sync_sel
+  local good, e = pcall(function()
+    P.folders, P.sync_sel = {}, ""
+    Project.remember_folder("C:\\A", false)
+    Project.remember_folder("C:\\B", true)
+    eq(#Project.sync_targets(), 1, "1 folder"); eq(Project.sync_targets()[1].path, "C:\\B", "the last added")
+    ok(not Project.serialize_cfg():find("\nsync_sel=", 1, true), "not written for the last added folder")
+    P.sync_sel = "C:\\A"; eq(Project.sync_targets()[1].path, "C:\\A", "the chosen folder")
+    local p2 = Project.parse_cfg((Project.serialize_cfg() .. "\n"):gmatch("([^\n]*)\n"))
+    eq(p2.sync_sel, "C:\\A", "the choice is saved")
+    Project.remember_folder("C:\\A", false) -- added again: it moves to the end and is selected
+    eq(P.folders[2].path, "C:\\A"); eq(P.sync_sel, "", "selected")
+    P.sync_sel = "*"; eq(#Project.sync_targets(), 2, "all folders")
+    P.sync_sel = ""; Project.remove_sync_folder()
+    eq(#P.folders, 1, "1 removed"); eq(P.folders[1].path, "C:\\B")
+    P.sync_sel = "*"; Project.remove_sync_folder()
+    eq(#P.folders, 0, "all removed"); eq(P.sync_sel, "")
+  end)
+  P.folders, P.sync_sel = keep_f, keep_s
+  if not good then error(e, 0) end
+end)
+
 ---------------------------------------------------------------------------
 for _, t in ipairs(tests) do
   local good, e = pcall(t[2])

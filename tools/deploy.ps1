@@ -14,17 +14,18 @@ Get-ChildItem -Path $srcdir -Filter "Chart Cue*.lua" | ForEach-Object {
     Write-Host "Deployed $($_.Name) to $scripts"
 }
 
-# Segue (the setlist script): the ReaPack folder when it is installed with ReaPack, else Scripts\Segue
-$setsrc = Join-Path $root "Segue"
-if (Test-Path $setsrc) {
+# Segue and MIDI Pilot: the ReaPack folder when installed with ReaPack, else Scripts\<name>
+foreach ($s in "Segue", "MIDI Pilot") {
+  $setsrc = Join-Path $root $s
+  if (-not (Test-Path $setsrc)) { continue }
   $base = Join-Path $env:APPDATA "REAPER\Scripts"
-  $dest = Join-Path $base "Segue"
+  $dest = Join-Path $base $s
   foreach ($name in "Thunderfork Scripts") {
-    $rp = Join-Path $base "$name\Segue"
+    $rp = Join-Path $base "$name\$s"
     if (Test-Path $rp) { $dest = $rp; break }
   }
   New-Item -ItemType Directory -Force $dest | Out-Null
-  Get-ChildItem -Path $setsrc -Filter "Segue*.lua" | ForEach-Object {
+  Get-ChildItem -Path $setsrc -Filter "$s*.lua" | ForEach-Object {
     Copy-Item $_.FullName (Join-Path $dest $_.Name) -Force
     Write-Host "Deployed $($_.Name) to $dest"
   }

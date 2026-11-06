@@ -178,6 +178,8 @@ CFG.ROW_GAP = 12            -- gap between a value and the next item in a row (D
 CFG.CTRL_GAP = 8            -- gap between 2 controls side by side (a dropdown and its button)
 CFG.DPI_FIELD_W = 140       -- the DPI number field
 CFG.CACHE_LIMIT_W = 140     -- the "Cache limit" dropdown
+CFG.TIP_DELAY = 0.5         -- seconds on an item before its tooltip shows
+CFG.TIP_WRAP_EM = 32        -- tooltip lines wrap at this many font sizes
 CFG.SL_COMBO_W = 220        -- setlist: the "Current setlist" and "Add song" dropdowns (at most)
 CFG.SL_MORE_W = 110         -- setlist: the "More..." dropdown
 CFG.SL_END_W = 110          -- setlist row: the Stop / Continue dropdown and the pause seconds
@@ -521,6 +523,7 @@ function Project.default_project()
     no2 = {},             -- region key -> true: no PDF 2 (the automatic pair was removed with the x)
     pair_off = false,     -- "Pair 2 matching PDFs" is off; written only when true
     folders = {},         -- the folders of "Add from folder" (for "Sync folders"): { path, sub = subfolders }; written only when used
+    sync_sel = "",        -- the "Sync folder" dropdown: "" = the last added folder, "*" = all folders, else a folder path; written only when not ""
     view = {},            -- pdf path -> { fit = fit mode, zoom = manual zoom } (per-PDF zoom)
     notes = {},           -- pdf path -> list of { page, x, y (0..1 of the page), text, color, size }; written only when used
     setlists = {},        -- list of { name, items }; an item: a song { key = region key, name, ending = "stop"|"continue", skip },
@@ -1169,6 +1172,7 @@ function Project.parse_cfg(lines_iter)
     elseif k == "no2" then
       p.no2[v] = true
     elseif k == "pair_off" then p.pair_off = (v == "1")
+    elseif k == "sync_sel" then p.sync_sel = v
     elseif k == "folder" then
       local dir, sub = v:match("^(.-)\t(.*)$")
       if dir and dir ~= "" then p.folders[#p.folders + 1] = { path = dir, sub = (sub == "1") } end
@@ -1262,6 +1266,7 @@ function Project.serialize_cfg()
   if P.split_off then w("split_off", 1) end -- the same
   if P.pair_off then w("pair_off", 1) end -- the same
   for _, fo in ipairs(P.folders) do w("folder", fo.path .. "\t" .. (fo.sub and 1 or 0)) end -- only when used
+  if P.sync_sel ~= "" then w("sync_sel", P.sync_sel) end -- only when not the last added folder
   for _, path in ipairs(sorted(P.view)) do
     w("view", string.format("%s\t%s\t%.3f", path, P.view[path].fit, P.view[path].zoom))
   end
@@ -3071,26 +3076,52 @@ function Project.begin_import(folder, sub, sync)
   R.msg = nil
 end
 
--- "Add from folder" remembers the folder in the project (for "Sync folders").
+-- "Add from folder" remembers the folder in the project (for "Sync folders"): it goes to the end of the
+-- list (also when it was there already) and the "Sync folder" dropdown selects it.
 function Project.remember_folder(dir, sub)
-  for _, fo in ipairs(P.folders) do
-    if Util.same_path(fo.path, dir) then
-      if fo.sub ~= sub then fo.sub = sub; Util.mark_pdirty() end
-      return
-    end
+  for i, fo in ipairs(P.folders) do
+    if Util.same_path(fo.path, dir) then table.remove(P.folders, i); break end
   end
   P.folders[#P.folders + 1] = { path = dir, sub = sub }
+  P.sync_sel = ""
   Util.mark_pdirty()
 end
 
--- "Sync folders": the remembered folders are checked again, one after the other. New PDFs are added,
+-- The folders that the sync button checks: the one selected in the "Sync folder" dropdown, or all of them.
+-- A selected folder that is not in the list any more: the last added folder.
+function Project.sync_targets()
+  if P.sync_sel == "*" then return P.folders end
+  if P.sync_sel ~= "" then
+    for _, fo in ipairs(P.folders) do
+      if Util.same_path(fo.path, P.sync_sel) then return { fo } end
+    end
+  end
+  return { P.folders[#P.folders] }
+end
+
+-- The red X next to the dropdown: removes the selected folder, or all folders ("All folders", after a
+-- question). The PDFs in the library and the files on disk do not change.
+function Project.remove_sync_folder()
+  if P.sync_sel == "*" then
+    P.folders = {}
+  else
+    local fo = Project.sync_targets()[1]
+    for i, f in ipairs(P.folders) do
+      if f == fo then table.remove(P.folders, i); break end
+    end
+  end
+  P.sync_sel = ""
+  Util.mark_pdirty()
+end
+
+-- "Sync folders": the folders of the "Sync folder" dropdown (Project.sync_targets) are checked again, one after the other. New PDFs are added,
 -- a changed PDF replaces its copy in the project (link mode: the library already uses the file).
 -- PDFs that are no longer in a folder stay in the library. R.sync = the counts and the folders left.
 function Project.sync_folders()
   if R.import or R.picker or R.sync then return end
   if #P.folders == 0 then Msg.notify("No folders to sync yet: use 'Add from folder' first.", false, "library"); return end
   R.sync = { new = 0, updated = 0, same = 0, missing = 0, left = {} }
-  for i, fo in ipairs(P.folders) do R.sync.left[i] = fo end
+  for i, fo in ipairs(Project.sync_targets()) do R.sync.left[i] = fo end
   Project.sync_next()
 end
 
@@ -3578,6 +3609,26 @@ end
 ---------------------------------------------------------------------------
 local ImGui = {}
 setmetatable(ImGui, { __index = function(_, k) return r["ImGui_" .. k] end }) -- plain passthrough
+-- Every tooltip: shows after the mouse stays CFG.TIP_DELAY s on the same item, and long lines wrap.
+-- The item is known by its position (a tooltip asked for in the frame before, at the same place: the same item).
+local raw_set_tooltip = r.ImGui_SetTooltip
+function ImGui.SetTooltip(ctx, text)
+  local x, y = r.ImGui_GetItemRectMin(ctx)
+  local now = r.time_precise()
+  if R.tip_frame == nil or R.tip_frame < R.frames - 1 or R.tip_x ~= x or R.tip_y ~= y then
+    R.tip_t0, R.tip_x, R.tip_y = now, x, y
+  end
+  R.tip_frame = R.frames
+  if now - R.tip_t0 < CFG.TIP_DELAY then return end
+  if r.ImGui_BeginTooltip(ctx) then
+    r.ImGui_PushTextWrapPos(ctx, r.ImGui_GetFontSize(ctx) * CFG.TIP_WRAP_EM)
+    r.ImGui_Text(ctx, text)
+    r.ImGui_PopTextWrapPos(ctx)
+    r.ImGui_EndTooltip(ctx)
+  else
+    raw_set_tooltip(ctx, text)
+  end
+end
 -- EndCombo also draws the selected text of a UI.combo whose list was open (R.combo_text)
 function ImGui.EndCombo(ctx)
   r.ImGui_EndCombo(ctx)
@@ -4158,7 +4209,7 @@ local TB_ITEMS = {
 -- the brightness button's tooltips (built once): the level now and the next one
 local BRIGHT_TIPS = {
   [25] = "Page brightness: 25%. Click for 50%.", [50] = "Page brightness: 50%. Click for 75%.",
-  [75] = "Page brightness: 75%. Click for 100%.", [100] = "Page brightness: 100%. Click for 25% (dark stages).",
+  [75] = "Page brightness: 75%. Click for 100%.", [100] = "Page brightness: 100%. Click for 25%.",
   [0] = "Page brightness. Click for the next level (25, 50, 75, 100%).",
 }
 
@@ -4191,7 +4242,8 @@ function UI.toolbar_items(ctx)
   local items = {}
   local g = 1
   local name_item -- the grey PDF name (it gives way first in a narrow window)
-  local function add(w, draw) items[#items + 1] = { w = w, g = g, draw = draw } end
+  -- id: the Settings > Appearance > Toolbar item (a right-click on it gives the menu "Hide ...")
+  local function add(w, draw, id) items[#items + 1] = { w = w, g = g, draw = draw, id = id } end
   local bw = CFG.TB_BTN_W
   if UI.setlist_view_on() then
     -- Page area "Setlist": the transport buttons instead of the page and view items
@@ -4206,7 +4258,7 @@ function UI.toolbar_items(ctx)
     if R.pdf_name ~= "" and UI.tb_shown("name") then
       local avail = (ImGui.GetContentRegionAvail(ctx)) - 12
       local nw = math.min((ImGui.CalcTextSize(ctx, R.pdf_name)), 220, math.max(40, avail))
-      add(nw, function(_, w) UI.row_text(ctx, UI.trunc_text(ctx, R.pdf_name, w), COL.GREY); UI.tip(ctx, S.pdf_path) end)
+      add(nw, function(_, w) UI.row_text(ctx, UI.trunc_text(ctx, R.pdf_name, w), COL.GREY); UI.tip(ctx, S.pdf_path) end, "name")
       name_item = items[#items]
     end
     add(bw, function() if UI.icon_button(ctx, "##prev", bw, "prev") then Nav.step(-1) end
@@ -4249,7 +4301,7 @@ function UI.toolbar_items(ctx)
     g = 2
     local zoom_on, fit_on = UI.tb_shown("zoom"), UI.tb_shown("fit")
     if zoom_on then add(bw, function() if UI.icon_button(ctx, "##zoomout", bw, "minus") then Nav.zoom_by(1 / CFG.ZOOM_STEP) end
-      UI.tip(ctx, "Zoom out (Ctrl and -, Ctrl + mouse wheel)") end) end
+      UI.tip(ctx, "Zoom out (Ctrl and -, Ctrl + mouse wheel)") end, "zoom") end
     local fit_w = UI.tb_combo_w(ctx, "fit")
     if fit_on then add(fit_w, function()
       if UI.combo(ctx, "##fit", UI.fit_label(), fit_w) then
@@ -4269,9 +4321,9 @@ function UI.toolbar_items(ctx)
         ImGui.EndCombo(ctx)
       end
       UI.tip(ctx, "Fit mode (Ctrl and 0: fit the page width). 100% = the real page size.")
-    end) end
+    end, "fit") end
     if zoom_on then add(bw, function() if UI.icon_button(ctx, "##zoomin", bw, "plus") then Nav.zoom_by(CFG.ZOOM_STEP) end
-      UI.tip(ctx, "Zoom in (Ctrl and +, Ctrl + mouse wheel)") end) end
+      UI.tip(ctx, "Zoom in (Ctrl and +, Ctrl + mouse wheel)") end, "zoom") end
     -- page brightness: each click goes up by 25% (25, 50, 75, 100), and from 100% back to 25%
     if UI.tb_shown("bright") then add(bw, function()
       local pct = S.dim_page and math.floor(S.dim_level * 100 + 0.5) or 100
@@ -4284,7 +4336,7 @@ function UI.toolbar_items(ctx)
         S.dim_page, S.dim_level = nxt < 100, nxt / 100; Util.mark_dirty()
       end
       UI.tip(ctx, BRIGHT_TIPS[pct] or BRIGHT_TIPS[0])
-    end) end
+    end, "bright") end
     g = 3
     -- autoscroll: during playback (full and small toolbar) the state as text, since the mode is locked
     -- then (the page would jump); when stopped, the dropdown
@@ -4294,7 +4346,7 @@ function UI.toolbar_items(ctx)
       add((ImGui.CalcTextSize(ctx, st)), function()
         UI.row_text(ctx, st)
         UI.tip(ctx, MODE_LOCKED_TIP .. "\n\n" .. AUTOSCROLL_TIP)
-      end)
+      end, "scroll")
     else
       local scroll_w = UI.tb_combo_w(ctx, "scroll")
       add(scroll_w, function()
@@ -4308,7 +4360,7 @@ function UI.toolbar_items(ctx)
           ImGui.EndCombo(ctx)
         end
         UI.tip(ctx, AUTOSCROLL_TIP)
-      end)
+      end, "scroll")
     end
     -- record cues: a square icon button, the same size as the lock button (only in the Cue list mode)
     if UI.rec_mode() and UI.tb_shown("rec") then add(bw, function()
@@ -4321,7 +4373,7 @@ function UI.toolbar_items(ctx)
       if hit then UI.toggle_rec() end
       UI.tip(ctx, "Record (R): while on, the C and S keys and the MIDI cue buttons add cues (in the Markers mode: PDF markers).\n"
         .. "Only in the Cue list autoscroll mode. Lock mode blocks it during playback.")
-    end) end
+    end, "rec") end
     -- lock: a square icon button, the same size as the other icon buttons
     if UI.tb_shown("lock") then add(bw, function()
       local nc, nv = UI.push_kind(ctx, R.lock and "primary" or nil)
@@ -4334,7 +4386,7 @@ function UI.toolbar_items(ctx)
       if hit then UI.toggle_lock() end
       UI.tip(ctx, "Lock (L): during playback the page ignores the mouse wheel, dragging and the keys.\n"
         .. "MIDI and autoscroll still work. Click again or press L to unlock.")
-    end) end
+    end, "lock") end
   end
   -- hide panel when playing (S.hide_controls_playing, the same as in Settings > Playback)
   if UI.tb_shown("hide") then add(bw, function()
@@ -4349,7 +4401,7 @@ function UI.toolbar_items(ctx)
     if hit then S.hide_controls_playing = not on; Util.mark_dirty() end
     UI.tip(ctx, on and "Hide panel when playing: on. During playback the tabs and the panel are hidden.\nClick to keep them."
       or "Hide panel when playing: off. Click to hide the tabs and the panel during playback.")
-  end) end
+  end, "hide") end
   -- a narrow window: the grey PDF name gets shorter, and then goes, before anything else wraps
   if name_item then
     local avail = math.max(1, (ImGui.GetContentRegionAvail(ctx)))
@@ -4379,9 +4431,36 @@ local MENU_BRIGHTNESS = { { 25, "25%" }, { 50, "50%" }, { 75, "75%" }, { 100, "1
 function UI.toolbar_menu(ctx, ty)
   local _, by = ImGui.GetCursorScreenPos(ctx)
   local _, my = ImGui.GetMousePos(ctx)
-  if ImGui.IsMouseClicked(ctx, 1) and my >= ty and my < by and ImGui.IsWindowHovered(ctx,
+  if ImGui.IsMouseClicked(ctx, 1) and not R.menu_req and my >= ty and my < by and ImGui.IsWindowHovered(ctx,
       ImGui.HoveredFlags_RootAndChildWindows() | ImGui.HoveredFlags_AllowWhenBlockedByPopup()) then
     R.menu_req = { kind = "main" }; R.note_click = nil -- (no page point: no "Add note here")
+  end
+end
+
+-- The panel (the open tab): a right-click on empty space gives the main menu (a row gives its own menu).
+function UI.panel_menu(ctx, py0)
+  if not ImGui.IsMouseClicked(ctx, 1) or R.menu_req then return end
+  local _, py1 = ImGui.GetCursorScreenPos(ctx)
+  local _, my = ImGui.GetMousePos(ctx)
+  if my >= py0 and my < py1 and ImGui.IsWindowHovered(ctx,
+      ImGui.HoveredFlags_RootAndChildWindows() | ImGui.HoveredFlags_AllowWhenBlockedByPopup()) then
+    R.menu_req = { kind = "main" }; R.note_click = nil
+  end
+end
+
+-- A right-click on a tab or a toolbar item: only "Hide ..." (shown again in Settings > Appearance).
+function UI.hide_menu(ctx, m)
+  local label
+  if m.tab then label = "Hide the " .. UI.tab_name(m.tab) .. " tab"
+  else
+    for _, it in ipairs(TB_ITEMS) do if it[1] == m.tb then label = "Hide '" .. it[2] .. "' from the toolbar" end end
+  end
+  if label and UI.menu_item(ctx, label) then
+    if m.tab then
+      S.tab_hide = S.tab_hide .. TAB_IDS[m.tab] .. ","; Util.mark_dirty()
+    else
+      UI.set_tb_shown(m.tb, false)
+    end
   end
 end
 
@@ -4416,6 +4495,7 @@ function UI.context_menus(ctx)
   elseif m.kind == "region" then UI.region_menu(ctx, m.key)
   elseif m.kind == "note" then UI.note_menu(ctx, m)
   elseif m.kind == "setlist" then UI.setlist_menu(ctx, m.i)
+  elseif m.kind == "hide" then UI.hide_menu(ctx, m)
   elseif m.kind == "cue" then
     Cues.with_part(m.part, UI.cue_menu, ctx, m) -- the list of the row (PDF 1 or PDF 2)
   else UI.main_menu(ctx) end
@@ -4713,6 +4793,10 @@ function UI.draw_centered_toolbar(ctx)
         ImGui.DrawList_AddLine(dl, lx, sy + 4, lx, sy + fh - 4, COL.TOGGLE_OFF, 1)
       end
       e.it.draw(ctx, e.it.w)
+      if e.it.id and ImGui.IsMouseClicked(ctx, 1) and ImGui.IsItemHovered(ctx,
+          ImGui.HoveredFlags_AllowWhenBlockedByPopup() | ImGui.HoveredFlags_AllowWhenDisabled()) then
+        R.menu_req = { kind = "hide", tb = e.it.id }
+      end
     end
   end
   ImGui.PopStyleVar(ctx, 1)
@@ -4825,19 +4909,35 @@ function UI.ask(id, text, yes_label, run, key)
   R.ask = { id = id, text = text, yes = yes_label, run = run, key = key }
 end
 
-function UI.draw_ask(ctx, id, key)
+-- The place of a question in its section: the question itself shows in a centred window (UI.draw_ask_popup);
+-- here it only closes when its row or choice changed (another key, for example the dropdown left "All folders").
+function UI.draw_ask(_, id, key)
   local a = R.ask
-  if not a or a.id ~= id then return end
-  if a.key ~= key then R.ask = nil; return end
-  UI.note(ctx, a.text, COL.YELLOW)
-  ImGui.PushID(ctx, "ask_" .. id)
-  local _, cw = UI.row_start(ctx)
-  local hw = math.floor((cw - 8) / 2)
-  local yes = UI.row_button(ctx, a.yes, hw, true)
+  if a and a.id == id and a.key ~= key then R.ask = nil end
+end
+
+-- The open question (UI.ask) in a window in the centre of Chart Cue: the window greys, and a moved question
+-- opens in the centre again next time. Call once per frame, inside the window.
+function UI.draw_ask_popup(ctx)
+  local a = R.ask
+  if a and not a.shown then ImGui.OpenPopup(ctx, "Chart Cue##askpop"); a.shown = true end
+  if not a then return end
+  local wx, wy = ImGui.GetWindowPos(ctx)
+  local ww, wh = ImGui.GetWindowSize(ctx)
+  ImGui.SetNextWindowPos(ctx, wx + ww / 2, wy + wh / 2, ImGui.Cond_Appearing(), 0.5, 0.5)
+  if not ImGui.BeginPopupModal(ctx, "Chart Cue##askpop", true, ImGui.WindowFlags_AlwaysAutoResize()) then
+    R.ask = nil; return -- (closed with its X or Esc)
+  end
+  ImGui.PushTextWrapPos(ctx, ImGui.GetFontSize(ctx) * 28)
+  ImGui.Text(ctx, a.text)
+  ImGui.PopTextWrapPos(ctx)
+  UI.vgap(ctx, 8)
+  local yes = UI.row_button(ctx, a.yes, 120, true)
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  local no = UI.button(ctx, "Cancel", cw - hw - 8, UI.h(ctx))
-  ImGui.PopID(ctx) -- always paired with PushID above
-  if yes then R.ask = nil; a.run() elseif no then R.ask = nil end
+  local no = UI.button(ctx, "Cancel", 100, UI.h(ctx))
+  if yes then R.ask = nil; ImGui.CloseCurrentPopup(ctx); a.run()
+  elseif no then R.ask = nil; ImGui.CloseCurrentPopup(ctx) end
+  ImGui.EndPopup(ctx)
 end
 
 -- "Remove PDF markers...": asks first, with the number of markers and where they are.
@@ -5188,7 +5288,7 @@ function UI.draw_library_tab(ctx)
 
   if UI.heading(ctx, "Add PDFs", "Copy into project ON: imported PDFs are copied into <project folder>\\PDFs\\. "
     .. "The original files are only read. The project is portable.\n\n"
-    .. "Copy into project OFF (link mode): the library points to the original PDFs. The project is not portable.\n\n"
+    .. "Copy into project OFF: the library points to the original PDFs. The project is not portable.\n\n"
     .. "The PDFs you add are saved in this project; the two options below are for this computer.", nil, "lib_add") then
     -- row 1: "Add PDF"; row 2: "Add from folder" | sync icon | the folder (grey, cut at the left) |
     -- Show in Explorer at the right end. The 2 buttons share one width that follows the panel width.
@@ -5204,48 +5304,18 @@ function UI.draw_library_tab(ctx)
       UI.tip(ctx, "Adds one PDF file to the library.")
       ImGui.SetCursorPosX(ctx, cx)
       if UI.button(ctx, "Add from folder", bw, fh) then Project.start_folder_pick() end
-      UI.tip(ctx, "Adds all PDFs of a folder. The folder is remembered for the sync button next to it.")
+      UI.tip(ctx, "Adds all PDFs of a folder. The folder is remembered, and selected in 'Sync folder' below.")
       UI.pop_kind(ctx, nc, nv)
-      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-      local can_sync = #P.folders > 0 and not R.import and not R.sync
-      ImGui.BeginDisabled(ctx, not can_sync)
-      if UI.row_icon_button(ctx, "##syncfolders", fh, "sync", can_sync) and can_sync then Project.sync_folders() end
-      ImGui.EndDisabled(ctx)
-      if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
-        ImGui.SetTooltip(ctx, (#P.folders == 0) and "Sync folders: use 'Add from folder' first; its folder is remembered."
-          or string.format("Sync folders (%d): adds new PDFs, and replaces the copies of changed PDFs.\n"
-            .. "PDFs that are no longer in a folder stay in the library.", #P.folders))
-      end
-      -- the folder of the last "Add from folder" (more folders: in the tooltip), like the PDF paths
-      local last = P.folders[#P.folders]
-      if last then
-        local exp_w = UI.btn_w(ctx, "Show in Explorer", CFG.EXPLORER_BTN_W)
-        local bx = x0 + aw - exp_w - 14
-        ImGui.SameLine(ctx, 0, 10)
-        if bx - ImGui.GetCursorPosX(ctx) - 12 < CFG.MIN_PATH_W then -- no room: own line, under the buttons
-          ImGui.NewLine(ctx); ImGui.SetCursorPosX(ctx, cx)
-          if bx < cx then bx = cx end
-        end
-        local path_w = bx - ImGui.GetCursorPosX(ctx) - 12 -- from here to "Show in Explorer"
-        if path_w >= CFG.MIN_PATH_W then
-          UI.row_text(ctx, UI.trunc_left(ctx, last.path, path_w), COL.TEXT_DIM)
-          if ImGui.IsItemHovered(ctx) then
-            local all = {}
-            for i, fo in ipairs(P.folders) do all[i] = fo.path .. (fo.sub and "  (with subfolders)" or "") end
-            ImGui.SetTooltip(ctx, "Folders of 'Add from folder' (Sync checks them all):\n" .. table.concat(all, "\n"))
-          end
-        end
-        if path_w >= CFG.MIN_PATH_W then ImGui.SameLine(ctx, bx) else ImGui.SetCursorPosX(ctx, bx) end
-        if UI.row_button(ctx, "Show in Explorer##folder", exp_w, "ghost") then Util.show_in_explorer(last.path) end
-        UI.tip(ctx, "Opens this folder in Windows Explorer.")
-      end
     end
+    UI.draw_sync_folder_row(ctx)
     ch, S.import_copy = UI.checkbox(ctx, "Copy into project", S.import_copy)
     if ch then Util.mark_dirty() end
     UI.tip(ctx, "On: imported PDFs are copied into <project folder>\\PDFs\\ (portable project).\nOff: the library links to the original files.")
     ch, S.include_subfolders = UI.checkbox(ctx, "Include subfolders", S.include_subfolders)
     if ch then Util.mark_dirty() end
-    UI.tip(ctx, "Used by 'Add from folder' and the sync button")
+    UI.tip(ctx, "On: 'Add from folder' also adds the PDFs in the folders inside the folder you choose.\n"
+      .. "The sync button uses the same setting as when the folder was added. "
+      .. "Such folders show '(+ subfolders)' in the 'Sync folder' list.")
     if S.import_copy and not Project.dir() then
       UI.note(ctx, "Project not saved: imported PDFs are linked to their original location for now. "
         .. "Save the project, then use 'Copy all PDFs into the project'.", COL.YELLOW)
@@ -5338,9 +5408,13 @@ function UI.draw_library_tab(ctx)
   local EXP_W = UI.btn_w(ctx, "Show in Explorer", CFG.EXPLORER_BTN_W)
   local MIN_PATH_W = CFG.MIN_PATH_W   -- below this the path is hidden (the tooltip still shows it)
   UI.push_row_style(ctx)
+  local n0 = #P.pdfs
   for _, i in ipairs(UI.library_order()) do
-    shown = shown + 1
+    -- a PDF removed in a row above ("Yes, remove" runs inside the list): the row numbers are old now,
+    -- so the rest of the list is drawn in the next frame
     local path = P.pdfs[i]
+    if #P.pdfs ~= n0 or not path then break end
+    shown = shown + 1
     ImGui.PushID(ctx, "lib" .. i)
     local active = Util.same_path(path, S.pdf_path) and R.total > 0
     local missing = (R.libexists[path] == false)
@@ -5361,7 +5435,7 @@ function UI.draw_library_tab(ctx)
     if clicked and not missing and not Util.playing() then Pane.active(PDF.open_pdf, path, false) end
     if hovered then
       ImGui.SetTooltip(ctx, missing and ("MISSING: " .. path)
-        or (Util.playing() and (PLAYING_TIP .. "\n" .. path)) or ("Click to open\n" .. path))
+        or (Util.playing() and (PLAYING_TIP .. "\n" .. path)) or ("Click to open in the viewer\n" .. path))
     end
     -- two columns: the names share one width (at most half the space), so every path starts at the same x
     local col_w = math.min(R.lib_name_w.w, space) -- the name first; the path gets what is left (or hides)
@@ -5398,7 +5472,7 @@ function UI.draw_library_tab(ctx)
     ImGui.PopID(ctx)
   end
   UI.pop_row_style(ctx)
-  if #P.pdfs > 0 and shown == 0 then ImGui.TextDisabled(ctx, "No PDFs match the search.") end
+  if #P.pdfs > 0 and shown == 0 and #P.pdfs == n0 then ImGui.TextDisabled(ctx, "No PDFs match the search.") end
   if relocate_path then
     local ok, f = PDF.ask_file("Locate " .. Util.name_of(relocate_path))
     if ok and f and f ~= "" then
@@ -5408,6 +5482,78 @@ function UI.draw_library_tab(ctx)
     end
   end
 
+end
+
+-- Library > "Sync folder": the dropdown (All folders, or 1 folder of "Add from folder"), the sync button
+-- (checks only what the dropdown shows), the red X (removes it; All: asks first) and Show in Explorer.
+function UI.draw_sync_folder_row(ctx)
+  UI.row_start(ctx, "Sync folder")
+  if #P.folders == 0 then
+    UI.row_text(ctx, "None yet: 'Add from folder' remembers its folder here.", COL.TEXT_DIM)
+    return
+  end
+  local fh = UI.h(ctx)
+  local all = (P.sync_sel == "*")
+  local sel = Project.sync_targets()[1] -- (with All: the first folder; not shown)
+  local exp_w = UI.btn_w(ctx, "Show in Explorer", CFG.EXPLORER_BTN_W)
+  -- the same width as the Add PDF / Add from folder buttons above it (the buttons follow at its right)
+  -- (UI.panel_w: the room from the control column to the panel edge, since row_start moved the cursor there)
+  local combo_w = UI.std_w(ctx, "Add from folder",
+    math.max(120, UI.panel_w(ctx) - 2 * (fh + CFG.CTRL_GAP) - exp_w - CFG.CTRL_GAP - 14))
+  local function label(fo) return Util.name_of((fo.path:gsub("[/\\]+$", ""))) .. (fo.sub and "  (+ subfolders)" or "") end
+  local preview = all and string.format("All folders (%d)", #P.folders) or label(sel)
+  ImGui.BeginDisabled(ctx, R.import ~= nil or R.sync ~= nil)
+  if UI.combo(ctx, "##syncsel", preview, combo_w) then
+    if ImGui.Selectable(ctx, string.format("All folders (%d)", #P.folders) .. "##syncall", all) and not all then
+      P.sync_sel = "*"; Util.mark_pdirty()
+    end
+    for i = #P.folders, 1, -1 do -- the last added folder first
+      local fo = P.folders[i]
+      if ImGui.Selectable(ctx, label(fo) .. "##sync" .. i, fo == sel and not all) then
+        P.sync_sel = (i == #P.folders) and "" or fo.path; Util.mark_pdirty()
+      end
+      UI.tip(ctx, fo.path)
+    end
+    ImGui.EndCombo(ctx)
+  end
+  ImGui.EndDisabled(ctx)
+  if ImGui.IsItemHovered(ctx) then
+    ImGui.SetTooltip(ctx, all and "The sync button checks all the folders of 'Add from folder'."
+      or (sel.path .. "\nThe sync button checks this folder. 'Add from folder' selects the folder it adds."))
+  end
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  local can_sync = not R.import and not R.sync
+  ImGui.BeginDisabled(ctx, not can_sync)
+  if UI.row_icon_button(ctx, "##syncfolders", fh, "sync", can_sync) and can_sync then Project.sync_folders() end
+  ImGui.EndDisabled(ctx)
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+    ImGui.SetTooltip(ctx, (all and string.format("Sync all %d folders", #P.folders) or "Sync this folder")
+      .. ": adds new PDFs, and replaces the copies of changed PDFs.\nPDFs that are no longer in the folder stay in the library.")
+  end
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  ImGui.BeginDisabled(ctx, not can_sync)
+  if UI.remove_x_button(ctx, "##syncrm", fh) and can_sync then
+    if all then
+      UI.ask("sync_rm", string.format("Remove all %d sync folders? The PDFs in the library and the files "
+        .. "on disk do not change.", #P.folders), "Yes, remove", Project.remove_sync_folder, "all")
+    else
+      Project.remove_sync_folder()
+    end
+  end
+  ImGui.EndDisabled(ctx)
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+    ImGui.SetTooltip(ctx, all and "Remove all sync folders (asks first)."
+      or "Remove this folder from the sync folders. Add it again with 'Add from folder'.\n"
+      .. "The PDFs in the library and the files on disk do not change.")
+  end
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  ImGui.BeginDisabled(ctx, all)
+  if UI.row_button(ctx, "Show in Explorer##folder", exp_w, "ghost") and sel then Util.show_in_explorer(sel.path) end
+  ImGui.EndDisabled(ctx)
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+    ImGui.SetTooltip(ctx, all and "Select 1 folder to open it." or "Opens this folder in Windows Explorer.")
+  end
+  UI.draw_ask(ctx, "sync_rm", all and "all" or nil) -- (closes when the dropdown leaves "All folders")
 end
 
 function UI.region_passes_filter(reg)
@@ -5596,9 +5742,10 @@ function UI.draw_regions_tab(ctx)
       if not P.pair_off then P.no2 = {} end -- turned on: also for the songs where PDF 2 was removed
       Util.mark_pdirty(); Project.resolve_regions(); R.cur_region_key = nil
     end
-    UI.tip(ctx, "When exactly 2 PDFs match a song (for example \"Song A lyrics\" and \"Song A bass\"),\n"
-      .. "both are used: PDF 1 and PDF 2, shown together. Not when one has exactly the song's name\n"
-      .. "(\"Song A\" + \"Song A lyrics\"): that one is the main chart; + adds the other. Saved in this project.")
+    UI.tip(ctx, "On: when 2 PDFs have the name of a song, the song gets both, and they show together.\n"
+      .. "Example: \"Song A lyrics.pdf\" and \"Song A bass.pdf\" for the region \"Song A\".\n"
+      .. "Exception: when 1 PDF has exactly the song name (\"Song A.pdf\"), the song gets only that PDF. "
+      .. "Use + in its row to add the other one. Saved in this project.")
     ch, S.keep_last_page = UI.checkbox(ctx, "Keep last page", S.keep_last_page)
     if ch then Util.mark_dirty() end
     UI.tip(ctx, "During playback, a region without a PDF keeps the last page on screen, with a yellow note at the top.\n"
@@ -6486,21 +6633,28 @@ function UI.draw_control_tab(ctx)
   local mi = (S.mode == "absolute") and 0 or 1
   ch, mi = ImGui.Combo(ctx, "##midimode", mi, MODE_ITEMS)
   if ch then S.mode = (mi == 0) and "absolute" or "relative"; Util.mark_dirty() end
+  UI.tip(ctx, "Absolute: a knob or fader with a start and an end (0-127). Its position sets the scroll position.\n"
+    .. "Relative: an endless encoder. Each turn moves the page up or down.")
   -- only the rows of the chosen MIDI mode
   if S.mode == "absolute" then
     UI.field(ctx, "Absolute CC #")
     ch, S.cc_abs = ImGui.InputInt(ctx, "##ccabs", S.cc_abs, 1, 8)
     if ch then S.cc_abs = Util.clamp(S.cc_abs, 0, 127); Util.mark_dirty() end
+    UI.tip(ctx, "The CC number of the knob or fader (0-127). To find it, move the knob and look at MIDI troubleshooting below.")
   else
     UI.field(ctx, "Relative CC #")
     ch, S.cc_rel = ImGui.InputInt(ctx, "##ccrel", S.cc_rel, 1, 8)
     if ch then S.cc_rel = Util.clamp(S.cc_rel, 0, 127); Util.mark_dirty() end
+    UI.tip(ctx, "The CC number of the encoder (0-127). To find it, turn the encoder and look at MIDI troubleshooting below.")
     UI.field(ctx, "Relative encoding")
     local ri = S.rel_encoding - 1
     ch, ri = ImGui.Combo(ctx, "##relenc", ri, REL_ITEMS)
     if ch then S.rel_encoding = ri + 1; Util.mark_dirty() end
+    UI.tip(ctx, "How your encoder sends a turn. See the manual of your controller.\n"
+      .. "If the page moves in jumps or only in 1 direction, try another encoding.")
     ch, S.rel_invert = UI.checkbox(ctx, "Invert direction", S.rel_invert)
     if ch then Util.mark_dirty() end
+    UI.tip(ctx, "On: the encoder moves the page in the other direction.")
     UI.field(ctx, "Scroll speed")
     ch, S.sensitivity = ImGui.SliderDouble(ctx, "##sens", S.sensitivity, 1, 200, "%.0f")
     if ch then Util.mark_dirty() end
@@ -6610,6 +6764,8 @@ function UI.draw_viewer_tab(ctx)
   local ai = PAGE_AREA_INDEX[S.page_area] or 0
   ch, ai = ImGui.Combo(ctx, "##pagearea", ai, PAGE_AREA_ITEMS)
   if ch then S.page_area = PAGE_AREAS[ai + 1]; Util.mark_dirty() end
+  UI.tip(ctx, "PDF: the charts.\nSetlist: the setlist in large text, with the current song marked.\n"
+    .. "Setlist and PDF: the setlist on top and the PDF below.\nAlso in the right-click menu. Saved on this computer.")
   if S.page_area ~= "pdf" and not Setlist.cur() then
     UI.note(ctx, "There is no setlist in this project yet (Setlist tab): the PDF is shown.", COL.YELLOW)
   end
@@ -6740,6 +6896,8 @@ function UI.draw_appearance_tab(ctx)
   for i, id in ipairs(TAB_IDS) do
     local on = UI.tab_shown(i)
     ch, on = UI.checkbox(ctx, (i == TAB_CUES) and "Cues / Markers" or TAB_NAMES[i], on)
+    UI.tip(ctx, "Off: the tab is hidden. Its data still works. You can also right-click a tab to hide it.\n"
+      .. "Saved on this computer.")
     if ch then
       local s = S.tab_hide:gsub("," .. id .. ",", ",")
       if not on then s = s .. id .. "," end
@@ -6753,6 +6911,8 @@ function UI.draw_appearance_tab(ctx)
   for _, it in ipairs(TB_ITEMS) do
     local on = UI.tb_shown(it[1])
     ch, on = UI.checkbox(ctx, it[2], on)
+    UI.tip(ctx, "Off: the item is hidden in the toolbar. You can also right-click a toolbar item to hide it.\n"
+      .. "Saved on this computer.")
     if ch then UI.set_tb_shown(it[1], on) end
   end
 
@@ -6823,6 +6983,7 @@ function UI.draw_appearance_tab(ctx)
     elseif UI.full_button(ctx, "Match DPI to current view", "primary") then
       PDF.match_dpi()
     end
+    if not R.scale_to then UI.tip(ctx, "Sets the DPI that makes the page sharp at the zoom you see now.") end
   end
 
   -- the PDF engine: after the sharpness, because few people change it
@@ -6850,7 +7011,9 @@ function UI.draw_appearance_tab(ctx)
     UI.tip(ctx, "Total size of the page cache of all PDFs.\nFolder: " .. (R.cache_dir or CFG.CACHE_ROOT))
     -- the button at the right end of the control column (after the text when the column is narrow)
     ImGui.SameLine(ctx, cx + (ImGui.CalcTextSize(ctx, size_txt)) + 12) -- right after the size
-    if UI.row_button(ctx, "Clear...", bw, true) then
+    local clr = UI.row_button(ctx, "Clear...", bw, true)
+    UI.tip(ctx, "Deletes all stored pages (asks first). The pages are prepared again when needed.")
+    if clr then
       UI.ask("cache_clear", "Delete the whole page cache? The page on screen is kept; pages are prepared again when needed.",
         "Yes, delete", function()
           if PDF.clear_all_cache() then Msg.notify("Page cache cleared.", false, "display") end
@@ -6983,7 +7146,7 @@ The Library is the list of PDFs in this project.
 
 Images also work: a PNG or JPG file (for example a photo of a chart from your phone) is used like a PDF with 1 page, with its own cues and notes. Add an image with "Add PDF..."; "Add from folder" and Sync take only PDFs, so the photos and other images in a folder are not added. Phone photos are turned the right way up. iPhone photos in HEIC format do not open: set the camera to "Most Compatible" (Settings > Camera > Formats), or send the photo as JPG.
 
-- "Add PDF" adds one file. "Add from folder" adds all PDFs in a folder, and the project remembers that folder (shown next to it in grey): the sync button next to it checks the folders again later, adds new PDFs and replaces the copies of changed PDFs (for example a new version of a chart). PDFs that are no longer in the folder stay in the library.
+- "Add PDF" adds one file. "Add from folder" adds all PDFs in a folder, and the project remembers that folder: it is selected in "Sync folder" below. The sync button next to that dropdown checks the selected folder again (or all of them, with "All folders"), adds new PDFs and replaces the copies of changed PDFs (for example a new version of a chart). PDFs that are no longer in the folder stay in the library. The red X removes the selected folder from the list (with "All folders": all of them, after a question); the PDFs and the files do not change.
 - Unused PDFs (no region uses them, as PDF 1 or PDF 2, and not on screen) have a grey name; "Sort: Unused first" shows them at the top. "Remove unused PDFs..." takes them off the library (it asks first): their copies in this project's PDFs folder are deleted too, but original files outside the project are never deleted.
 - When "Copy into project" is on, Chart Cue copies each PDF into a folder named "PDFs" next to your project file. Your original file is not changed. The project then also works on another computer.
 - Click a PDF in the list to show it. "Show in Explorer" opens its folder. The red X takes it off the list (it asks first); the file itself is not deleted.
@@ -6992,7 +7155,7 @@ Images also work: a PNG or JPG file (for example a photo of a chart from your ph
 - Right-click a PDF for: Open, Show as PDF 2, Replace PDF..., Show in Explorer and Remove from library.... "Show as PDF 2" shows that PDF next to the one on screen (for example lyrics and a bass part): the page area splits in 2 (Settings > Viewer > Page layout > Split view). Click a part to make it the active part (blue frame): the keys, the toolbar, the mouse wheel, MIDI and the actions act on it. Drag the line between the 2 parts to change their sizes; double-click it for the same size. Right-click > Close PDF 2 returns to 1 PDF. A PDF 2 shown this way is not saved, and markers move only PDF 1. "Replace PDF..." swaps the file (for example a new version of the chart) and keeps the region choices, the zoom and the cues. If the new file has fewer pages, a message tells you how many cues use a missing page.
 - Use the search box and the sort menu above the list to find a PDF quickly.]==],
     more = [==[
-- "Include subfolders" makes "Add from folder" also look in all folders inside the chosen folder.
+- "Include subfolders" makes "Add from folder" also look in all folders inside the chosen folder. Each sync folder keeps the setting it was added with ("(+ subfolders)" in the dropdown); add the folder again to change it.
 - Copies run in the background, so REAPER and playback do not stop. The status bar shows how many are left.
 - If a file with the same name is already in the PDFs folder: an identical file is used as it is. A different file opens a question: Yes = replace it, No = keep the existing copy, Cancel = skip this PDF.
 - "Copy all PDFs into the project" copies the PDFs that are still outside the project folder. Use it one time for older projects.
@@ -8299,6 +8462,10 @@ function UI.draw_tab_strip(ctx)
     ImGui.InvisibleButton(ctx, "##tab" .. i, w, bottom - top)
     local hov = ImGui.IsItemHovered(ctx)
     if ImGui.IsItemClicked(ctx) then clicked = i end
+    if i < TAB_FIRST_SETTING and ImGui.IsMouseClicked(ctx, 1)
+        and ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenBlockedByPopup()) then
+      R.menu_req = { kind = "hide", tab = i }
+    end
     if hov then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand()) end
     local hv = UI.anim("tab" .. i, hov and 1 or 0)
     if merged then
@@ -9671,7 +9838,11 @@ function UI.frame()
       UI.toolbar_menu(ctx, ty)
       UI.vgap(ctx, UI.sp("EDGE")) -- same gap below the toolbar as above it
       UI.draw_tab_strip(ctx)
-      if S.panel_open then UI.draw_panel(ctx, status_h) end
+      if S.panel_open then
+        local _, py0 = ImGui.GetCursorScreenPos(ctx)
+        UI.draw_panel(ctx, status_h)
+        UI.panel_menu(ctx, py0)
+      end
     end
 
     local aw, ah = ImGui.GetContentRegionAvail(ctx)
@@ -9684,6 +9855,7 @@ function UI.frame()
       ImGui.Dummy(ctx, 0, 0)
     end
     Pane.active(UI.context_menus, ctx) -- right-click menus (toolbar, page, list rows), for the active part
+    UI.draw_ask_popup(ctx) -- an open question, in the centre of the window
     if not R.last_docked then Dock.edges(ctx) else R.rs = nil end -- resize edges: floating only
     R.in_window = false
     ImGui.End(ctx)

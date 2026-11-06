@@ -25,6 +25,12 @@
 - 1.5 (5 November 2026): PNG / JPG images (Add PDF only); the marker list in the cue-list layout, with Record, the add buttons, the marker colour and Copy cues into markers; the 3-band setlist view; the armed exact stop; tab icons and 2-line rows when narrow; numpad zoom; the Segue conflict command. Segue 0.1 released with it.
 - 1.5.1 (5 November 2026): clean-up with no visible change: the old keys tab_ver, sl_view, fixed_start, continue_after_end and scroll_mode=fixed removed; housekeeping skill; .gitattributes keeps LF.
 
+## Done for the next patch (not released yet)
+- Chart Cue: the questions (UI.ask) show in a centred popup window (UI.draw_ask_popup); Segue's question opens
+  in the centre too. The short messages in the title lines stay as they are.
+- Tooltips: 0.5 s delay and wrapped lines in all 3 scripts. Chart Cue: right-click menus on the panel, the
+  tabs and the toolbar items ("Hide ..."); the "Sync folder" dropdown; tooltip texts reviewed.
+
 ## Release checklist (do before sharing a new version)
 1. Version: @version and CFG.VERSION are equal; @changelog has 1–3 user-facing lines.
 2. Start: Chart Cue starts without errors; the last tab and the open Settings section come back.
@@ -53,6 +59,19 @@
 - Undo for a deleted note.
 - PDF 2: a "(both)" view of the 2 cue lists in the Cues tab, and MIDI CCs for PDF 2 (not in 1.3).
 - UI scale 100 / 125 / 150 %: the drawn icons already use CFG.UI_SCALE, and the repeated sizes have names in CFG (since the code clean-up after 1.4). Still needed: the fonts rebuilt between frames, every pixel size in CFG times the scale, and a test of every screen at each scale. Ask the user first.
+
+## MIDI Pilot (MIDI editor for Quad Cortex / Quad Cortex mini, since 6 November 2026; not released)
+- Done (version 1, steps 1-4): devices (model, MIDI output / input, channel, latency, own or shared track,
+  a kept track brings its device back); presets at the song starts (timing in ms or note values, Fill songs,
+  Presets match Regions, names, folders, the .reabank file, Send now); scenes (strip, list with bar.beat and
+  time, start scene per song, gap after a preset, merge, colours, Scenes match Markers, clear); Lanes
+  (controls in real units, nearest CC value, slope between values, all songs).
+- Next: step 5 nudge (ms and note values) and the latency of each device; step 6 ramps; step 7 the state at
+  the song starts (chase), live chase while open, Send state now. Then a release (ask before the first push).
+- Version 2: Record and Learn, copy scenes between songs, scenes from the keyboard, a check report, a cue
+  sheet, import / export of the names, Tuner / Looper items.
+- To test on the unit: are Hz and dB spread evenly over the pedal range? Does the pedal value survive a preset
+  change? The USB port names of both models. REAPER's own chase of Program Changes and CCs.
 
 ## Segue (the setlist script, since 4 November 2026)
 

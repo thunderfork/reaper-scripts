@@ -7,7 +7,7 @@ description: Run Chart Cue's UI test in the test REAPER (every tab, Settings sec
 
 `tools\ui-test.lua` (the steps) and `tools\ui-test.ps1` (the runner). It runs in the portable test
 REAPER `C:\REAPERtest`, never the normal REAPER, and it never touches the user's REAPER or data.
-It covers Chart Cue only: Segue has no UI test yet (PLAN.md); say so in the report.
+It covers Chart Cue only: Segue and MIDI Pilot have no UI test yet (PLAN.md); say so in the report.
 
 ## Before running
 

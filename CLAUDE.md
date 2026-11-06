@@ -1,7 +1,7 @@
 # Thunderfork REAPER scripts: development
 
 Repository: `thunderfork/reaper-scripts` (https://github.com/thunderfork/reaper-scripts), shown in
-ReaPack as "Thunderfork Scripts". It holds 2 separate scripts, each in its own folder (the folder is the
+ReaPack as "Thunderfork Scripts". It holds 3 separate scripts, each in its own folder (the folder is the
 ReaPack category; keep each script's files there):
 
 - **Chart Cue** (`Chart Cue/Chart Cue.lua`): a Windows-only REAPER Lua/ReaImGui script for displaying and
@@ -9,6 +9,8 @@ ReaPack category; keep each script's files there):
 - **Segue** (`Segue/Segue.lua`): a setlist-only script (no PDFs), with its own window and its own data. It
   reads 1 Chart Cue setting to avoid a conflict (see "Segue" at the end of this file). The 2 scripts have the
   same setlist logic and the same now playing view (a copy in each file).
+- **MIDI Pilot** (`MIDI Pilot/MIDI Pilot.lua`): "MIDI editor for Quad Cortex", in development (see "MIDI Pilot"
+  at the end of this file). No relation to the other 2 scripts.
 
 The general rules (Working with me, Editing, Patch, Saved data, REAPER/Lua, Performance, Verification,
 Git) apply to both scripts. Where they name Chart Cue, read "the script being changed". The sections
@@ -107,9 +109,10 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
   2. undefined globals (from the `luac -l` listing; allowed: standard Lua and `reaper`),
   3. Lua Language Server warnings (information only).
 - Compare Language Server warnings with the known false alarms (Chart Cue: 17 "Need check nil" /
-  "unknown|nil" warnings on 2026-11-04; Segue: 0); look at every new one.
-- For logic changes (navigation, autoscroll, project data, cache), also run `.\tools\test.ps1`. It runs
-  `tests\run.lua` (Chart Cue) and `tests\segue.lua` (Segue) in the portable test REAPER `C:\REAPERtest` (never the normal REAPER) and must
+  "unknown|nil" warnings on 2026-11-04; Segue: 0; MIDI Pilot: 0); look at every new one.
+- For logic changes (navigation, autoscroll, project data, cache), also run `.\tools\test.ps1 -Script "<the changed
+  script>"` (only the tests of the script that changed; all scripts only before a release). It runs
+  `tests\run.lua` (Chart Cue), `tests\segue.lua` (Segue) and `tests\midipilot.lua` (MIDI Pilot) in the portable test REAPER `C:\REAPERtest` (never the normal REAPER) and must
   end with "0 failed". Add a test for each fixed bug when practical. The test REAPER can run while
   my normal REAPER is open; never close or save my REAPER. test.ps1 starts it in the background
   (tools\background.ps1), so my window keeps the focus.
@@ -152,7 +155,7 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
   `new-feature` (plan and questions before
   code), `help-sync` (every text that names a changed feature).
 - `README.md`: for other users. `tools\`: check.ps1 (with `.luarc.json`: the static checks), test.ps1,
-  deploy.ps1, release.ps1, shots.ps1, ui-test.ps1 (with ui-test.lua: the UI test). `tests\`: run.lua (Chart Cue logic tests), segue.lua (Segue logic tests), shots.lua, test.pdf, make_pdf.lua
+  deploy.ps1, release.ps1, shots.ps1, ui-test.ps1 (with ui-test.lua: the UI test). `tests\`: run.lua (Chart Cue logic tests), segue.lua (Segue logic tests), midipilot.lua (MIDI Pilot logic tests), shots.lua, test.pdf, make_pdf.lua
   (makes test.pdf; run it with the normal Lua, not REAPER).
 - `LICENSE` (MIT). `tools\release.ps1`: makes `release\Chart-Cue-<version>.zip` (git-ignored).
 - `.github/workflows/reapack-index.yml`: GitHub builds `index.xml` (the ReaPack repository
@@ -203,3 +206,16 @@ Every time I ask to commit and push:
   installed it, else to `Scripts\Segue\`.
 - Release: a change in `Segue/` is a new Segue version (raise its version, changelog). A GitHub
   Release is made only when I ask (the zip in `release.ps1` is Chart Cue only).
+
+## MIDI Pilot
+
+- File: `MIDI Pilot/MIDI Pilot.lua`. Version: `@version` and `CFG.VERSION` together (started at 0.1).
+- Modules: `CFG`, `COL`, `MODELS` (Quad Cortex / mini), `S` (this computer: ExtState "MIDI Pilot": the devices,
+  the tab, the docker, the preset / scene / folder names, the timing), `R` (runtime), `P` (project data, ProjExtState "MIDI Pilot"/"cfg": the device tracks,
+  the track mode), `Util`, `Project`, `Dev` (devices, MIDI outputs, tracks), `Preset` (numbers, names, .reabank), `Midi` (preset and\n  scene changes in the MIDI items), `UI` (tabs: Songs, Lanes, Presets,
+  Settings, Help).
+- The agreed plan (version 1 in 7 steps, version 2 later) is in my memory; steps 1-4 (window, devices, tracks; presets; scenes; knobs in Lanes) are done.
+- Rule: the MIDI is normal REAPER MIDI; the show never needs the window.
+- Checks, tests (`tests\midipilot.lua`, result in `tests\result_midipilot.txt`) and deploy (`Scripts\MIDI Pilot\`,
+  or the ReaPack folder) include it.
+- A push publishes it on ReaPack (the workflow indexes every script with a header): ask me before the first push.
