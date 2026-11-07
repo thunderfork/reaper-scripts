@@ -78,6 +78,11 @@
   (hover and the current row); swell with hold and its own way back; notices only in the status bar.
 - Step 7 done (7 November 2026): Fill songs writes the control values at the song starts; Live chase (window
   open; Settings > Playback); Send state (status bar). Custom ramp lengths (bars.beats).
+- UI consistency (7 November 2026): Chart Cue's form rule (every control fills the control column; a row of 2 parts
+  splits it; small windows 1 width; table cells fit their content), Chart Cue's buttons (standard width, dialog width,
+  red outline, small buttons), Songs bar: Fill songs + Tools / Clear dropdowns, Help in formatted topics, Presets
+  list icons. Forms 280 wide. Settings in 5 sections (Devices, Tracks, Playback,
+  Lists, General), 1 open at a time, saved (as in Chart Cue).
 - Next: the tests on the unit (below), then a release of version 1 (ask before the first push).
 - 0.2 (after the 0.1 release, the user's decision on 7 November 2026): device profiles, so other units are a table
   entry: first Line 6 Helix (Floor, LT, Rack) and HX Stomp / Stomp XL (snapshots on CC#69: 8 / 3 / 4; their preset
