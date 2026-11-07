@@ -1,5 +1,5 @@
 -- @description MIDI Pilot: MIDI editor for Quad Cortex
--- @version 0.1
+-- @version 0.1.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -7,7 +7,7 @@
 --   song starts, scenes by name, knob values in real units, nudges and ramps. The MIDI plays without the
 --   script. Requires: the free ReaImGui extension (ReaPack).
 -- @changelog
---   First version: presets and scenes by name at the song starts, knob values in real units with ramps and
+--   The full first version (0.1 on ReaPack was an early build): presets and scenes by name at the song starts, knob values in real units with ramps and
 --   swells, nudge and latency, and the state at the song starts (Fill songs, Live chase, Send state).
 
 -- MIT License
@@ -36,7 +36,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "MIDI Pilot"       -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "0.1"            -- keep equal to @version in the header
+CFG.VERSION = "0.1.1"            -- keep equal to @version in the header
 CFG.EXT = "MIDI Pilot"         -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DEFAULT_W, CFG.DEFAULT_H = 560, 640
