@@ -1,5 +1,5 @@
 -- @description Segue: Setlist player
--- @version 1.0
+-- @version 1.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -9,7 +9,8 @@
 -- @provides
 --   [main] Segue - Next song.lua
 -- @changelog
---   Version 1.0: questions open in the centre of the window, and tooltips show after a short delay.
+--   A Light theme (gear menu > Light theme); Dark stays the default.
+--   Darker panels for more contrast; the window title bar follows the theme.
 
 -- MIT License
 --
@@ -37,7 +38,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Segue"          -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.0"            -- keep equal to @version in the header
+CFG.VERSION = "1.1"            -- keep equal to @version in the header
 CFG.EXT = "Segue"              -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.SL_EARLY = 0.02            -- the least time before the region end that the end is handled (Setlist.lead)
@@ -93,7 +94,31 @@ local COL = {
   LINE = 0x31353FFF, ROW_HOVER = 0xFFFFFF12, TOGGLE_OFF = 0x4A5060FF,
   TEXT_MAIN = 0xE6E8EEFF, TEXT_DIM = 0x8C93A3FF, TEXT_BRIGHT = 0xEEEEEEFF, WHITE = 0xFFFFFFFF,
   TRANSPARENT = 0x00000000,
+  HEADER_HOVER = 0x3B82F655, HEADER_ACTIVE = 0x3B82F677, -- list headers and selectables
+  ORANGE = 0xF2994AFF,          -- the status pill "WAITING" / "CHART CUE IN CONTROL"
+  TITLE_BG = 0x0F1114FF, TITLE_BG_ACTIVE = 0x1A1C21FF, -- the window title bar (in the theme)
 }
+
+-- The themes (gear menu > Light theme): the colours that change. Dark: the values above. Light: light panels, white
+-- fields, dark text; the accent stays (the same palette as Chart Cue's light theme).
+local THEMES = { dark = {} }
+for k, v in pairs(COL) do THEMES.dark[k] = v end
+THEMES.light = {
+  RED = 0xD43F3FFF, YELLOW = 0xB7860BFF, GREEN = 0x2E9E5BFF,
+  ACCENT = 0x2F6FE0FF, ACCENT_HOVER = 0x3B82F6FF, ACCENT_ACTIVE = 0x2559C7FF, ACTIVE_BG = 0x3B82F617,
+  HEADING = 0x2459C2FF,
+  WIN_BG = 0xDDE1E7FF, PANEL_BG = 0xF4F5F7FF,
+  FIELD = 0xFFFFFFFF, FIELD_HOVER = 0xEEF2F7FF, FIELD_ACTIVE = 0xE1EAFAFF,
+  BTN = 0xE3E7EDFF, BTN_HOVER = 0xD5DBE3FF, BTN_ACTIVE = 0xC5CCD7FF,
+  LINE = 0xCBD1DAFF, ROW_HOVER = 0x0000000F, TOGGLE_OFF = 0xB3BAC6FF,
+  TEXT_MAIN = 0x1E2127FF, TEXT_DIM = 0x667085FF, TEXT_BRIGHT = 0x101216FF,
+  HEADER_HOVER = 0x3B82F626, HEADER_ACTIVE = 0x3B82F640, ORANGE = 0xD9771FFF,
+  TITLE_BG = 0xD0D5DDFF, TITLE_BG_ACTIVE = 0xE6E9EEFF,
+}
+-- Sets the colours of a theme in COL (the style reads COL every frame: no restart).
+local function apply_theme(light)
+  for k, v in pairs(THEMES[light and "light" or "dark"]) do COL[k] = v end
+end
 
 local Util, Project, Setlist, UI = {}, {}, {}, {}
 
@@ -115,9 +140,10 @@ local S = {
   show_next = true,   -- Settings: "Next: <song>" in the "now playing" area
   show_times = true,  -- Settings: the set length and the time left in the "now playing" area
   hide_playing = false, -- the toolbar button: the panel is hidden while REAPER plays
+  light = false,      -- the gear menu: Light theme (Dark is the default)
   dock = 0,           -- the REAPER docker of the window (0 = floating; a negative number = a REAPER docker)
 }
-local S_BOOLS = { "show_now", "show_next", "show_times", "settings_open", "hide_playing" }
+local S_BOOLS = { "show_now", "show_next", "show_times", "settings_open", "hide_playing", "light" }
 
 ---------------------------------------------------------------------------
 -- REAIMGUI (pinned to 0.9.3 with the official compatibility shim)
@@ -654,7 +680,7 @@ Undo: the arrow button, or Ctrl+Z. More than 1 setlist: the dropdown and "More..
 
 The "Segue - Next song" action: give it a key or a foot pedal in the Action List. After a Stop or during a pause it plays the next song; during a song it goes to the next song.
 
-The grip between the panel and the "now playing" area: drag it; double-click resets it. The gear button has the settings (what the "now playing" area shows, docking).
+The grip between the panel and the "now playing" area: drag it; double-click resets it. The gear button has the settings (what the "now playing" area shows, docking, Light theme).
 
 Saved in the project: the setlists, the current setlist, Play in setlist order and the lock. Saved on this computer: the settings and the window.]]
 
@@ -666,15 +692,17 @@ function UI.tip(text)
 end
 
 -- The theme: the same colours and sizes as Chart Cue (pushed every frame; UI.pop_style pops them).
+-- (the name of the COL colour, so a theme change shows at once)
 local STYLE_COLS = {
-  { "WindowBg", COL.WIN_BG }, { "ChildBg", COL.TRANSPARENT }, { "PopupBg", COL.PANEL_BG },
-  { "Border", COL.LINE }, { "FrameBg", COL.FIELD }, { "FrameBgHovered", COL.FIELD_HOVER },
-  { "FrameBgActive", COL.FIELD_ACTIVE }, { "Button", COL.BTN }, { "ButtonHovered", COL.BTN_HOVER },
-  { "ButtonActive", COL.BTN_ACTIVE }, { "Header", COL.ACTIVE_BG }, { "HeaderHovered", 0x3B82F655 },
-  { "HeaderActive", 0x3B82F677 }, { "CheckMark", COL.ACCENT }, { "Text", COL.TEXT_MAIN },
-  { "TextDisabled", COL.TEXT_DIM }, { "Separator", COL.LINE }, { "ScrollbarBg", COL.TRANSPARENT },
-  { "ScrollbarGrab", COL.BTN_HOVER }, { "ScrollbarGrabHovered", COL.BTN_ACTIVE },
-  { "ScrollbarGrabActive", COL.TOGGLE_OFF },
+  { "WindowBg", "WIN_BG" }, { "ChildBg", "TRANSPARENT" }, { "PopupBg", "PANEL_BG" },
+  { "Border", "LINE" }, { "FrameBg", "FIELD" }, { "FrameBgHovered", "FIELD_HOVER" },
+  { "FrameBgActive", "FIELD_ACTIVE" }, { "Button", "BTN" }, { "ButtonHovered", "BTN_HOVER" },
+  { "ButtonActive", "BTN_ACTIVE" }, { "Header", "ACTIVE_BG" }, { "HeaderHovered", "HEADER_HOVER" },
+  { "HeaderActive", "HEADER_ACTIVE" }, { "CheckMark", "ACCENT" }, { "Text", "TEXT_MAIN" },
+  { "TextDisabled", "TEXT_DIM" }, { "Separator", "LINE" }, { "ScrollbarBg", "TRANSPARENT" },
+  { "ScrollbarGrab", "BTN_HOVER" }, { "ScrollbarGrabHovered", "BTN_ACTIVE" },
+  { "ScrollbarGrabActive", "TOGGLE_OFF" }, { "TitleBg", "TITLE_BG" }, { "TitleBgActive", "TITLE_BG_ACTIVE" },
+  { "TitleBgCollapsed", "TITLE_BG" },
 }
 for _, c in ipairs(STYLE_COLS) do c[1] = ImGui["Col_" .. c[1]]() end
 local STYLE_VARS = {
@@ -685,7 +713,7 @@ local STYLE_VARS = {
 }
 for _, v in ipairs(STYLE_VARS) do v[1] = ImGui["StyleVar_" .. v[1]]() end
 function UI.push_style()
-  for _, c in ipairs(STYLE_COLS) do ImGui.PushStyleColor(ctx, c[1], c[2]) end
+  for _, c in ipairs(STYLE_COLS) do ImGui.PushStyleColor(ctx, c[1], COL[c[2]]) end
   for _, v in ipairs(STYLE_VARS) do
     if v[3] then ImGui.PushStyleVar(ctx, v[1], v[2], v[3]) else ImGui.PushStyleVar(ctx, v[1], v[2]) end
   end
@@ -991,6 +1019,9 @@ function UI.draw_settings()
   if UI.toggle_line("Dock in REAPER's docker", docked, "On: Segue is in a REAPER docker. Off: a floating window.") then
     R.dock_req = docked and 0 or (S.dock ~= 0 and S.dock or -1)
   end
+  ch, S.light = UI.toggle_line("Light theme", S.light,
+    "On: light panels and fields, dark text (for daylight or a light REAPER theme). Off: Dark, for dark stages (the default).")
+  if ch then apply_theme(S.light); R.sdirty = true end
   UI.vgap(8)
   ImGui.TextColored(ctx, COL.TEXT_DIM, "Segue " .. CFG.VERSION .. "  -  MIT license")
   ImGui.EndPopup(ctx)
@@ -1512,10 +1543,10 @@ function UI.draw_now_view(l, x0, y0, w, h, small, show_next, show_times)
   ImGui.DrawList_PushClipRect(dl, x0, y0, x0 + w, y0 + h, true)
   -- 1. the status band
   local pill_txt, pill_col
-  if Setlist.cc_master() then pill_txt, pill_col = "CHART CUE IN CONTROL", 0xF2994AFF
+  if Setlist.cc_master() then pill_txt, pill_col = "CHART CUE IN CONTROL", COL.ORANGE
   elseif not on then pill_txt, pill_col = "SETLIST ORDER OFF", COL.TEXT_DIM
   elseif hold and hold.t_end then pill_txt, pill_col = "PAUSE", COL.YELLOW
-  elseif hold then pill_txt, pill_col = "WAITING  -  PRESS PLAY", 0xF2994AFF
+  elseif hold then pill_txt, pill_col = "WAITING  -  PRESS PLAY", COL.ORANGE
   elseif playing then pill_txt, pill_col = "PLAYING", COL.GREEN
   elseif paused then pill_txt, pill_col = "PAUSED", COL.TEXT_DIM
   else pill_txt, pill_col = "READY", COL.ACCENT_HOVER end
@@ -1836,5 +1867,6 @@ do
   if cmd and cmd > 0 then r.SetToggleCommandState(sec, cmd, 1); r.RefreshToolbar2(sec, cmd) end
 end
 load_settings()
+apply_theme(S.light)
 r.atexit(on_exit)
 r.defer(loop)

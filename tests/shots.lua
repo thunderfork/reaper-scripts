@@ -30,6 +30,7 @@ local C = ChartCueTest
 ChartCueTest = nil
 C.UI.init() -- the normal start, with the window
 C.S.comfortable = os.getenv("CHARTCUE_COMFORT") == "1" -- set by .\tools\shots.ps1 -Comfortable
+if os.getenv("CHARTCUE_THEME") == "light" then C.S.theme = "light"; C.apply_theme("light") end -- (shots.ps1 -Light)
 
 local S, R = C.S, C.R
 local function settings(open) S.tab = 5; S.settings_open = open end -- (5 sections: Viewer, Playback, Control, Appearance, General)

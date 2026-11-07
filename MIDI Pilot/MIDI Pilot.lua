@@ -1,5 +1,5 @@
 -- @description MIDI Pilot: MIDI editor for Quad Cortex
--- @version 0.1.1
+-- @version 0.1.2
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -7,8 +7,9 @@
 --   song starts, scenes by name, knob values in real units, nudges and ramps. The MIDI plays without the
 --   script. Requires: the free ReaImGui extension (ReaPack).
 -- @changelog
---   The full first version (0.1 on ReaPack was an early build): presets and scenes by name at the song starts, knob values in real units with ramps and
---   swells, nudge and latency, and the state at the song starts (Set up songs, Live chase, Send state).
+--   The Quad Cortex scene colours (the scene that plays in full colour); double-click opens REAPER's MIDI editor there.
+--   A calmer Songs page ('Set up songs', Tools and Clear menus, cards); consistent forms; Settings in sections;
+--   formatted Help topics; darker panels and a Light / Dark theme (Settings > General > Theme).
 
 -- MIT License
 --
@@ -36,7 +37,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "MIDI Pilot"       -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "0.1.1"            -- keep equal to @version in the header
+CFG.VERSION = "0.1.2"            -- keep equal to @version in the header
 CFG.EXT = "MIDI Pilot"         -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DEFAULT_W, CFG.DEFAULT_H = 560, 640
@@ -90,7 +91,7 @@ local COL = {
   RED = 0xF26D6DFF, YELLOW = 0xF2C75CFF, GREEN = 0x6FCF8AFF,
   ACCENT = 0x3B82F6FF, ACCENT_HOVER = 0x5B9BFFFF, ACCENT_ACTIVE = 0x2F6FE0FF,
   ACTIVE_BG = 0x3B82F633, HEADING = 0x8DB8FFFF,
-  WIN_BG = 0x131518FF, PANEL_BG = 0x1A1C21FF, TAB_BG = 0x0F1114FF, -- (a test: darker panels, more contrast)
+  WIN_BG = 0x131518FF, PANEL_BG = 0x1A1C21FF, TAB_BG = 0x0F1114FF, -- (darker panels, more contrast)
   CARD_BG = 0x22252BFF, -- the card of an open scene list (1 step lighter than the panel)
   TAB_HOVER = 0x343944FF,
   FIELD = 0x2B2F38FF, FIELD_HOVER = 0x333844FF, FIELD_ACTIVE = 0x2C3A55FF,
@@ -99,7 +100,31 @@ local COL = {
   TEXT_MAIN = 0xE6E8EEFF, TEXT_DIM = 0x8C93A3FF, TEXT_BRIGHT = 0xEEEEEEFF, WHITE = 0xFFFFFFFF,
   TRANSPARENT = 0x00000000,
   DANGER_HOVER = 0xF26D6D2E, DANGER_ACTIVE = 0xF26D6D50, -- red outline buttons (as in Chart Cue)
+  HEADER_HOVER = 0x3B82F655, HEADER_ACTIVE = 0x3B82F677, -- list headers (Help topics, Settings sections), selectables
+  TITLE_BG = 0x0F1114FF, TITLE_BG_ACTIVE = 0x1A1C21FF, -- the window title bar (in the theme)
 }
+
+-- The themes (Settings > General > Theme): the colours that change. Dark: the values above. Light: light panels,
+-- white fields, dark text; the accent and the scene colours stay (the same palette as Chart Cue's light theme).
+local THEMES = { dark = {} }
+for k, v in pairs(COL) do THEMES.dark[k] = v end
+THEMES.light = {
+  RED = 0xD43F3FFF, YELLOW = 0xB7860BFF, GREEN = 0x2E9E5BFF,
+  ACCENT = 0x2F6FE0FF, ACCENT_HOVER = 0x3B82F6FF, ACCENT_ACTIVE = 0x2559C7FF, ACTIVE_BG = 0x3B82F617,
+  HEADING = 0x2459C2FF,
+  WIN_BG = 0xDDE1E7FF, PANEL_BG = 0xF4F5F7FF, TAB_BG = 0xD0D5DDFF, CARD_BG = 0xE9ECF0FF, TAB_HOVER = 0xC4CAD3FF,
+  FIELD = 0xFFFFFFFF, FIELD_HOVER = 0xEEF2F7FF, FIELD_ACTIVE = 0xE1EAFAFF,
+  BTN = 0xE3E7EDFF, BTN_HOVER = 0xD5DBE3FF, BTN_ACTIVE = 0xC5CCD7FF,
+  LINE = 0xCBD1DAFF, ROW_HOVER = 0x0000000F, TOGGLE_OFF = 0xB3BAC6FF,
+  TEXT_MAIN = 0x1E2127FF, TEXT_DIM = 0x667085FF, TEXT_BRIGHT = 0x101216FF,
+  DANGER_HOVER = 0xD43F3F24, DANGER_ACTIVE = 0xD43F3F40,
+  HEADER_HOVER = 0x3B82F626, HEADER_ACTIVE = 0x3B82F640,
+  TITLE_BG = 0xD0D5DDFF, TITLE_BG_ACTIVE = 0xE6E9EEFF,
+}
+-- Sets the colours of a theme ("dark" or "light") in COL (the style reads COL every frame: no restart).
+local function apply_theme(name)
+  for k, v in pairs(THEMES[name] or THEMES.dark) do COL[k] = v end
+end
 
 local Util, Project, Dev, Preset, Midi, Knob, UI = {}, {}, {}, {}, {}, {}, {}
 
@@ -173,6 +198,7 @@ local S = {
   lane_all = false, -- Lanes: the values of all songs (else only the song at the edit cursor)
   lane_rows = CFG.LANE_ROWS, -- Lanes: a song's value list scrolls after this many rows
   settings_open = 1,  -- Settings: the open section (1 Devices ... 5 General; 0 = none)
+  theme = "dark",     -- Settings > General > Theme: "dark" (the default, for the stage) or "light"
   scene_rows = CFG.SCENE_ROWS, -- Songs: a song's scene list scrolls after this many rows
 }
 
@@ -328,6 +354,7 @@ local function load_settings()
     S.knobs[d.id] = Knob.parse(get("knb_" .. d.id))
   end
   S.lane_all = get("lane_all") == "1"
+  S.theme = (get("theme") == "light") and "light" or "dark"
   S.settings_open = Util.clamp(math.floor(tonumber(get("settings_open")) or 1), 0, 5)
   S.lane_rows = Util.clamp(math.floor(tonumber(get("lane_rows")) or CFG.LANE_ROWS), 3, 100)
   S.scene_rows = Util.clamp(math.floor(tonumber(get("scene_rows")) or CFG.SCENE_ROWS), 3, 100)
@@ -355,6 +382,7 @@ local function save_settings()
   r.SetExtState(CFG.EXT, "lane_all", S.lane_all and "1" or "0", true)
   r.SetExtState(CFG.EXT, "lane_rows", tostring(S.lane_rows), true)
   r.SetExtState(CFG.EXT, "settings_open", tostring(S.settings_open), true)
+  r.SetExtState(CFG.EXT, "theme", S.theme, true)
   r.SetExtState(CFG.EXT, "scene_rows", tostring(S.scene_rows), true)
   if R.bank_dirty then Preset.write_reabank() end
   R.sdirty = false
@@ -2260,7 +2288,7 @@ The Settings tab has 5 sections: Devices, Tracks, Playback, Lists and General. A
 # Preset names in REAPER
 Settings > General: a bank file with your preset names. Load it in ReaControlMIDI on the device's track (Bank/Program Select > Load File, and leave Enable off): REAPER then shows '3B Song One' in place of numbers.]] },
   { title = "What is saved where", text = [[
-- On this computer: the devices, the preset, folder and scene names, the controls (Lanes), Live chase, the preset timing, the nudge, the list sizes, "Check new MIDI items", the open Settings section and the window.
+- On this computer: the devices, the preset, folder and scene names, the controls (Lanes), the theme, Live chase, the preset timing, the nudge, the list sizes, "Check new MIDI items", the open Settings section and the window.
 - In the project: which track belongs to which device, the track mode, and the songs whose Scene test reminder you ignored.
 - The MIDI itself is on the device tracks.]] },
 }
@@ -2270,15 +2298,17 @@ function UI.tip(text)
 end
 
 -- The theme: the same colours and sizes as Chart Cue (pushed every frame; UI.pop_style pops them).
+-- (the name of the COL colour, so a theme change shows at once)
 local STYLE_COLS = {
-  { "WindowBg", COL.WIN_BG }, { "ChildBg", COL.TRANSPARENT }, { "PopupBg", COL.PANEL_BG },
-  { "Border", COL.LINE }, { "FrameBg", COL.FIELD }, { "FrameBgHovered", COL.FIELD_HOVER },
-  { "FrameBgActive", COL.FIELD_ACTIVE }, { "Button", COL.BTN }, { "ButtonHovered", COL.BTN_HOVER },
-  { "ButtonActive", COL.BTN_ACTIVE }, { "Header", COL.ACTIVE_BG }, { "HeaderHovered", 0x3B82F655 },
-  { "HeaderActive", 0x3B82F677 }, { "CheckMark", COL.ACCENT }, { "Text", COL.TEXT_MAIN },
-  { "TextDisabled", COL.TEXT_DIM }, { "Separator", COL.LINE }, { "ScrollbarBg", COL.TRANSPARENT },
-  { "ScrollbarGrab", COL.BTN_HOVER }, { "ScrollbarGrabHovered", COL.BTN_ACTIVE },
-  { "ScrollbarGrabActive", COL.TOGGLE_OFF },
+  { "WindowBg", "WIN_BG" }, { "ChildBg", "TRANSPARENT" }, { "PopupBg", "PANEL_BG" },
+  { "Border", "LINE" }, { "FrameBg", "FIELD" }, { "FrameBgHovered", "FIELD_HOVER" },
+  { "FrameBgActive", "FIELD_ACTIVE" }, { "Button", "BTN" }, { "ButtonHovered", "BTN_HOVER" },
+  { "ButtonActive", "BTN_ACTIVE" }, { "Header", "ACTIVE_BG" }, { "HeaderHovered", "HEADER_HOVER" },
+  { "HeaderActive", "HEADER_ACTIVE" }, { "CheckMark", "ACCENT" }, { "Text", "TEXT_MAIN" },
+  { "TextDisabled", "TEXT_DIM" }, { "Separator", "LINE" }, { "ScrollbarBg", "TRANSPARENT" },
+  { "ScrollbarGrab", "BTN_HOVER" }, { "ScrollbarGrabHovered", "BTN_ACTIVE" },
+  { "ScrollbarGrabActive", "TOGGLE_OFF" }, { "TitleBg", "TITLE_BG" }, { "TitleBgActive", "TITLE_BG_ACTIVE" },
+  { "TitleBgCollapsed", "TITLE_BG" },
 }
 for _, c in ipairs(STYLE_COLS) do c[1] = ImGui["Col_" .. c[1]]() end
 local STYLE_VARS = {
@@ -2289,7 +2319,7 @@ local STYLE_VARS = {
 }
 for _, v in ipairs(STYLE_VARS) do v[1] = ImGui["StyleVar_" .. v[1]]() end
 function UI.push_style()
-  for _, c in ipairs(STYLE_COLS) do ImGui.PushStyleColor(ctx, c[1], c[2]) end
+  for _, c in ipairs(STYLE_COLS) do ImGui.PushStyleColor(ctx, c[1], COL[c[2]]) end
   for _, v in ipairs(STYLE_VARS) do
     if v[3] then ImGui.PushStyleVar(ctx, v[1], v[2], v[3]) else ImGui.PushStyleVar(ctx, v[1], v[2]) end
   end
@@ -4012,8 +4042,8 @@ function UI.warn_icon(id, size)
   local dl = ImGui.GetWindowDrawList(ctx)
   local cx = x0 + size / 2
   ImGui.DrawList_AddTriangleFilled(dl, cx, y0 + 3, x0 + size - 3, y0 + size - 4, x0 + 3, y0 + size - 4, COL.YELLOW)
-  ImGui.DrawList_AddLine(dl, cx, y0 + 9, cx, y0 + size - 10, COL.WIN_BG, 2)
-  ImGui.DrawList_AddCircleFilled(dl, cx, y0 + size - 7, 1.3, COL.WIN_BG)
+  ImGui.DrawList_AddLine(dl, cx, y0 + 9, cx, y0 + size - 10, SC_TEXT, 2) -- (dark on the yellow, in both themes)
+  ImGui.DrawList_AddCircleFilled(dl, cx, y0 + size - 7, 1.3, SC_TEXT)
 end
 
 -- The "Rename folder" window: R.frename = { d, folder, name, open }.
@@ -4540,6 +4570,15 @@ end
 -- Settings > General: the preset names file, the docker, the version.
 function UI.set_general()
   local ch, cw, _
+  UI.heading("Appearance", "Theme: Dark (the default, for dark stages) or Light (light panels and fields, dark text; "
+    .. "for daylight or a light REAPER theme). The scene colours stay.\n\nSaved on this computer.")
+  _, cw = UI.row_start("Theme")
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+  local thi
+  ch, thi = ImGui.Combo(ctx, "##theme", S.theme == "light" and 1 or 0, "Dark\0Light\0")
+  if ch then S.theme = (thi == 1) and "light" or "dark"; apply_theme(S.theme); Util.mark_sdirty() end
+  UI.tip("Dark: for dark stages (the default). Light: light panels and fields, dark text.")
+
   UI.heading("Preset names in REAPER", "Preset names in REAPER: MIDI Pilot writes your preset names into a bank file. Load it "
     .. "in ReaControlMIDI on a device's track (Bank/Program Select > Load File); REAPER then shows '3B Song One' "
     .. "in place of numbers. Leave 'Enable' off in ReaControlMIDI, so it sends nothing itself. The file is made "
@@ -4892,6 +4931,7 @@ do
   if cmd and cmd > 0 then r.SetToggleCommandState(sec, cmd, 1); r.RefreshToolbar2(sec, cmd) end
 end
 load_settings()
+apply_theme(S.theme)
 Dev.read_ports()
 if not r.file_exists(Preset.reabank_path()) then Preset.write_reabank() end
 r.atexit(on_exit)

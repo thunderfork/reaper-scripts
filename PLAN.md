@@ -29,15 +29,15 @@
   Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
   (tags segue-vX.Y, midipilot-vX.Y).
 
-## Done for the next versions (not released yet)
+## Released on 7 November 2026 (2nd release): Chart Cue 1.5.3, Segue 1.1, MIDI Pilot 0.1.2
 - All 3 scripts (7 November 2026): darker panels for more contrast: window #131518, tab strip #0F1114, panels /
   menus / setlist and now playing views #1A1C21 (MIDI Pilot: its scene list card #22252B). Next push: Chart Cue 1.5.3,
   Segue 1.1, MIDI Pilot 0.1.2.
-
-## Next UI task (planned 7 November 2026)
-- Light / Dark option in each script (its own setting; Dark stays the default): first move the colours that are
-  written in the code into the COL tables (Chart Cue about 28, Segue 6, MIDI Pilot 22; scene colours and accent stay),
-  then 1 light palette for all 3, then a check of every screen in both themes. Order: Chart Cue, Segue, MIDI Pilot.
+- Open: MIDI Pilot's scene colours do not suit the light theme well (the user: not important, fix later).
+- All 3 scripts (7 November 2026): Light / Dark theme, 1 option in each (Chart Cue: Settings > Appearance > Theme;
+  Segue: gear menu > Light theme; MIDI Pilot: Settings > General > Theme); Dark is the default. The colours that were
+  written in the code are named in COL; the style reads COL every frame (no restart); the window title bar follows
+  the theme. tools\shots.ps1 -Light takes Chart Cue's screenshots in the light theme.
 
 ## Release checklist (do before sharing a new version)
 1. Version: @version and CFG.VERSION are equal; @changelog has 1–3 user-facing lines.

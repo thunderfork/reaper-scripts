@@ -1,15 +1,18 @@
 # Takes screenshots of the Chart Cue window in the portable test REAPER (C:\REAPERtest):
 #   .\tools\shots.ps1                (compact layout, into tests\shots)
 #   .\tools\shots.ps1 -Comfortable   ("Comfortable layout" on, into tests\shots\comfortable)
+#   .\tools\shots.ps1 -Light         (Settings > Appearance > Theme: Light, into tests\shots\light)
 # tests\shots.lua shows each scene and writes tests\shots\req.txt; this script saves
 # <folder>\<scene>.png and deletes req.txt. The test REAPER starts with no Chart Cue settings.
-param([switch]$Comfortable)
+param([switch]$Comfortable, [switch]$Light)
 $root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is in tools\)
 $reaper = "C:\REAPERtest\reaper.exe"
 $dir = Join-Path $root "tests\shots"
 $req = Join-Path $dir "req.txt"
 $env:CHARTCUE_COMFORT = if ($Comfortable) { "1" } else { "0" }
 if ($Comfortable) { $dir = Join-Path $dir "comfortable" }
+$env:CHARTCUE_THEME = if ($Light) { "light" } else { "dark" }
+if ($Light) { $dir = Join-Path $dir "light" }
 if (-not (Test-Path $reaper)) { Write-Host "Test REAPER not found: $reaper" -ForegroundColor Red; exit 2 }
 New-Item -ItemType Directory -Force $dir | Out-Null
 Get-ChildItem $dir -Filter "*.png" | Remove-Item

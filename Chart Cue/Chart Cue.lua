@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 1.5.2
+-- @version 1.5.3
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,8 +13,8 @@
 --   [main] Chart Cue - Toggle performance mode.lua
 --   [main] Chart Cue - Next song.lua
 -- @changelog
---   Questions open in a window in the centre of Chart Cue. Tooltips show after a short delay, with wrapped lines.
---   Right-click menus on the panel, the tabs and the toolbar items (Hide ...); a Sync folder dropdown in the Library.
+--   A Light / Dark theme (Settings > Appearance > Theme); Dark stays the default.
+--   Darker panels for more contrast; the window title bar follows the theme.
 
 -- MIT License
 --
@@ -63,7 +63,6 @@ CFG.DEFAULT_DPI = 200
 CFG.JOB_TIMEOUT_SEC = 240       -- give up on a render batch after this long
 CFG.MAX_CACHED_TEXTURES = 3
 CFG.EXEC_NOWAIT = -2            -- ExecProcess timeout value meaning "don't wait"
-CFG.PAGE_BG = 0x2B2B2BFF
 -- Scrolling, zoom and MIDI
 CFG.MIDI_OVERRIDE_SEC = 1.5     -- MIDI/manual scroll overrides playback autoscroll this long
 CFG.ABS_SMOOTHING = 0.35        -- 0..1, higher = snappier absolute-mode following
@@ -100,7 +99,7 @@ CFG.WIN_MIN_W, CFG.WIN_MIN_H = 300, 200 -- smallest window size when resizing
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.5.2"      -- keep equal to @version in the header
+CFG.VERSION = "1.5.3"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.FEEDBACK_URL = "https://github.com/thunderfork/reaper-scripts/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
@@ -225,7 +224,40 @@ local COL = {
   ROW_HOVER = 0xFFFFFF12,      -- clickable list row under the mouse
   DANGER_HOVER = 0xF26D6D2E, DANGER_ACTIVE = 0xF26D6D50,  -- red outline buttons (remove all, reset, clear)
   NOTE_TEXT = 0x1A1A1AFF, -- notes on the page (dark text; the label colours: NOTE_COLORS)
+  HEADER_HOVER = 0x3B82F655, HEADER_ACTIVE = 0x3B82F677, -- list headers (collapsing sections, selectables)
+  TEXT_SEL = 0x3B82F666,       -- selected text in a field
+  PAGE_BG = 0x2B2B2BFF,        -- the page area behind the PDF page
+  ORANGE = 0xF2994AFF,         -- the setlist status "WAITING - PRESS PLAY"
+  TITLE_BG = 0x0F1114FF, TITLE_BG_ACTIVE = 0x1A1C21FF, -- the window title bar (in the theme, not ImGui's blue)
+  -- on the PDF page (the same in both themes: they sit on the page)
+  OVERLAY = 0x000000BB, OVERLAY_SOFT = 0x000000AA, -- button and badge backgrounds on the page
+  BANNER_BG = 0x3A3200E6,      -- the banner at the top of the page
+  LABEL_BG = 0x101318F2,       -- the large label on the page
 }
+
+-- The themes (Settings > Appearance > Theme): the colours that change. Dark: the values above. Light: light panels,
+-- white fields, dark text; the accent and the colours on the PDF page stay.
+local THEMES = { dark = {} }
+for k, v in pairs(COL) do THEMES.dark[k] = v end
+THEMES.light = {
+  RED = 0xD43F3FFF, YELLOW = 0xB7860BFF, GREEN = 0x2E9E5BFF, GREY = 0x6B7280FF,
+  ACCENT = 0x2F6FE0FF, ACCENT_HOVER = 0x3B82F6FF, ACCENT_ACTIVE = 0x2559C7FF, ACTIVE_BG = 0x3B82F617,
+  HEADING = 0x2459C2FF,
+  WIN_BG = 0xDDE1E7FF, TAB_BG = 0xD0D5DDFF, PANEL_BG = 0xF4F5F7FF, TAB_HOVER = 0xC4CAD3FF,
+  FIELD = 0xFFFFFFFF, FIELD_HOVER = 0xEEF2F7FF, FIELD_ACTIVE = 0xE1EAFAFF,
+  BTN = 0xE3E7EDFF, BTN_HOVER = 0xD5DBE3FF, BTN_ACTIVE = 0xC5CCD7FF,
+  LINE = 0xCBD1DAFF, TOGGLE_OFF = 0xB3BAC6FF,
+  SCROLL_TRACK = 0xE6E9EEFF, SCROLL_THUMB = 0xA3A9B3FF, SCROLL_THUMB_ACTIVE = 0x6E747EFF,
+  TEXT = 0x2A2D33FF, TEXT_BRIGHT = 0x101216FF, TEXT_MAIN = 0x1E2127FF, TEXT_DIM = 0x667085FF,
+  ROW_HOVER = 0x0000000F, DANGER_HOVER = 0xD43F3F24, DANGER_ACTIVE = 0xD43F3F40,
+  HEADER_HOVER = 0x3B82F626, HEADER_ACTIVE = 0x3B82F640, TEXT_SEL = 0x3B82F64D,
+  PAGE_BG = 0xC9CDD4FF, ORANGE = 0xD9771FFF,
+  TITLE_BG = 0xD0D5DDFF, TITLE_BG_ACTIVE = 0xE6E9EEFF,
+}
+-- Sets the colours of a theme ("dark" or "light") in COL (every frame reads COL: no restart).
+local function apply_theme(name)
+  for k, v in pairs(THEMES[name] or THEMES.dark) do COL[k] = v end
+end
 
 -- Module tables (declared up front so every function can reference them)
 local Util = {}    -- general helper functions
@@ -319,6 +351,7 @@ local S = {
   split_layout = "stack",      -- 2 PDFs on screen (part 1 + part 2): "stack" (top and bottom) or "side" (side by side)
   split_frac = 0.5,            -- 2 PDFs: share of part 1 (the divider position, 0.2 .. 0.8)
   comfortable = false,         -- "Comfortable layout": more empty space (compact is the default)
+  theme = "dark",              -- Settings > Appearance > Theme: "dark" (the default, for the stage) or "light"
   dim_page = false, dim_level = 0.65,   -- dim mode: page brightness 0.25..1 (no re-render)
   turn_flash = true,           -- accent border for a moment when the page turns during playback
   close_with_project = true,   -- close Chart Cue when its project closes or is replaced in the same tab
@@ -399,6 +432,7 @@ function Util.validate_settings()
   one_of("page_layout", "single", "stack", "side")
   one_of("page_turn", "rolling", "book")
   one_of("cont_turn", "smooth", "jump")
+  one_of("theme", "dark", "light")
   one_of("split_layout", "stack", "side")
   num("split_frac", 0.2, 0.8)
   if not S.settings_open:match("^[01]+$") then S.settings_open = D.settings_open end
@@ -4997,6 +5031,9 @@ function UI.push_theme(ctx)
     nv = nv + 1
   end
   col(ImGui.Col_WindowBg, COL.WIN_BG)
+  col(ImGui.Col_TitleBg, COL.TITLE_BG)
+  col(ImGui.Col_TitleBgActive, COL.TITLE_BG_ACTIVE)
+  col(ImGui.Col_TitleBgCollapsed, COL.TITLE_BG)
   col(ImGui.Col_ChildBg, COL.TRANSPARENT)
   col(ImGui.Col_PopupBg, COL.PANEL_BG)
   col(ImGui.Col_Border, COL.LINE)
@@ -5007,8 +5044,8 @@ function UI.push_theme(ctx)
   col(ImGui.Col_ButtonHovered, COL.BTN_HOVER)
   col(ImGui.Col_ButtonActive, COL.BTN_ACTIVE)
   col(ImGui.Col_Header, COL.ACTIVE_BG)
-  col(ImGui.Col_HeaderHovered, 0x3B82F655)
-  col(ImGui.Col_HeaderActive, 0x3B82F677)
+  col(ImGui.Col_HeaderHovered, COL.HEADER_HOVER)
+  col(ImGui.Col_HeaderActive, COL.HEADER_ACTIVE)
   col(ImGui.Col_CheckMark, COL.ACCENT)
   col(ImGui.Col_SliderGrab, COL.ACCENT)
   col(ImGui.Col_SliderGrabActive, COL.ACCENT_HOVER)
@@ -5019,7 +5056,7 @@ function UI.push_theme(ctx)
   col(ImGui.Col_ScrollbarGrab, COL.BTN_HOVER)
   col(ImGui.Col_ScrollbarGrabHovered, COL.BTN_ACTIVE)
   col(ImGui.Col_ScrollbarGrabActive, COL.TOGGLE_OFF)
-  col(ImGui.Col_TextSelectedBg, 0x3B82F666)
+  col(ImGui.Col_TextSelectedBg, COL.TEXT_SEL)
   var(ImGui.StyleVar_FrameRounding, 6)
   var(ImGui.StyleVar_GrabRounding, 6)
   var(ImGui.StyleVar_PopupRounding, 6)
@@ -6918,7 +6955,14 @@ function UI.draw_appearance_tab(ctx)
 
 
   UI.group_sep(ctx)
-  UI.heading(ctx, "Layout", "Comfortable layout: more empty space between rows and sections. Buttons, fields and tabs keep their size.", "computer")
+  UI.heading(ctx, "Layout", "Theme: Dark (the default, for dark stages) or Light (light panels and fields, dark text; for "
+    .. "daylight or a light REAPER theme). The PDF page does not change.\n\n"
+    .. "Comfortable layout: more empty space between rows and sections. Buttons, fields and tabs keep their size.", "computer")
+  UI.field(ctx, "Theme")
+  local thi
+  ch, thi = ImGui.Combo(ctx, "##theme", S.theme == "light" and 1 or 0, "Dark\0Light\0")
+  if ch then S.theme = (thi == 1) and "light" or "dark"; apply_theme(S.theme); R.tb_cache = nil; Util.mark_dirty() end
+  UI.tip(ctx, "Dark: for dark stages (the default). Light: light panels and fields, dark text.")
   ch, S.comfortable = UI.checkbox(ctx, "Comfortable layout", S.comfortable)
   if ch then Util.mark_dirty() end
   UI.tip(ctx, "More empty space between rows and sections. Buttons, fields and tabs keep their size.")
@@ -7930,7 +7974,7 @@ function UI.draw_now_view(ctx, l, x0, y0, w, h, small, show_next, show_times)
   local pill_txt, pill_col
   if not on then pill_txt, pill_col = "SETLIST ORDER OFF", COL.TEXT_DIM
   elseif hold and hold.t_end then pill_txt, pill_col = "PAUSE", COL.YELLOW
-  elseif hold then pill_txt, pill_col = "WAITING  -  PRESS PLAY", 0xF2994AFF
+  elseif hold then pill_txt, pill_col = "WAITING  -  PRESS PLAY", COL.ORANGE
   elseif playing then pill_txt, pill_col = "PLAYING", COL.GREEN
   elseif paused then pill_txt, pill_col = "PAUSED", COL.TEXT_DIM
   else pill_txt, pill_col = "READY", COL.ACCENT_HOVER end
@@ -9188,7 +9232,7 @@ function UI.draw_perf_exit(ctx, dl, x0, y0, area_w, view_h)
     if near or Util.now() - R.perf_t < 2.5 or Util.now() - R.perf_tap_t < 3 then
       local over = mx >= bx0 and mx <= bx1 and my >= by0 and my <= by1
       R.perf_btn_over = over
-      ImGui.DrawList_AddRectFilled(dl, bx0, by0, bx1, by1, over and COL.ACCENT or 0x000000BB, 6)
+      ImGui.DrawList_AddRectFilled(dl, bx0, by0, bx1, by1, over and COL.ACCENT or COL.OVERLAY, 6)
       ImGui.DrawList_AddText(dl, bx0 + 10, by0 + 6, COL.WHITE, lbl)
       if over and ImGui.IsMouseClicked(ctx, 0) then UI.toggle_perf() end
     end
@@ -9206,7 +9250,7 @@ end
 function UI.part_tag(ctx, dl, txt, px, py, pw, active)
   local tw, th = ImGui.CalcTextSize(ctx, txt)
   local tx = px + pw - CFG.SCROLLBAR_W - 14 - tw
-  ImGui.DrawList_AddRectFilled(dl, tx - 6, py + 6, tx + tw + 6, py + th + 14, active and COL.ACCENT or 0x000000AA, 6)
+  ImGui.DrawList_AddRectFilled(dl, tx - 6, py + 6, tx + tw + 6, py + th + 14, active and COL.ACCENT or COL.OVERLAY_SOFT, 6)
   ImGui.DrawList_AddText(dl, tx, py + 10, active and COL.WHITE or COL.TEXT_DIM, txt)
 end
 
@@ -9496,7 +9540,7 @@ function UI.draw_view(ctx, view_w, view_h)
 
   Nav.update_motion()
 
-  ImGui.DrawList_AddRectFilled(dl, x0, y0, x0 + area_w, y0 + view_h, CFG.PAGE_BG)
+  ImGui.DrawList_AddRectFilled(dl, x0, y0, x0 + area_w, y0 + view_h, COL.PAGE_BG)
   R.prect_n = 0 -- the page rectangles of this frame (for the notes)
   if img then
     -- snap to whole screen pixels so the texture is never sampled at half-pixel offsets (blur)
@@ -9615,7 +9659,7 @@ function UI.draw_view(ctx, view_w, view_h)
     local txt = UI.trunc_text(ctx, string.format('No PDF for "%s" - showing the last page. Autoscroll paused.',
       reg.name ~= "" and reg.name or "(unnamed region)"), area_w - 24)
     local _, th = ImGui.CalcTextSize(ctx, txt)
-    ImGui.DrawList_AddRectFilled(dl, x0, y0, x0 + area_w, y0 + th + 10, 0x3A3200E6)
+    ImGui.DrawList_AddRectFilled(dl, x0, y0, x0 + area_w, y0 + th + 10, COL.BANNER_BG)
     ImGui.DrawList_AddText(dl, x0 + 10, y0 + 5, COL.YELLOW, txt)
     badge_y = y0 + th + 18
   end
@@ -9624,7 +9668,7 @@ function UI.draw_view(ctx, view_w, view_h)
     local bx = x0 + 10
     local function badge(txt, col)
       local tw, th = ImGui.CalcTextSize(ctx, txt)
-      ImGui.DrawList_AddRectFilled(dl, bx - 6, badge_y - 4, bx + tw + 6, badge_y + th + 4, 0x000000AA, 6)
+      ImGui.DrawList_AddRectFilled(dl, bx - 6, badge_y - 4, bx + tw + 6, badge_y + th + 4, COL.OVERLAY_SOFT, 6)
       ImGui.DrawList_AddText(dl, bx, badge_y, col, txt)
       bx = bx + tw + 20
     end
@@ -9639,7 +9683,7 @@ function UI.draw_view(ctx, view_w, view_h)
       local tw, th = ImGui.CalcTextSize(ctx, nl)
       tw, th = tw * k, th * k
       local lx, ly = x0 + area_w - tw - 28, y0 + view_h - th - 28
-      ImGui.DrawList_AddRectFilled(dl, lx - 12, ly - 7, lx + tw + 12, ly + th + 7, 0x101318F2, 8)
+      ImGui.DrawList_AddRectFilled(dl, lx - 12, ly - 7, lx + tw + 12, ly + th + 7, COL.LABEL_BG, 8)
       ImGui.DrawList_AddRect(dl, lx - 12, ly - 7, lx + tw + 12, ly + th + 7, COL.ACCENT, 8, 0, 2)
       ImGui.DrawList_AddTextEx(dl, ImGui.GetFont(ctx), ImGui.GetFontSize(ctx) * k, lx, ly, COL.WHITE, nl)
     end
@@ -9918,6 +9962,7 @@ function UI.init()
   r.SetExtState(CFG.EXT, "quit", "", false) -- a flag left by an instance that stopped before reading it
   r.SetExtState(CFG.EXT, "cmd_q", "", false) -- old action commands must not run now
   Util.load_settings()
+  apply_theme(S.theme)
   S.tab = Util.clamp(math.floor(S.tab), 1, TAB_HELP)
   R.ctx = r.ImGui_CreateContext(CFG.TITLE)
   -- the window moves only by its title bar, so a drag on Chart Cue's resize edges never moves it
@@ -9958,6 +10003,7 @@ if test then
     CFG, S, R, Util, PDF, Project, Nav, Midi, UI, Msg, Cues, Pane
   test.Setlist, test.Notes = Setlist, Notes
   test.get_P = function() return P end
+  test.apply_theme = apply_theme -- (tests/shots.lua: the screenshots of the light theme)
   return
 end
 UI.init()
