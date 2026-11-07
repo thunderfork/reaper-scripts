@@ -79,10 +79,16 @@
 - Step 7 done (7 November 2026): Fill songs writes the control values at the song starts; Live chase (window
   open; Settings > Playback); Send state (status bar). Custom ramp lengths (bars.beats).
 - Next: the tests on the unit (below), then a release of version 1 (ask before the first push).
+- 0.2 (after the 0.1 release, the user's decision on 7 November 2026): device profiles, so other units are a table
+  entry: first Line 6 Helix (Floor, LT, Rack) and HX Stomp / Stomp XL (snapshots on CC#69: 8 / 3 / 4; their preset
+  and setlist numbering; their own CCs). The user provides the MIDI tables from the manuals; no units to test, so
+  the profiles are marked "untested" in the device list. Generalize: preset labels, scene CC and count, folder CC,
+  the word scene / snapshot.
 - Version 2: Record and Learn, copy scenes between songs, scenes from the keyboard, a check report, a cue
   sheet, import / export of the names, Tuner / Looper items.
 - To test on the unit: are Hz and dB spread evenly over the pedal range? Does the pedal value survive a preset
-  change? The USB port names of both models. REAPER's own chase of Program Changes and CCs.
+  change? The USB port name: the mini is checked ("2- Quad Cortex mini MIDI OUT", 7 November 2026); the full-size Quad
+  Cortex is not checked (no unit; expected to work when its name has "Cortex"; the output can be picked by hand). REAPER's own chase of Program Changes and CCs.
 
 ## Segue (the setlist script, since 4 November 2026)
 
