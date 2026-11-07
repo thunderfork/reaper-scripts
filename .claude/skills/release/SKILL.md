@@ -22,6 +22,10 @@ restart of VS Code fixes it.
   Only other files (CLAUDE.md, PLAN.md, README.md, tools, tests, .claude): commit and push without a
   version or a release, and say so.
 - A commit that is already made (the user said "commit only" before): do not raise the version again.
+- ReaPack links a version number to the FIRST commit where that number appears in the header. So a version
+  that was already in an earlier commit (also a script committed before its first push) must get a new number when
+  the file changed since, else ReaPack installs the old file (MIDI Pilot 0.1, 7 November 2026). After the push, check
+  in index.xml that the new version's source URL has the commit of this push.
 
 ## 1. Version (only when the scripts changed and the version was not raised yet)
 
