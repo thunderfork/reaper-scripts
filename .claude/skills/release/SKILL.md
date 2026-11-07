@@ -16,9 +16,8 @@ restart of VS Code fixes it.
 
 - `git status` and `git log <last tag>..HEAD`: what is new. Scripts in `Chart Cue/` changed = a new
   Chart Cue version; scripts in `Segue/` changed = a new Segue version (both can change in one commit).
-  MIDI Pilot (`MIDI Pilot/`): in development. A push publishes it on ReaPack (the workflow indexes every
-  script with a header): ask the user before its first push; after that, a change is a new MIDI Pilot version
-  (`@version` and `CFG.VERSION`), with its own GitHub Release (tag `midipilot-vX.Y`).
+  Scripts in `MIDI Pilot/` changed = a new MIDI Pilot version (`@version` and `CFG.VERSION`), with its own GitHub
+  Release (tag `midipilot-vX.Y`).
   Only other files (CLAUDE.md, PLAN.md, README.md, tools, tests, .claude): commit and push without a
   version or a release, and say so.
 - A commit that is already made (the user said "commit only" before): do not raise the version again.

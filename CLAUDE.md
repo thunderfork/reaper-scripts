@@ -9,7 +9,7 @@ ReaPack category; keep each script's files there):
 - **Segue** (`Segue/Segue.lua`): a setlist-only script (no PDFs), with its own window and its own data. It
   reads 1 Chart Cue setting to avoid a conflict (see "Segue" at the end of this file). The 2 scripts have the
   same setlist logic and the same now playing view (a copy in each file).
-- **MIDI Pilot** (`MIDI Pilot/MIDI Pilot.lua`): "MIDI editor for Quad Cortex", in development (see "MIDI Pilot"
+- **MIDI Pilot** (`MIDI Pilot/MIDI Pilot.lua`): "MIDI editor for Quad Cortex", version 0.1.1 released (see "MIDI Pilot"
   at the end of this file). No relation to the other 2 scripts.
 
 The general rules (Working with me, Editing, Patch, Saved data, REAPER/Lua, Performance, Verification,
@@ -215,10 +215,13 @@ Every time I ask to commit and push:
 - File: `MIDI Pilot/MIDI Pilot.lua`. Version: `@version` and `CFG.VERSION` together (started at 0.1).
 - Modules: `CFG`, `COL`, `MODELS` (Quad Cortex / mini), `S` (this computer: ExtState "MIDI Pilot": the devices,
   the tab, the docker, the preset / scene / folder names, the timing), `R` (runtime), `P` (project data, ProjExtState "MIDI Pilot"/"cfg": the device tracks,
-  the track mode), `Util`, `Project`, `Dev` (devices, MIDI outputs, tracks), `Preset` (numbers, names, .reabank), `Midi` (preset and\n  scene changes in the MIDI items), `UI` (tabs: Songs, Lanes, Presets,
+  the track mode), `Util`, `Project`, `Dev` (devices, MIDI outputs, tracks), `Preset` (numbers, names, .reabank), `Midi` (preset and
+  scene changes in the MIDI items), `UI` (tabs: Songs, Lanes, Presets,
   Settings, Help).
-- The agreed plan (version 1 in 7 steps, version 2 later) is in my memory; steps 1-4 (window, devices, tracks; presets; scenes; knobs in Lanes) are done.
+- The agreed plan is in my memory: version 1 (all 7 steps) is done and released as 0.1.1 (7 November 2026); next is
+  0.2 (device profiles for Helix and HX Stomp, PLAN.md), then version 2.
 - Rule: the MIDI is normal REAPER MIDI; the show never needs the window.
 - Checks, tests (`tests\midipilot.lua`, result in `tests\result_midipilot.txt`) and deploy (`Scripts\MIDI Pilot\`,
   or the ReaPack folder) include it.
-- A push publishes it on ReaPack (the workflow indexes every script with a header): ask me before the first push.
+- Release: a change in `MIDI Pilot/` is a new MIDI Pilot version (raise its version, changelog) with its own GitHub
+  Release (tag `midipilot-vX.Y`, "Releasing a version" step 4).

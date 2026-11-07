@@ -1,7 +1,7 @@
-# Thunderfork scripts: plan (state on 5 November 2026)
+# Thunderfork scripts: plan (state on 7 November 2026)
 
 ## Context
-- File: `Chart Cue/Chart Cue.lua`, public version 1.5. Chart Cue's data (settings.ini, page cache, tmp, autostart.lua, guide) is in REAPER\Data\Chart Cue since 1.2. REAPER 7 ReaScript, Lua 5.4, ReaImGui API pinned to 0.9.3 through the ReaTeam shim. Windows only.
+- File: `Chart Cue/Chart Cue.lua`, public version 1.5.2. Chart Cue's data (settings.ini, page cache, tmp, autostart.lua, guide) is in REAPER\Data\Chart Cue since 1.2. REAPER 7 ReaScript, Lua 5.4, ReaImGui API pinned to 0.9.3 through the ReaTeam shim. Windows only.
 - Modules: CFG, S (settings.ini), R (runtime), COL, P (project config in the .rpp ExtState "ChartCue"/"cfg"), Util, PDF, Project, Nav, Midi, UI, Cues, Notes, Setlist, Pane, Msg, Dock, Autostart.
 - Layout system: UI.form / UI.field / UI.button_pair / UI.full_button, CFG.SP + UI.sp, one control height UI.h, one text rule CFG.TEXT_LIFT. Compact layout is the default.
 - Constraints:
@@ -24,15 +24,10 @@
 - 1.4.1 (4 November 2026): code clean-up with no visible change: the toolbar is built again only when it changes (R.tb_cache); the PDF 1 / PDF 2 cue list choice is always set back (Cues.with_part); named sizes in CFG and CFG.UI_SCALE for the icons; the UI test is in tools.
 - 1.5 (5 November 2026): PNG / JPG images (Add PDF only); the marker list in the cue-list layout, with Record, the add buttons, the marker colour and Copy cues into markers; the 3-band setlist view; the armed exact stop; tab icons and 2-line rows when narrow; numpad zoom; the Segue conflict command. Segue 0.1 released with it.
 - 1.5.1 (5 November 2026): clean-up with no visible change: the old keys tab_ver, sl_view, fixed_start, continue_after_end and scroll_mode=fixed removed; housekeeping skill; .gitattributes keeps LF.
-
-## Done for the next patch (not released yet)
-- Released on 7 November 2026: Chart Cue 1.5.2, Segue 1.0, MIDI Pilot 0.1.1 (first publication; 0.1 on ReaPack
-  pointed to an early build, because ReaPack links a version to the commit where its number first appeared). From now on Segue and
-  MIDI Pilot get their own GitHub Releases too (tags segue-vX.Y, midipilot-vX.Y).
-- Chart Cue: the questions (UI.ask) show in a centred popup window (UI.draw_ask_popup); Segue's question opens
-  in the centre too. The short messages in the title lines stay as they are.
-- Tooltips: 0.5 s delay and wrapped lines in all 3 scripts. Chart Cue: right-click menus on the panel, the
-  tabs and the toolbar items ("Hide ..."); the "Sync folder" dropdown; tooltip texts reviewed.
+- 1.5.2 (7 November 2026): questions in a centred window (UI.draw_ask_popup); tooltips with a 0.5 s delay and wrapped
+  lines; right-click menus on the panel, the tabs and the toolbar items ("Hide ..."); the Sync folder dropdown.
+  Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
+  (tags segue-vX.Y, midipilot-vX.Y).
 
 ## Release checklist (do before sharing a new version)
 1. Version: @version and CFG.VERSION are equal; @changelog has 1–3 user-facing lines.
@@ -63,7 +58,9 @@
 - PDF 2: a "(both)" view of the 2 cue lists in the Cues tab, and MIDI CCs for PDF 2 (not in 1.3).
 - UI scale 100 / 125 / 150 %: the drawn icons already use CFG.UI_SCALE, and the repeated sizes have names in CFG (since the code clean-up after 1.4). Still needed: the fonts rebuilt between frames, every pixel size in CFG times the scale, and a test of every screen at each scale. Ask the user first.
 
-## MIDI Pilot (MIDI editor for Quad Cortex / Quad Cortex mini, since 6 November 2026; not released)
+## MIDI Pilot (MIDI editor for Quad Cortex / Quad Cortex mini, since 6 November 2026)
+- 0.1.1 (released 7 November 2026): the full version 1 (steps 1-7, below). 0.1 on ReaPack points to an early build:
+  ReaPack links a version to the commit where its number first appeared (the release skill now checks this).
 - Done (version 1, steps 1-4): devices (model, MIDI output / input, channel, latency, own or shared track,
   a kept track brings its device back); presets at the song starts (timing in ms or note values, Fill songs,
   Presets match Regions, names, folders, the .reabank file, Send now); scenes (strip, list with bar.beat and
@@ -84,7 +81,7 @@
   red outline, small buttons), Songs bar: Fill songs + Tools / Clear dropdowns, Help in formatted topics, Presets
   list icons. Forms 280 wide. Settings in 5 sections (Devices, Tracks, Playback,
   Lists, General), 1 open at a time, saved (as in Chart Cue).
-- Next: the tests on the unit (below), then a release of version 1 (ask before the first push).
+- Next: the 2 open tests on the unit (below), then 0.2.
 - 0.2 (after the 0.1 release, the user's decision on 7 November 2026): device profiles, so other units are a table
   entry: first Line 6 Helix (Floor, LT, Rack) and HX Stomp / Stomp XL (snapshots on CC#69: 8 / 3 / 4; their preset
   and setlist numbering; their own CCs). The user provides the MIDI tables from the manuals; no units to test, so
@@ -98,6 +95,8 @@
 
 ## Segue (the setlist script, since 4 November 2026)
 
+- 1.0 (released 7 November 2026, with Chart Cue 1.5.2): a centred question, tooltips with a delay; its own GitHub
+  Release (segue-v1.0).
 - 0.1 (released 5 November 2026, with Chart Cue 1.5): setlists from the regions, Stop / Continue, pauses,
   skip, drag and arrows, the play buttons, the "now playing" area with its grip, more than 1 setlist (More...), Lock setlist,
   undo (Ctrl+Z), the "Segue - Next song" action, the gear menu (now playing options, docking, Help).
