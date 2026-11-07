@@ -157,7 +157,8 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 - `README.md`: for other users. `tools\`: check.ps1 (with `.luarc.json`: the static checks), test.ps1,
   deploy.ps1, release.ps1, shots.ps1, ui-test.ps1 (with ui-test.lua: the UI test). `tests\`: run.lua (Chart Cue logic tests), segue.lua (Segue logic tests), midipilot.lua (MIDI Pilot logic tests), shots.lua, test.pdf, make_pdf.lua
   (makes test.pdf; run it with the normal Lua, not REAPER).
-- `LICENSE` (MIT). `tools\release.ps1`: makes `release\Chart-Cue-<version>.zip` (git-ignored).
+- `LICENSE` (MIT). `tools\release.ps1 -Script "<name>"`: makes `release\<Name>-<version>.zip` for Chart Cue, Segue and
+  MIDI Pilot (git-ignored; default: all 3).
 - `.github/workflows/reapack-index.yml`: GitHub builds `index.xml` (the ReaPack repository
   file) after each push to main. Do not edit `index.xml` by hand.
 - Temporary files (test logs, helper scripts): in the scratchpad folder, never in the repository.
@@ -175,15 +176,17 @@ Do not move state between `CFG`, `S`, `R`, and `P` without asking.
 1. Run the release checklist in PLAN.md (in REAPER).
 2. Raise `@version` and `CFG.VERSION` together; write 1-3 user-facing `@changelog` lines.
 3. Commit and push (when I ask). Check the "ReaPack index" workflow; ReaPack users then get the update.
-4. `.\tools\release.ps1`, then create the GitHub Release with `gh` (logged in as
-   thunderfork): tag `vX.Y` on main, title "Chart Cue X.Y", the changelog lines as notes, and the zip.
+4. `.\tools\release.ps1 -Script "<name>"`, then create the GitHub Release with `gh` (logged in as
+   thunderfork), for each script with a new version: Chart Cue: tag `vX.Y`, title "Chart Cue X.Y"; Segue: tag
+   `segue-vX.Y`, title "Segue X.Y"; MIDI Pilot: tag `midipilot-vX.Y`, title "MIDI Pilot X.Y"; on main, the
+   changelog lines as notes, and the zip.
 
 Every time I ask to commit and push:
 - If the scripts in `Chart Cue/` changed, the commit is a new Chart Cue version: do steps 2-4 above
   (raise the version, commit and push, check the workflow, then create the GitHub Release and upload
   the zip) without asking again.
-- If the scripts in `Segue/` changed, the commit is also a new Segue version (see "Segue": its version and
-  changelog; no GitHub Release unless I ask).
+- If the scripts in `Segue/` (or `MIDI Pilot/`) changed, the commit is also a new version of that script (its
+  version and changelog), with its own GitHub Release (step 4), without asking again.
 - If only other files changed (CLAUDE.md, PLAN.md, README.md, tools, tests, skills), commit and push without
   a new version or release, and say so.
 
@@ -204,8 +207,8 @@ Every time I ask to commit and push:
   `tests\run.lua`; it ends with "0 failed" in `tests\result_segue.txt`).
 - Deploy: `deploy.ps1` also copies Segue, to `Scripts\Thunderfork Scripts\Segue\` when ReaPack
   installed it, else to `Scripts\Segue\`.
-- Release: a change in `Segue/` is a new Segue version (raise its version, changelog). A GitHub
-  Release is made only when I ask (the zip in `release.ps1` is Chart Cue only).
+- Release: a change in `Segue/` is a new Segue version (raise its version, changelog) with its own GitHub
+  Release (tag `segue-vX.Y`, "Releasing a version" step 4; since 1.0).
 
 ## MIDI Pilot
 

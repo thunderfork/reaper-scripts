@@ -26,7 +26,8 @@
 - 1.5.1 (5 November 2026): clean-up with no visible change: the old keys tab_ver, sl_view, fixed_start, continue_after_end and scroll_mode=fixed removed; housekeeping skill; .gitattributes keeps LF.
 
 ## Done for the next patch (not released yet)
-- At the next push: Segue becomes version 1.0 (the user's decision, 6 November 2026); Chart Cue 1.5.2.
+- At the next push: Segue becomes version 1.0 (the user's decision, 6 November 2026); Chart Cue 1.5.2. From now on
+  Segue and MIDI Pilot get their own GitHub Releases too (tags segue-vX.Y, midipilot-vX.Y; 7 November 2026).
 - Chart Cue: the questions (UI.ask) show in a centred popup window (UI.draw_ask_popup); Segue's question opens
   in the centre too. The short messages in the title lines stay as they are.
 - Tooltips: 0.5 s delay and wrapped lines in all 3 scripts. Chart Cue: right-click menus on the panel, the

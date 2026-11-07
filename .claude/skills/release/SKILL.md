@@ -1,6 +1,6 @@
 ---
 name: release
-description: Commit, push and release Chart Cue, Segue and MIDI Pilot (a new version on ReaPack, and a GitHub Release for Chart Cue). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
+description: Commit, push and release Chart Cue, Segue and MIDI Pilot (a new version on ReaPack, and a GitHub Release for each script with a new version). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
 ---
 
 # Release
@@ -18,7 +18,7 @@ restart of VS Code fixes it.
   Chart Cue version; scripts in `Segue/` changed = a new Segue version (both can change in one commit).
   MIDI Pilot (`MIDI Pilot/`): in development. A push publishes it on ReaPack (the workflow indexes every
   script with a header): ask the user before its first push; after that, a change is a new MIDI Pilot version
-  (`@version` and `CFG.VERSION`), with no GitHub Release unless the user asks.
+  (`@version` and `CFG.VERSION`), with its own GitHub Release (tag `midipilot-vX.Y`).
   Only other files (CLAUDE.md, PLAN.md, README.md, tools, tests, .claude): commit and push without a
   version or a release, and say so.
 - A commit that is already made (the user said "commit only" before): do not raise the version again.
@@ -29,8 +29,7 @@ restart of VS Code fixes it.
 - `@changelog`: 1-3 user-facing lines (what the user gets, plain words), replacing the old lines.
 - `@provides`: every action script of the script's folder is listed.
 - PLAN.md: the history line of this version (Chart Cue: History; Segue: its own section).
-- Segue: the same steps in `Segue/Segue.lua` (its own version, starting from 0.1); a GitHub Release for
-  Segue only when the user asks (release.ps1 makes the Chart Cue zip only).
+- Segue and MIDI Pilot: the same steps in their own file (their own versions), each with its own GitHub Release.
 
 ## 2. Checks
 
@@ -53,9 +52,13 @@ restart of VS Code fixes it.
 
 ## 5. GitHub Release
 
-- `.\tools\release.ps1` (makes `release\Chart-Cue-X.Y.zip`).
-- `gh release create vX.Y "release\Chart-Cue-X.Y.zip" --target main --title "Chart Cue X.Y" --notes "<changelog lines>"`.
-- Check: `gh release view vX.Y`.
+For each script with a new version:
+- `.\tools\release.ps1 -Script "<name>"` (makes `release\Chart-Cue-X.Y.zip`, `release\Segue-X.Y.zip` or
+  `release\MIDI-Pilot-X.Y.zip`).
+- Chart Cue: `gh release create vX.Y "release\Chart-Cue-X.Y.zip" --target main --title "Chart Cue X.Y" --notes "<changelog lines>"`.
+- Segue: tag `segue-vX.Y`, title "Segue X.Y", the Segue zip. MIDI Pilot: tag `midipilot-vX.Y`, title "MIDI Pilot X.Y",
+  the MIDI Pilot zip. Release notes: that script's changelog lines.
+- Check: `gh release view <tag>`.
 
 ## 6. Report
 
