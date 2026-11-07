@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Thunderfork Scripts" commit="61b85c627cb55a7d25c169d64fac158024ad855a">
+<index version="1" name="Thunderfork Scripts" commit="29656541debfd73163fdd8a7ab2f00f450770078">
   <category name="Chart Cue">
     <reapack name="Chart Cue.lua" type="script" desc="Chart Cue: Open PDF Viewer">
       <metadata>
@@ -91,6 +91,15 @@ Right-click menus on the panel, the tabs and the toolbar items (Hide ...); a Syn
         <source main="main" file="Chart Cue - Toggle performance mode.lua">https://github.com/thunderfork/reaper-scripts/raw/f1a4d54b12c99501102231800ac575a6ccacc7a6/Chart%20Cue/Chart%20Cue%20-%20Toggle%20performance%20mode.lua</source>
         <source main="main" file="Chart Cue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/f1a4d54b12c99501102231800ac575a6ccacc7a6/Chart%20Cue/Chart%20Cue%20-%20Next%20song.lua</source>
       </version>
+      <version name="1.5.3" author="Nick Gkogkomitros" time="2026-11-07T04:01:14Z">
+        <changelog><![CDATA[A Light / Dark theme (Settings > Appearance > Theme); Dark stays the default.
+Darker panels for more contrast; the window title bar follows the theme.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/29656541debfd73163fdd8a7ab2f00f450770078/Chart%20Cue/Chart%20Cue.lua</source>
+        <source main="main" file="Chart Cue - Next page.lua">https://github.com/thunderfork/reaper-scripts/raw/29656541debfd73163fdd8a7ab2f00f450770078/Chart%20Cue/Chart%20Cue%20-%20Next%20page.lua</source>
+        <source main="main" file="Chart Cue - Previous page.lua">https://github.com/thunderfork/reaper-scripts/raw/29656541debfd73163fdd8a7ab2f00f450770078/Chart%20Cue/Chart%20Cue%20-%20Previous%20page.lua</source>
+        <source main="main" file="Chart Cue - Toggle performance mode.lua">https://github.com/thunderfork/reaper-scripts/raw/29656541debfd73163fdd8a7ab2f00f450770078/Chart%20Cue/Chart%20Cue%20-%20Toggle%20performance%20mode.lua</source>
+        <source main="main" file="Chart Cue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/29656541debfd73163fdd8a7ab2f00f450770078/Chart%20Cue/Chart%20Cue%20-%20Next%20song.lua</source>
+      </version>
     </reapack>
   </category>
   <category name="MIDI Pilot">
@@ -112,6 +121,12 @@ Right-click menus on the panel, the tabs and the toolbar items (Hide ...); a Syn
         <changelog><![CDATA[The full first version (0.1 on ReaPack was an early build): presets and scenes by name at the song starts, knob values in real units with ramps and
 swells, nudge and latency, and the state at the song starts (Fill songs, Live chase, Send state).]]></changelog>
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/61b85c627cb55a7d25c169d64fac158024ad855a/MIDI%20Pilot/MIDI%20Pilot.lua</source>
+      </version>
+      <version name="0.1.2" author="Nick Gkogkomitros" time="2026-11-07T04:01:14Z">
+        <changelog><![CDATA[The Quad Cortex scene colours (the scene that plays in full colour); double-click opens REAPER's MIDI editor there.
+A calmer Songs page ('Set up songs', Tools and Clear menus, cards); consistent forms; Settings in sections;
+formatted Help topics; darker panels and a Light / Dark theme (Settings > General > Theme).]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/29656541debfd73163fdd8a7ab2f00f450770078/MIDI%20Pilot/MIDI%20Pilot.lua</source>
       </version>
     </reapack>
   </category>
@@ -136,6 +151,12 @@ the lock, undo and the "Next song" action. REAPER stops at the exact end of a so
         <changelog><![CDATA[Version 1.0: questions open in the centre of the window, and tooltips show after a short delay.]]></changelog>
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/f1a4d54b12c99501102231800ac575a6ccacc7a6/Segue/Segue.lua</source>
         <source main="main" file="Segue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/f1a4d54b12c99501102231800ac575a6ccacc7a6/Segue/Segue%20-%20Next%20song.lua</source>
+      </version>
+      <version name="1.1" author="Nick Gkogkomitros" time="2026-11-07T04:01:14Z">
+        <changelog><![CDATA[A Light theme (gear menu > Light theme); Dark stays the default.
+Darker panels for more contrast; the window title bar follows the theme.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/29656541debfd73163fdd8a7ab2f00f450770078/Segue/Segue.lua</source>
+        <source main="main" file="Segue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/29656541debfd73163fdd8a7ab2f00f450770078/Segue/Segue%20-%20Next%20song.lua</source>
       </version>
     </reapack>
   </category>
