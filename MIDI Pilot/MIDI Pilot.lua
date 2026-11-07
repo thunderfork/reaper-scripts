@@ -1381,7 +1381,7 @@ end
 -- ---------------------------------------------------------------------------------------------------------
 -- Scenes. The rule: an edit writes exactly what you choose, where you choose it, and nothing else. A scene change is
 -- 1 CC#43 event (values 0-7); no edit moves, adds or removes other scene changes. Start scenes ("Set up songs") and
--- merging ("Merge repeated scenes") happen only with their buttons.
+-- merging ("Merge repeated scenes") happen only from their menu items.
 
 -- The scene changes of a device, read from its MIDI (cached like Midi.changes): sorted by time, { t, v, take, ppq }.
 function Midi.scenes(d)
@@ -1752,7 +1752,7 @@ function Midi.fill_item_starts(d, items)
   return n
 end
 
--- "Merge repeated scenes" (button): in each song, a scene change to the scene that already plays is removed (not the
+-- "Merge repeated scenes" (the Tools menu): in each song, a scene change to the scene that already plays is removed (not the
 -- start scene, not a part of a scene test), in 1 undo step. Returns the number removed.
 function Midi.merge_all(d)
   local n = 0
@@ -2284,6 +2284,7 @@ The Settings tab has 5 sections: Devices, Tracks, Playback, Lists and General. A
 - Preset timing (Playback): the preset change before, exactly at or after the song start, by milliseconds or a note value. Before (250 ms) gives the unit time to load the preset.
 - Nudge (Playback): the amount of the nudge buttons.
 - Lists: after how many rows a scene list or a value list scrolls.
+- Theme (General): Dark (the default, for dark stages) or Light. The scene colours stay.
 
 # Preset names in REAPER
 Settings > General: a bank file with your preset names. Load it in ReaControlMIDI on the device's track (Bank/Program Select > Load File, and leave Enable off): REAPER then shows '3B Song One' in place of numbers.]] },
@@ -2423,7 +2424,7 @@ function UI.small_button(label)
 end
 -- The width of a control in a form (as Chart Cue): every control of a form fills the control column cw, so all
 -- rows end at the same right edge; a row of 2 parts splits it. In a small window (no cw): CFG.W_POP.
-function UI.fit_w(_, _, cw)
+function UI.fit_w(cw)
   return math.floor(cw and math.min(CFG.FORM_MAX_W, cw) or CFG.W_POP)
 end
 -- The width of a dropdown in a table cell: as wide as its longest option needs (never less than min_w).
@@ -2930,9 +2931,7 @@ function UI.device_picker()
   local d = S.devices[R.cur_dev]
   if #S.devices > 1 then
     local _, cw = UI.row_start("Device")
-    local ln = ""
-    for _, x in ipairs(S.devices) do if #x.name > #ln then ln = x.name end end
-    ImGui.SetNextItemWidth(ctx, UI.fit_w("M", ln, cw))
+    ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
     if ImGui.BeginCombo(ctx, "##curdev", d.name) then
       for i, x in ipairs(S.devices) do
         if ImGui.Selectable(ctx, x.name .. "##cd" .. i, i == R.cur_dev) then R.cur_dev = i end
@@ -2973,7 +2972,7 @@ function UI.draw_pick()
   local d, m = pk.d, MODELS[pk.d.model]
   ImGui.Text(ctx, "Song: " .. pk.rg.name)
   UI.vgap(6)
-  ImGui.SetNextItemWidth(ctx, UI.fit_w("M", UI.longest(Preset.folder_items(d))))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w())
   local ch, v = ImGui.Combo(ctx, "Folder", pk.folder, Preset.folder_items(d))
   if ch then pk.folder = v end
   ImGui.SetNextItemWidth(ctx, CFG.W_POP)
@@ -3005,13 +3004,17 @@ function UI.set_preset(d, rg, folder, index)
   if Midi.set_song(d, rg, folder, index) then UI.toast("'" .. rg.name .. "' starts at 0:00: its preset change is at 0:00.", true) end
 end
 
--- The width of the preset dropdown of the song rows: Medium, as wide as the longest preset name needs (up to the
--- widest column), the same in every row (cached with the preset list).
+-- The width of the preset dropdown of the song rows: as wide as the longest preset name needs (at least CFG.W_M,
+-- at most CFG.FORM_MAX_W), the same in every row (measured once, cached with the preset list).
 function UI.preset_w(d)
   local c = R.pick_cache
   if c and c.d == d and c.pw then return c.pw end
-  local ln = "Choose by number..."
-  for _, it in ipairs(UI.pick_items(d)) do if #it.text + 2 > #ln then ln = "(" .. it.text .. ")" end end
+  local ln, lw = "Choose by number...", (ImGui.CalcTextSize(ctx, "Choose by number..."))
+  for _, it in ipairs(UI.pick_items(d)) do
+    local s = "(" .. it.text .. ")"
+    local w = ImGui.CalcTextSize(ctx, s)
+    if w > lw then ln, lw = s, w end
+  end
   local w = math.min(CFG.FORM_MAX_W, UI.cell_w(ln, CFG.W_M))
   if R.pick_cache then R.pick_cache.pw = w end
   return w
@@ -3123,7 +3126,8 @@ function UI.draw_song_row(d, i, rg, aw)
   local row_w = narrow and (aw - 14) or (name_area + 8 + right_w) -- (the strip ends where the row's last button ends)
   UI.draw_scene_strip(d, rg, x + 30, math.max(60, row_w - 30))
   if sc_open then
-    -- a card: a light rounded background behind the list (its height: from the last frame), and a gap after it
+    -- a card: a darker rounded background with a border behind the list (its height: from the last frame), and a
+    -- gap after it
     UI.vgap(CFG.SP_ROW + 6)
     local lw = math.max(60, row_w - 30)
     local _, cy0 = ImGui.GetCursorScreenPos(ctx)
@@ -3660,7 +3664,7 @@ function UI.draw_lanes_tab()
   local _, cw = UI.row_start("Control")
   local lk = ""
   for _, x in ipairs(knobs) do local s = string.format("%s  (CC#%d)", x.name, x.cc); if #s > #lk then lk = s end end
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   if ImGui.BeginCombo(ctx, "##lk", string.format("%s  (CC#%d)", k.name, k.cc)) then
     for i, x in ipairs(knobs) do
       if ImGui.Selectable(ctx, string.format("%s  (CC#%d)##k%d", x.name, x.cc, i), i == R.lane_k) then R.lane_k = i end
@@ -3878,7 +3882,7 @@ function UI.draw_lanes_tab()
   subtitle("Add a value", "at the edit cursor (" .. Util.fmt_beats(tc) .. ")")
   R.kadd = R.kadd or ""
   UI.row_start("Value")
-  local VCW = UI.fit_w(nil, nil, select(2, UI.form("Value")))
+  local VCW = UI.fit_w(select(2, UI.form("Value")))
   local ABW = UI.std_w("Add at edit cursor")
   R.kadd = hint_field("##kadd", VCW - ABW - CFG.CTRL_GAP, R.kadd, hint(k.min),
     "A value in " .. (unit ~= "" and unit or "numbers") .. " (" .. hint(k.min) .. " to " .. hint(k.max) .. "). The control jumps there and stays.")
@@ -3906,7 +3910,7 @@ function UI.draw_lanes_tab()
   subtitle("Add a ramp", "from the edit cursor (" .. Util.fmt_beats(tc) .. ")")
   local _, cw = UI.row_start("From / to / swell")
   local SWW = 36 + 8 + (ImGui.CalcTextSize(ctx, "Swell")) -- (the Swell toggle at the end of the row)
-  local DW = UI.fit_w(nil, nil, cw) - SWW - 2 * CFG.CTRL_GAP -- (the 2 fields and the arrow: the rest of the column)
+  local DW = UI.fit_w(cw) - SWW - 2 * CFG.CTRL_GAP -- (the 2 fields and the arrow: the rest of the column)
   local AW = 18                -- (the arrow between the 2 fields)
   local FW = math.floor((DW - AW - 2 * CFG.CTRL_GAP) / 2)
   rp.from = hint_field("##rfrom", FW, rp.from, hint(k.min), "The value at the start" .. (unit ~= "" and (" (" .. unit .. ")") or "") .. ".")
@@ -3926,14 +3930,14 @@ function UI.draw_lanes_tab()
   local bch, bk = UI.toggle_line("Swell", rp.back, "Swell: there and back (for example 0 - 100 - 0): a hold at the top, then the way back.")
   if bch then rp.back = bk end
   _, cw = UI.row_start("Length")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw) - ((RAMP_LENS[rp.len].custom) and (CFG.W_S + CFG.CTRL_GAP) or 0))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw) - ((RAMP_LENS[rp.len].custom) and (CFG.W_S + CFG.CTRL_GAP) or 0))
   local lch, li = ImGui.Combo(ctx, "##rlen", rp.len - 1, RAMP_LEN_ITEMS)
   if lch then rp.len = li + 1 end
   UI.tip("How long (beats follow the tempo, bars the time signature). Custom...: type it.\n"
     .. "'To the time selection end': select the end with REAPER's time selection.")
   if RAMP_LENS[rp.len].custom then rp.lenc = custom_field("##rlenc", rp.lenc) end
   _, cw = UI.row_start("Slope")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw) - ((rp.shape == 4) and (CFG.W_S + CFG.CTRL_GAP) or 0))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw) - ((rp.shape == 4) and (CFG.W_S + CFG.CTRL_GAP) or 0))
   local sch2, sh = ImGui.Combo(ctx, "##rshape", rp.shape, RAMP_SHAPE_ITEMS)
   if sch2 then rp.shape = sh end
   UI.tip("How the value moves.")
@@ -3948,7 +3952,7 @@ function UI.draw_lanes_tab()
   if rp.back then
     -- the swell rows, indented under Swell
     _, cw = UI.row_start("      Hold")
-    ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw) - ((rp.hold > 0 and RAMP_LENS[rp.hold].custom) and (CFG.W_S + CFG.CTRL_GAP) or 0))
+    ImGui.SetNextItemWidth(ctx, UI.fit_w(cw) - ((rp.hold > 0 and RAMP_LENS[rp.hold].custom) and (CFG.W_S + CFG.CTRL_GAP) or 0))
     local hch, hi = ImGui.Combo(ctx, "##rhold", rp.hold, HOLD_ITEMS)
     if hch then rp.hold = hi end
     UI.tip("How long the value stays at the top before it goes back. Custom...: type it.")
@@ -3957,13 +3961,13 @@ function UI.draw_lanes_tab()
     rp.v2 = hint_field("##rv2", 110, rp.v2, "= start", "The value at the end of the swell. Empty: back to the start value.\n"
       .. "It cannot go past the top (a swell up stays at or below its top, a swell down at or above its bottom).")
     _, cw = UI.row_start("      Length")
-    ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw) - ((RAMP_LENS[rp.blen].custom) and (CFG.W_S + CFG.CTRL_GAP) or 0))
+    ImGui.SetNextItemWidth(ctx, UI.fit_w(cw) - ((RAMP_LENS[rp.blen].custom) and (CFG.W_S + CFG.CTRL_GAP) or 0))
     local blch, bli = ImGui.Combo(ctx, "##rblen", rp.blen - 1, BACK_LEN_ITEMS)
     if blch then rp.blen = bli + 1 end
     UI.tip("How long the way back is. Custom...: type it.")
     if RAMP_LENS[rp.blen].custom then rp.blenc = custom_field("##rblenc", rp.blenc) end
     _, cw = UI.row_start("      Slope")
-    ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw) - ((rp.bshape == 4) and (CFG.W_S + CFG.CTRL_GAP) or 0))
+    ImGui.SetNextItemWidth(ctx, UI.fit_w(cw) - ((rp.bshape == 4) and (CFG.W_S + CFG.CTRL_GAP) or 0))
     local bsch, bsh = ImGui.Combo(ctx, "##rbshape", rp.bshape, RAMP_SHAPE_ITEMS)
     if bsch then rp.bshape = bsh end
     UI.tip("How the value moves on the way back.")
@@ -4056,7 +4060,7 @@ function UI.draw_folder_rename()
   ImGui.SetNextWindowPos(ctx, wx + ww / 2, wy + wh / 2, ImGui.Cond_Appearing(), 0.5, 0.5)
   if not ImGui.BeginPopupModal(ctx, "Rename folder##fren", true, ImGui.WindowFlags_AlwaysAutoResize()) then R.frename = nil; return end
   ImGui.Text(ctx, "The unit's name: " .. FOLDERS[fr.folder] .. ". Empty: this name again.")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w("L"))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w())
   if ImGui.IsWindowAppearing(ctx) then ImGui.SetKeyboardFocusHere(ctx) end
   local _
   _, fr.name = ImGui.InputText(ctx, "##frname", fr.name)
@@ -4082,7 +4086,7 @@ function UI.draw_presets_tab()
   R.lib_add = a
   local ch, v
   local _, cw = UI.row_start("Folder")
-  local FWD = UI.fit_w(nil, nil, cw)        -- (the column)
+  local FWD = UI.fit_w(cw)        -- (the column)
   local BW = UI.dlg_w("Rename...")          -- (the button at the end of the Folder and Name rows)
   ImGui.SetNextItemWidth(ctx, FWD - BW - CFG.CTRL_GAP)
   ch, v = ImGui.Combo(ctx, "##lfolder", a.folder, Preset.folder_items(d))
@@ -4252,7 +4256,7 @@ function UI.draw_preset_edit()
   UI.vgap(6)
   if not pe.confirm then
     local ch, v
-    ImGui.SetNextItemWidth(ctx, UI.fit_w("M", UI.longest(Preset.folder_items(d))))
+    ImGui.SetNextItemWidth(ctx, UI.fit_w())
     ch, v = ImGui.Combo(ctx, "Folder", pe.folder, Preset.folder_items(d))
     if ch then pe.folder = v end
     ImGui.SetNextItemWidth(ctx, CFG.W_POP)
@@ -4347,7 +4351,7 @@ function UI.draw_device_form()
   UI.heading("Device: " .. d.name, "The settings of the selected device. Click another row above to edit it.")
   local ch
   local _, cw = UI.row_start("Name")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   if R.name_edit == nil or R.name_edit_id ~= d.id then R.name_edit, R.name_edit_id = d.name, d.id end
   ch, R.name_edit = ImGui.InputText(ctx, "##devname", R.name_edit)
   if ImGui.IsItemDeactivated(ctx) then -- the name is used when you leave the field (an empty name: the model)
@@ -4360,14 +4364,14 @@ function UI.draw_device_form()
   UI.tip("For example Guitar or Bass. The track is called MIDI + this name.\nEmpty: the model name (Quad Cortex 1, 2 ... when you have more).")
 
   _, cw = UI.row_start("Model")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w("M", UI.longest(MODEL_ITEMS), cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local mi = (d.model == "mini") and 1 or 0
   ch, mi = ImGui.Combo(ctx, "##model", mi, MODEL_ITEMS)
   if ch then Dev.set_model(d, MODEL_IDS[mi + 1]) end
   UI.tip("Quad Cortex: scenes and presets A-H (32 banks).\nQuad Cortex mini: scenes A-D on 2 pages, presets A-D (64 banks).")
 
   _, cw = UI.row_start("MIDI input")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   if ImGui.BeginCombo(ctx, "##inport", d.inport ~= "" and d.inport or "(none)") then
     if ImGui.Selectable(ctx, "(none)", d.inport == "") then d.inport = ""; Util.mark_sdirty() end
     for _, p in ipairs(R.inports or {}) do
@@ -4379,7 +4383,7 @@ function UI.draw_device_form()
   UI.tip("The MIDI input that comes from this unit. A later version records what the unit sends\n"
     .. "(footswitches, expression pedal, preset loads). With USB it has the unit's name.")
   _, cw = UI.row_start("MIDI output")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   if ImGui.BeginCombo(ctx, "##port", d.port ~= "" and d.port or "(none)") then
     if ImGui.Selectable(ctx, "(none)", d.port == "") then d.port = ""; Util.mark_sdirty(); R.conflicts = nil; Dev.apply_out(d) end
     for _, p in ipairs(R.ports) do
@@ -4399,7 +4403,7 @@ function UI.draw_device_form()
 
 
   _, cw = UI.row_start("MIDI channel")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w("S", UI.longest(CHAN_ITEMS), cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local old_chan = d.chan
   ch, d.chan = ImGui.Combo(ctx, "##chan", d.chan, CHAN_ITEMS)
   if ch then
@@ -4418,7 +4422,7 @@ function UI.draw_device_form()
     .. "All channels: every unit on this output reacts.")
 
   _, cw = UI.row_start("Latency (ms)")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local lat
   ch, lat = UI.input_int("##lat", d.latency, 5)
   if ch then
@@ -4434,7 +4438,7 @@ function UI.draw_device_form()
   if tr then UI.tip("The track that MIDI Pilot writes on for this device (saved in the project).") end
   ImGui.SetCursorPosX(ctx, cx)
   local _, tcw = UI.form("Track")
-  local half = math.floor((UI.fit_w(nil, nil, tcw) - CFG.CTRL_GAP) / 2)
+  local half = math.floor((UI.fit_w(tcw) - CFG.CTRL_GAP) / 2)
   if UI.button("Create track", half, nil, not tr and "primary" or nil) then Dev.create_track(d) end
   UI.tip("Adds a track at the end of the project, with its MIDI output set to this device.")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
@@ -4462,7 +4466,7 @@ function UI.set_tracks()
     .. "Check new MIDI items: a MIDI item that you add to a device's track is checked once (its channel, a scene "
     .. "at each song start). Saved on this computer.")
   _, cw = UI.row_start("Track mode")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w("M", UI.longest(TRACK_MODE_ITEMS), cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local ti = (P.track_mode == "shared") and 1 or 0
   ch, ti = ImGui.Combo(ctx, "##trackmode", ti, TRACK_MODE_ITEMS)
   if ch then
@@ -4494,7 +4498,7 @@ function UI.set_playback()
     .. "so 'Before the song start' (default: 250 ms before) has it ready when the song starts. A song that starts at "
     .. "0:00 gets its change at 0:00.\n\nThe timing is used for new changes. Saved on this computer.")
   _, cw = UI.row_start("Preset change")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w("M", UI.longest(PC_WHEN_ITEMS), cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local wi = 0
   for k, w in ipairs(PC_WHEN) do if w == S.pc_when then wi = k - 1 end end
   ch, wi = ImGui.Combo(ctx, "##pcwhen", wi, PC_WHEN_ITEMS)
@@ -4502,21 +4506,21 @@ function UI.set_playback()
   UI.tip("Before: the preset is ready when the song starts. After: for a preset that must change later.")
   ImGui.BeginDisabled(ctx, S.pc_when == "exact")
   _, cw = UI.row_start("By")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w("M", UI.longest(PC_UNIT_ITEMS), cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local ui = (S.pc_unit == "notes") and 1 or 0
   ch, ui = ImGui.Combo(ctx, "##pcunit", ui, PC_UNIT_ITEMS)
   if ch then S.pc_unit = (ui == 1) and "notes" or "ms"; Util.mark_sdirty() end
   UI.tip("Milliseconds: a fixed time. Note value: on the beat grid, so it follows the tempo.")
   _, cw = UI.row_start(S.pc_unit == "notes" and "Note value" or "Milliseconds")
   if S.pc_unit == "notes" then
-    ImGui.SetNextItemWidth(ctx, UI.fit_w("M", UI.longest(PC_NOTE_ITEMS), cw))
+    ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
     local ni
     ch, ni = ImGui.Combo(ctx, "##pcnote", S.pc_note - 1, PC_NOTE_ITEMS)
     if ch then S.pc_note = ni + 1; Util.mark_sdirty() end
     UI.tip("How far before or after the song start, in notes of the project tempo.")
   else
     local ms
-    ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+    ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
     ch, ms = UI.input_int("##pcms", S.pc_ms, 50)
     if ch then S.pc_ms = Util.clamp(ms, 0, CFG.PC_MS_MAX); Util.mark_sdirty() end
     UI.tip("How many milliseconds before or after the song start (0-2000).")
@@ -4528,21 +4532,21 @@ function UI.set_playback()
     .. "(each scene change, and 'Song': all scene changes and knob values of the song) and in Lanes (each value). "
     .. "Milliseconds: a fixed time. Note value: on the beat grid, so it follows the tempo.\n\nSaved on this computer.")
   _, cw = UI.row_start("Nudge by")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w("M", UI.longest(PC_UNIT_ITEMS), cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local nui = (S.nudge_unit == "notes") and 1 or 0
   ch, nui = ImGui.Combo(ctx, "##nunit", nui, PC_UNIT_ITEMS)
   if ch then S.nudge_unit = (nui == 1) and "notes" or "ms"; Util.mark_sdirty() end
   UI.tip("Milliseconds: a fixed time. Note value: on the beat grid, so it follows the tempo.")
   _, cw = UI.row_start(S.nudge_unit == "notes" and "Note value" or "Milliseconds")
   if S.nudge_unit == "notes" then
-    ImGui.SetNextItemWidth(ctx, UI.fit_w("M", UI.longest(PC_NOTE_ITEMS), cw))
+    ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
     local nni
     ch, nni = ImGui.Combo(ctx, "##nnote", S.nudge_note - 1, PC_NOTE_ITEMS)
     if ch then S.nudge_note = nni + 1; Util.mark_sdirty() end
     UI.tip("How far 1 click moves a change, in notes of the project tempo.")
   else
     local nms
-    ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+    ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
     ch, nms = UI.input_int("##nms", S.nudge_ms, 5)
     if ch then S.nudge_ms = Util.clamp(nms, 1, CFG.NUDGE_MS_MAX); Util.mark_sdirty() end
     UI.tip("How far 1 click moves a change (1-1000 ms).")
@@ -4555,13 +4559,13 @@ function UI.set_lists()
     .. "than this, so the page stays short. In Lanes 'All songs', a click on a song name closes or opens its values.\n\n"
     .. "Saved on this computer.")
   _, cw = UI.row_start("Scene rows")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local sr
   ch, sr = UI.input_int("##srows", S.scene_rows, 1)
   if ch then S.scene_rows = Util.clamp(sr, 3, 100); Util.mark_sdirty() end
   UI.tip("A song's scene list scrolls after this many rows (3-100).")
   _, cw = UI.row_start("Lane rows")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local lr
   ch, lr = UI.input_int("##lrows", S.lane_rows, 1)
   if ch then S.lane_rows = Util.clamp(lr, 3, 100); Util.mark_sdirty() end
@@ -4573,7 +4577,7 @@ function UI.set_general()
   UI.heading("Appearance", "Theme: Dark (the default, for dark stages) or Light (light panels and fields, dark text; "
     .. "for daylight or a light REAPER theme). The scene colours stay.\n\nSaved on this computer.")
   _, cw = UI.row_start("Theme")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(nil, nil, cw))
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   local thi
   ch, thi = ImGui.Combo(ctx, "##theme", S.theme == "light" and 1 or 0, "Dark\0Light\0")
   if ch then S.theme = (thi == 1) and "light" or "dark"; apply_theme(S.theme); Util.mark_sdirty() end
@@ -4588,7 +4592,7 @@ function UI.set_general()
   UI.tip(Preset.reabank_path())
   local gx, gcw = UI.form("Preset names file")
   ImGui.SetCursorPosX(ctx, gx)
-  local ghalf = math.floor((UI.fit_w(nil, nil, gcw) - CFG.CTRL_GAP) / 2)
+  local ghalf = math.floor((UI.fit_w(gcw) - CFG.CTRL_GAP) / 2)
   if UI.button("Copy the path", ghalf) then ImGui.SetClipboardText(ctx, Preset.reabank_path()) end
   UI.tip("Copies the file path, to paste it in REAPER's file window.")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
