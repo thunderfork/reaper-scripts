@@ -26,6 +26,7 @@
 - 1.5.1 (5 November 2026): clean-up with no visible change: the old keys tab_ver, sl_view, fixed_start, continue_after_end and scroll_mode=fixed removed; housekeeping skill; .gitattributes keeps LF.
 
 ## Done for the next patch (not released yet)
+- At the next push: Segue becomes version 1.0 (the user's decision, 6 November 2026); Chart Cue 1.5.2.
 - Chart Cue: the questions (UI.ask) show in a centred popup window (UI.draw_ask_popup); Segue's question opens
   in the centre too. The short messages in the title lines stay as they are.
 - Tooltips: 0.5 s delay and wrapped lines in all 3 scripts. Chart Cue: right-click menus on the panel, the
@@ -69,8 +70,14 @@
 - Done (6 November 2026): scene edits are exact (no gap, no automatic start scene or merge; "Fill songs" and a
   "Merge repeated scenes" button); Scene test; new MIDI items are checked (channel, a scene at each song start;
   Settings > Tracks > Check new MIDI items); only the MIDI that REAPER plays is read; the status bar.
-- Next: step 5 nudge (ms and note values) and the latency of each device; step 6 ramps; step 7 the state at
-  the song starts (chase), live chase while open, Send state now. Then a release (ask before the first push).
+- Step 5 done (6 November 2026): latency = the track's playback offset; nudge buttons (rows, songs; Settings > Nudge).
+- Step 6 done (7 November 2026): ramps in Lanes (from / to, length in beats, bars or to the time selection end, slope).
+- Layout (7 November 2026): scene list and Lanes rows with column labels, icons (send, nudge, - +), editable
+  positions in bar.beat.hundredths (right-aligned), scrolling lists (Settings > Lists), Chart Cue's row look
+  (hover and the current row); swell with hold and its own way back; notices only in the status bar.
+- Step 7 done (7 November 2026): Fill songs writes the control values at the song starts; Live chase (window
+  open; Settings > Playback); Send state (status bar). Custom ramp lengths (bars.beats).
+- Next: the tests on the unit (below), then a release of version 1 (ask before the first push).
 - Version 2: Record and Learn, copy scenes between songs, scenes from the keyboard, a check report, a cue
   sheet, import / export of the names, Tuner / Looper items.
 - To test on the unit: are Hz and dB spread evenly over the pedal range? Does the pedal value survive a preset

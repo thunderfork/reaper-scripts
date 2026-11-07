@@ -431,6 +431,62 @@ test("new MIDI items: the channel of the item; a scene at each song start inside
   S.devices, S.lib, S.snames, S.check_items = keep, kl, ks, kci
 end)
 
+test("latency: the track's playback offset; nudge: ms and note values, a row, a song, never out of the song", function()
+  local Midi = C.Midi
+  local keep, kl, ks, kk, ku, km, kn = S.devices, S.lib, S.snames, S.knobs, S.nudge_unit, S.nudge_ms, S.nudge_note
+  S.devices = { { id = "L1", name = "Gtr", model = "qc", chan = 1, port = "", latency = 20, inport = "" } }
+  S.lib, S.snames, S.knobs = { L1 = {} }, { L1 = {} }, { L1 = C.Knob.parse("") }
+  local d = S.devices[1]
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  ok(math.abs(r.GetMediaTrackInfo_Value(tr, "D_PLAY_OFFSET") + 0.02) < 0.0001, "-20 ms")
+  eq(math.floor(r.GetMediaTrackInfo_Value(tr, "I_PLAY_OFFSET_FLAG")), 0, "on, in seconds")
+  d.latency = 0; Dev.apply_latency(d)
+  eq(math.floor(r.GetMediaTrackInfo_Value(tr, "I_PLAY_OFFSET_FLAG")), 1, "0 ms: off")
+  -- nudge values
+  S.nudge_unit, S.nudge_ms = "ms", 10
+  ok(math.abs(Midi.nudged(30, 1) - 30.01) < 0.00001, "10 ms later")
+  S.nudge_unit, S.nudge_note = "notes", 2 -- 1/16 note at 120 bpm = 125 ms
+  ok(math.abs(Midi.nudged(30, -1) - 29.875) < 0.0001, "1/16 note earlier")
+  -- a song: all scene changes (not the start scene) and the knob values move together
+  local B = R.regions[2] -- 20-50
+  Midi.add_scene(d, 20, 0); Midi.add_scene(d, 30, 1); Midi.add_scene(d, 40, 2)
+  Midi.set_cc(d, 1, 35, 64)
+  S.nudge_unit, S.nudge_ms = "ms", 500
+  ok(Midi.nudge_song(d, B, 1), "nudged")
+  local l = Midi.song_scenes(d, B)
+  ok(math.abs(l[1].t - 20) < 0.001, "the start scene stays"); ok(math.abs(l[2].t - 30.5) < 0.001); ok(math.abs(l[3].t - 40.5) < 0.001)
+  ok(math.abs(Midi.ccs(d, 1)[1].t - 35.5) < 0.001, "the knob value too"); eq(Midi.ccs(d, 1)[1].v, 64)
+  S.nudge_ms = 1000; Midi.add_scene(d, 49.5, 3)
+  eq(Midi.nudge_song(d, B, 1), false, "it would leave the song: nothing moves")
+  ok(math.abs(Midi.song_scenes(d, B)[2].t - 30.5) < 0.001, "unchanged")
+  -- step 7: the value of a control at a time (on a slope: on the way), the state at a time, Fill songs writes the
+  -- control values at the song starts
+  Midi.clear(d); Midi.clear(d, nil, true)
+  for _, e in ipairs(Midi.ccs(d, 1)) do Midi.remove_cc(d, 1, e) end
+  Midi.set_cc(d, 1, 5, 0); Midi.set_shape(d, 1, Midi.ccs(d, 1)[1], 1); Midi.set_cc(d, 1, 9, 100)
+  eq(Midi.cc_at(d, 1, 4), nil, "nothing before")
+  eq(Midi.cc_at(d, 1, 7), 50, "halfway on a straight slope"); eq(Midi.cc_at(d, 1, 30), 100, "after the last value")
+  Midi.set_song(d, R.regions[1], 1, 9); Midi.add_scene(d, 6, 3)
+  local st = Midi.state_at(d, 8)
+  ok(st.pc and st.pc.index == 9, "the preset"); eq(st.scene, 3, "the scene"); eq(st.ccs[1].cc, 1); eq(st.ccs[1].v, 75)
+  -- Live chase: only what differs from the place that played before (the same preset is not loaded again)
+  local _, pc1, sc1, cc1 = Midi.state_changes(d, 8)
+  eq(pc1, true, "no place before: the preset"); eq(sc1, 3); eq(#cc1, 1)
+  local _, pc2, sc2, cc2 = Midi.state_changes(d, 8, 7)
+  eq(pc2, false, "same preset: not again"); eq(sc2, nil, "same scene: not again"); eq(#cc2, 1, "the value changed (50 -> 75)")
+  local _, pc3, sc3, cc3 = Midi.state_changes(d, 30, 30)
+  eq(pc3, false); eq(sc3, nil); eq(#cc3, 0, "the same place: nothing")
+  local n0 = #Midi.ccs(d, 1)
+  Midi.fill_starts(d)
+  local at20
+  for _, e in ipairs(Midi.ccs(d, 1)) do if math.abs(e.t - 20) < 0.002 then at20 = e end end
+  ok(at20 and at20.v == 100, "Fill songs: the value that plays at song B's start"); ok(#Midi.ccs(d, 1) > n0)
+  eq(Midi.fill_starts(d), 0, "again: nothing")
+  r.DeleteTrack(tr)
+  S.devices, S.lib, S.snames, S.knobs, S.nudge_unit, S.nudge_ms, S.nudge_note = keep, kl, ks, kk, ku, km, kn
+end)
+
 test("scenes: Merge button; times in m:ss and bar.beat; clear; colours; names move with a preset", function()
   local Midi, Preset, Util = C.Midi, C.Preset, C.Util
   local keep, kl, ks, kw, km = S.devices, S.lib, S.snames, S.pc_when, S.pc_ms
@@ -450,7 +506,9 @@ test("scenes: Merge button; times in m:ss and bar.beat; clear; colours; names mo
   eq(Midi.start_scene(d, B).v, 3); Midi.remove_scene(d, Midi.start_scene(d, B))
   eq(Util.fmt_song_time(B, 32.5), "0:12.5"); eq(Util.parse_song_time(B, "0:12.5"), 32.5); eq(Util.parse_song_time(B, "12.5"), 32.5)
   -- 120 bpm 4/4: a bar = 2 s; bars and beats from the project start
-  eq(Util.fmt_beats(22), "12.1"); eq(Util.fmt_beats(22.75), "12.2.5")
+  eq(Util.fmt_beats(22), "12.1.00"); eq(Util.fmt_beats(22.75), "12.2.50"); eq(Util.fmt_beats(22.9999), "12.3.00", "rounded up")
+  eq(Util.fmt_beats(23.9999), "13.1.00", "before a bar line: the next bar")
+  ok(math.abs(Util.parse_beats("12.2.50") - 22.75) < 0.001, "the 3-part format is read")
   ok(math.abs(Util.parse_beats("12.2") - 22.5) < 0.001, "bar.beat read"); eq(Util.parse_beats("x"), nil)
   eq(Util.parse_song_time(B, "x"), nil)
   -- clear: 1 song, then all scenes, then all presets
@@ -526,6 +584,32 @@ test("knobs: units, nearest CC value, typed values, saved and read; CC values wr
   Midi.set_cc(d, 1, 25, 60, Midi.ccs(d, 1)[1]); eq(Midi.ccs(d, 1)[1].shape, 5, "the slope stays"); eq(Midi.ccs(d, 1)[1].v, 60)
   Midi.set_shape(d, 1, Midi.ccs(d, 1)[1], 1); eq(Midi.ccs(d, 1)[1].shape, 1, "straight")
   Midi.remove_cc(d, 1, Midi.ccs(d, 1)[1]); eq(#Midi.ccs(d, 1), 1); eq(Midi.ccs(d, 1)[1].t, 30)
+  -- a ramp: 2 values with a slope, the values inside replaced; lengths in beats, bars, the time selection
+  Midi.set_cc(d, 1, 33, 5)
+  ok(math.abs(Midi.ramp_end(32, 1) - 32.5) < 0.001, "1 beat at 120 bpm"); ok(math.abs(Midi.ramp_end(32, 5) - 40) < 0.001, "4 bars")
+  r.GetSet_LoopTimeRange2(0, true, false, 31, 36, false); ok(math.abs(Midi.ramp_end(32, 9) - 36) < 0.001, "time selection end")
+  r.GetSet_LoopTimeRange2(0, true, false, 0, 0, false); eq(Midi.ramp_end(32, 9), nil, "no time selection")
+  ok(math.abs(Midi.ramp_end(32, 8, "2.2") - 37) < 0.001, "custom: 2 bars and 2 beats"); ok(math.abs(Midi.ramp_end(32, 8, "0.6") - 35) < 0.001, "custom: 6 beats")
+  eq(Midi.ramp_end(32, 8, "x"), nil, "custom: not a length"); eq(Midi.ramp_end(32, 8, "0"), nil, "custom: 0")
+  local before = #Midi.ccs(d, 1)
+  Midi.add_ramp(d, 1, (Midi.ramp_points(32, 40, 0, 127, 5, 0.5)))
+  local rv = {}
+  for _, e in ipairs(Midi.ccs(d, 1)) do if e.t >= 32 - 0.001 and e.t <= 40 + 0.001 then rv[#rv + 1] = e end end
+  eq(#rv, 2, "2 values; the one at 33 replaced"); eq(rv[1].v, 0); eq(rv[2].v, 127); eq(rv[1].shape, 5, "curve")
+  ok(math.abs(rv[1].tension - 0.5) < 0.01); eq(rv[2].shape, 0, "the end: jump")
+  eq(#Midi.ccs(d, 1), before + 1, "1 more in all")
+  -- a swell: 0 up to 127 over 4 bars (32-40), a hold of 1 bar (40-42), back to 20 over 2 bars (42-46), Fast end
+  local pts, tend = Midi.ramp_points(32, 40, 0, 127, 1, 0, { hold = 3, v2 = 20, len = 4, shape = 4, tension = 0 })
+  ok(math.abs(tend - 46) < 0.001, "its end")
+  Midi.add_ramp(d, 1, pts, "swell")
+  local sw = {}
+  for _, e in ipairs(Midi.ccs(d, 1)) do if e.t >= 32 - 0.001 and e.t <= 46 + 0.001 then sw[#sw + 1] = e end end
+  eq(#sw, 4, "4 values: start, top, end of the hold, end"); eq(sw[1].v, 0); eq(sw[2].v, 127); eq(sw[3].v, 127); eq(sw[4].v, 20)
+  eq(sw[1].shape, 1, "up: straight"); eq(sw[2].shape, 0, "the hold: the value stays"); eq(sw[3].shape, 4, "back: fast end")
+  ok(math.abs(sw[3].t - 42) < 0.001, "the hold: 1 bar")
+  -- no hold: 3 values
+  local p3 = Midi.ramp_points(32, 40, 0, 127, 1, 0, { hold = 0, v2 = 0, len = 4, shape = 1, tension = 0 })
+  eq(#p3, 3, "no hold: 3 values")
   eq(Midi.song_at(25).name, "Song B"); eq(Midi.song_at(15), nil)
   eq(Midi.song_at(19.9995).name, "Song B", "a moment before the start (a rounded start scene): the song")
   r.DeleteTrack(Dev.track(d))

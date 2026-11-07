@@ -65,11 +65,16 @@ CFG.TIP_DELAY = 0.5            -- seconds on an item before its tooltip shows (a
 CFG.TIP_WRAP_EM = 32           -- tooltip lines wrap at this many font sizes
 CFG.PC_MS = 250                -- the default preset timing: this many ms before the song start
 CFG.PC_MS_MAX = 2000
+CFG.NUDGE_MS = 10              -- the default nudge: 10 ms
+CFG.NUDGE_MS_MAX = 1000
+CFG.LANE_ROWS = 10             -- Lanes: a song's value list scrolls after this many rows (Settings > Lists)
+CFG.SCENE_ROWS = 10            -- Songs: a song's scene list scrolls after this many rows (Settings > Lists)
 CFG.PC_WINDOW = 2.5            -- a preset change up to this many seconds before a song start belongs to that song
 CFG.PRESET_W = 230             -- the preset dropdown of a song row
 CFG.REABANK = "MIDI Pilot.reabank" -- in REAPER's Data\MIDI Pilot folder: the preset names for REAPER
 CFG.STATUS_SEC = 0.25          -- the status bar text (song, preset, scene at the cursor) is made again this often
-CFG.TOAST_SEC = 4              -- a notice in a title line goes away after this many seconds
+CFG.TOAST_SEC = 4              -- a notice in the status bar goes away after this many seconds
+CFG.CHASE_JUMP = 0.3           -- s: a play position this far from where it should be is a jump (live chase)
 CFG.START_AFTER_PC = 0.1       -- s: a start scene from "Fill songs" comes this long after a song's preset change
 CFG.STRIP_H = 22               -- the scene strip of a song row
 CFG.SC_CC = 43                 -- the Quad Cortex scene CC (values 0-7)
@@ -118,6 +123,17 @@ local KNOB_UNITS = { "%", "Hz", "dB", "ms", "" }
 local KNOB_UNIT_ITEMS = "%\0Hz\0dB\0ms\0(none)\0"
 -- The slope from a CC value to the next one (REAPER's CC shapes; REAPER plays the curve to the unit).
 local CC_SHAPE_ITEMS = "Jump\0Straight\0Slow start and end\0Fast start\0Fast end\0Curve\0"
+-- A ramp (Lanes): its slope (CC shapes 1-5, no Jump) and its length: { beats, bars } (else the time selection).
+local RAMP_SHAPE_ITEMS = "Straight\0Slow start and end\0Fast start\0Fast end\0Curve\0"
+local RAMP_LENS = { { 1, 0, "1 beat" }, { 2, 0, "2 beats" }, { 0, 1, "1 bar" }, { 0, 2, "2 bars" }, { 0, 4, "4 bars" },
+  { 0, 8, "8 bars" }, { 0, 16, "16 bars" }, { 0, 0, "Custom...", custom = true },
+  { 0, 0, "To the time selection end", sel = true } } -- (the last one: not in the Hold and Back lists)
+local RAMP_LEN_ITEMS = ""
+for _, l in ipairs(RAMP_LENS) do RAMP_LEN_ITEMS = RAMP_LEN_ITEMS .. l[3] .. "\0" end
+local BACK_LEN_ITEMS, HOLD_ITEMS = "", "No hold\0"
+for i = 1, #RAMP_LENS - 1 do
+  BACK_LEN_ITEMS = BACK_LEN_ITEMS .. RAMP_LENS[i][3] .. "\0"; HOLD_ITEMS = HOLD_ITEMS .. RAMP_LENS[i][3] .. "\0"
+end
 -- CCs that the Quad Cortex uses for its own functions (a knob on them would also do that function).
 local QC_CCS = { [0] = "preset group", [32] = "preset folder", [43] = "scenes", [44] = "tap tempo", [45] = "tuner",
   [46] = "Gig View", [47] = "modes", [62] = "Ignore duplicate PC", [64] = "footswitch page (mini)" }
@@ -139,11 +155,17 @@ local S = {
   pc_unit = "ms",     -- the preset timing in "ms" or in "notes" (snaps to the beat grid)
   pc_note = 2,        -- ... the note value: an index of PC_NOTES (default 1/16 note)
   check_items = true, -- a new MIDI item on a device's track: its channel is used, the song starts get a scene
+  live_chase = true,  -- a play start or jump (window open): the state there is sent to the units
+  nudge_unit = "ms",  -- the nudge (the 2 triangle buttons of a row) in "ms" or in "notes"
+  nudge_ms = CFG.NUDGE_MS, -- ... by this many ms
+  nudge_note = 1,     -- ... by this note value: an index of PC_NOTES (default 1/32 note)
   lib = {},         -- the preset names: device id -> { ["folder:index"] = preset name }
   fnames = {},      -- your folder names: device id -> { [folder] = name }
   snames = {},      -- scene names: device id -> { ["folder:index"] = { [1..8] = name } }
   knobs = {},       -- the knobs (Lanes): device id -> { { cc, name, min, max, unit } }
   lane_all = false, -- Lanes: the values of all songs (else only the song at the edit cursor)
+  lane_rows = CFG.LANE_ROWS, -- Lanes: a song's value list scrolls after this many rows
+  scene_rows = CFG.SCENE_ROWS, -- Songs: a song's scene list scrolls after this many rows
 }
 
 ---------------------------------------------------------------------------
@@ -213,12 +235,18 @@ local function short_num(x)
 end
 -- A time in a song as text: "1:05.3" from the song start.
 function Util.fmt_song_time(rg, t) return Util.fmt_time(t - rg.start) end
--- The project position in bars and beats ("9.1", "9.2.5" = half a beat after beat 2), as REAPER's ruler.
+-- The project position in bars, beats and hundredths of a beat, always "9.1.00" ("9.2.50" = half a beat after
+-- beat 2), as REAPER's ruler.
 function Util.fmt_beats(t)
-  local b, m = r.TimeMap2_timeToBeats(R.proj, t)
-  return (m + 1) .. "." .. short_num(b + 1)
+  local b, m, cml = r.TimeMap2_timeToBeats(R.proj, t)
+  local beat = math.floor(b + 0.000001)
+  local hund = math.floor((b - beat) * 100 + 0.5)
+  if hund >= 100 then beat, hund = beat + 1, 0 end
+  if cml and beat >= cml - 0.000001 then m, beat = m + 1, 0 end -- (rounded up to the next bar line)
+  return string.format("%d.%d.%02d", m + 1, beat + 1, hund)
 end
--- Reads "bar.beat" (or "bar"): the project time, or nil.
+-- Reads "bar.beat.hundredths", "bar.beat" or "bar" ("9.2.50" and "9.2.5": half a beat after beat 2): the project
+-- time, or nil.
 function Util.parse_beats(s)
   s = (s or ""):match("^%s*(.-)%s*$")
   local bar, beat = s:match("^(%d+)%.(%d+%.?%d*)$")
@@ -281,6 +309,10 @@ local function load_settings()
   S.pc_unit = (get("pc_unit") == "notes") and "notes" or "ms"
   S.pc_note = Util.clamp(math.floor(tonumber(get("pc_note")) or 2), 1, #PC_NOTES)
   S.check_items = get("check_items") ~= "0"
+  S.live_chase = get("live_chase") ~= "0"
+  S.nudge_unit = (get("nudge_unit") == "notes") and "notes" or "ms"
+  S.nudge_ms = Util.clamp(math.floor(tonumber(get("nudge_ms")) or CFG.NUDGE_MS), 1, CFG.NUDGE_MS_MAX)
+  S.nudge_note = Util.clamp(math.floor(tonumber(get("nudge_note")) or 1), 1, #PC_NOTES)
   for _, d in ipairs(S.devices) do
     S.lib[d.id] = Preset.parse_lib(get("lib_" .. d.id))
     S.fnames[d.id] = Preset.parse_fnames(get("fold_" .. d.id))
@@ -288,6 +320,8 @@ local function load_settings()
     S.knobs[d.id] = Knob.parse(get("knb_" .. d.id))
   end
   S.lane_all = get("lane_all") == "1"
+  S.lane_rows = Util.clamp(math.floor(tonumber(get("lane_rows")) or CFG.LANE_ROWS), 3, 100)
+  S.scene_rows = Util.clamp(math.floor(tonumber(get("scene_rows")) or CFG.SCENE_ROWS), 3, 100)
   R.dock_req = S.dock -- the window opens where it was (floating or in its docker)
 end
 local function save_settings()
@@ -299,6 +333,10 @@ local function save_settings()
   r.SetExtState(CFG.EXT, "pc_unit", S.pc_unit, true)
   r.SetExtState(CFG.EXT, "pc_note", tostring(S.pc_note), true)
   r.SetExtState(CFG.EXT, "check_items", S.check_items and "1" or "0", true)
+  r.SetExtState(CFG.EXT, "live_chase", S.live_chase and "1" or "0", true)
+  r.SetExtState(CFG.EXT, "nudge_unit", S.nudge_unit, true)
+  r.SetExtState(CFG.EXT, "nudge_ms", tostring(S.nudge_ms), true)
+  r.SetExtState(CFG.EXT, "nudge_note", tostring(S.nudge_note), true)
   for _, d in ipairs(S.devices) do
     r.SetExtState(CFG.EXT, "lib_" .. d.id, Preset.serialize_lib(S.lib[d.id]), true)
     r.SetExtState(CFG.EXT, "fold_" .. d.id, Preset.serialize_fnames(S.fnames[d.id]), true)
@@ -306,6 +344,8 @@ local function save_settings()
     r.SetExtState(CFG.EXT, "knb_" .. d.id, Knob.serialize(S.knobs[d.id]), true)
   end
   r.SetExtState(CFG.EXT, "lane_all", S.lane_all and "1" or "0", true)
+  r.SetExtState(CFG.EXT, "lane_rows", tostring(S.lane_rows), true)
+  r.SetExtState(CFG.EXT, "scene_rows", tostring(S.scene_rows), true)
   if R.bank_dirty then Preset.write_reabank() end
   R.sdirty = false
 end
@@ -714,6 +754,29 @@ function Dev.apply_out(d)
   end
 end
 
+-- The latency of a device: REAPER's playback offset of its track (minus the latency), so REAPER sends the MIDI that
+-- much earlier and the MIDI stays on the beat in the project. The shared track: the largest latency. Only when the
+-- value changes (no undo point for nothing).
+function Dev.apply_latency(d)
+  local tr = Dev.track(d)
+  if not tr then return end
+  local lat = d.latency
+  if P.track_mode == "shared" then
+    lat = 0
+    for _, x in ipairs(S.devices) do lat = math.max(lat, x.latency) end
+  end
+  local want = -lat / 1000
+  local flag = math.floor(r.GetMediaTrackInfo_Value(tr, "I_PLAY_OFFSET_FLAG"))
+  local cur = r.GetMediaTrackInfo_Value(tr, "D_PLAY_OFFSET")
+  local on = lat > 0
+  -- flag: 1 = the offset is off, 2 = in samples; MIDI Pilot uses seconds
+  local want_flag = on and 0 or 1
+  if flag ~= want_flag or math.abs(cur - (on and want or 0)) > 0.00001 then
+    r.SetMediaTrackInfo_Value(tr, "I_PLAY_OFFSET_FLAG", want_flag)
+    r.SetMediaTrackInfo_Value(tr, "D_PLAY_OFFSET", on and want or 0)
+  end
+end
+
 -- The end of the MIDI item of a new track: the end of the last region, else of the project (at least 60 s).
 function Dev.item_end()
   local e = 0
@@ -735,6 +798,7 @@ function Dev.create_track(d)
   Util.mark_pdirty()
   Dev.apply_out(d)
   if P.track_mode ~= "shared" then Dev.tag(tr, d) end
+  Dev.apply_latency(d)
   r.CreateNewMIDIItemInProj(tr, 0, Dev.item_end(), false)
   r.UpdateArrange()
   r.Undo_EndBlock("MIDI Pilot: create the track of " .. d.name, -1)
@@ -750,6 +814,7 @@ function Dev.use_selected_track(d)
   Util.mark_pdirty()
   Dev.apply_out(d)
   if P.track_mode ~= "shared" then Dev.tag(tr, d) end
+  if d.latency > 0 then Dev.apply_latency(d) end -- (latency 0: the track keeps its own playback offset)
   r.Undo_EndBlock("MIDI Pilot: use a track for " .. d.name, -1)
   return true
 end
@@ -1233,6 +1298,17 @@ function Midi.fill_starts(d)
       end
     end
     if Midi.preset_at(d, rg, rg.start) and Midi.ensure_start_scene(d, rg) then n = n + 1 end
+    -- each control: the value that plays at the song start (when a value comes before it), at the song start
+    for _, k in ipairs(S.knobs[d.id] or {}) do
+      local has = false
+      for _, e in ipairs(Midi.ccs(d, k.cc)) do if math.abs(e.t - rg.start) < CFG.EDGE then has = true; break end end
+      local v, prev = Midi.cc_at(d, k.cc, rg.start)
+      if not has and v and prev then
+        -- (inside a ramp: the new value keeps its slope, so the ramp goes on as before)
+        Midi.write_cc(d, k.cc, rg.start, v, prev.shape, prev.tension); n = n + 1
+        R.pcs = {}
+      end
+    end
   end
   R.pcs = {}
   r.UpdateArrange()
@@ -1293,10 +1369,15 @@ end
 
 -- The scene changes of a song (from its start to its end).
 function Midi.song_scenes(d, rg)
-  local list = {}
-  for _, s in ipairs(Midi.scenes(d)) do
+  local all = Midi.scenes(d) -- (first: it makes R.pcs when the MIDI changed)
+  local key = "ss" .. d.id .. ":" .. rg.start
+  local list = R.pcs[key]
+  if list then return list end -- (cached like Midi.scenes: the callers only read it)
+  list = {}
+  for _, s in ipairs(all) do
     if s.t >= rg.start - CFG.EDGE and s.t < rg.stop - CFG.EDGE then list[#list + 1] = s end
   end
+  R.pcs[key] = list
   return list
 end
 
@@ -1348,6 +1429,48 @@ function Midi.move_scene(d, s, t)
 end
 function Midi.remove_scene(d, s)
   Midi.scene_edit("remove a scene change", function() Midi.delete_scene(d, s) end)
+end
+
+-- Nudge: a time moved by the nudge amount (Settings > Nudge), dir -1 (earlier) or 1 (later).
+function Midi.nudged(t, dir)
+  if S.nudge_unit == "notes" then
+    return r.TimeMap2_QNToTime(R.proj, r.TimeMap2_timeToQN(R.proj, t) + dir * PC_NOTES[S.nudge_note][1])
+  end
+  return t + dir * S.nudge_ms / 1000
+end
+-- The nudge amount as text: "10 ms" or "1/32 note".
+function Midi.nudge_text()
+  return S.nudge_unit == "notes" and PC_NOTES[S.nudge_note][2] or (S.nudge_ms .. " ms")
+end
+-- Nudges all scene changes (not the start scene) and all knob values of a song, in 1 undo step. Returns false
+-- (nothing moved) when a change would leave the song.
+function Midi.nudge_song(d, rg, dir)
+  local st = Midi.start_scene(d, rg)
+  local sc = {}
+  for _, s in ipairs(Midi.song_scenes(d, rg)) do if s ~= st then sc[#sc + 1] = s end end
+  local kv = {}
+  for _, k in ipairs(S.knobs[d.id] or {}) do
+    for _, e in ipairs(Midi.ccs(d, k.cc)) do
+      if e.t >= rg.start - CFG.EDGE and e.t < rg.stop - CFG.EDGE then kv[#kv + 1] = { k = k, e = e } end
+    end
+  end
+  if #sc == 0 and #kv == 0 then return true end
+  for _, s in ipairs(sc) do
+    local nt = Midi.nudged(s.t, dir)
+    if nt < rg.start + CFG.EDGE or nt >= rg.stop - CFG.EDGE or (st and nt <= st.t + CFG.EDGE) then return false end
+  end
+  for _, x in ipairs(kv) do
+    local nt = Midi.nudged(x.e.t, dir)
+    if nt < rg.start or nt >= rg.stop - CFG.EDGE then return false end
+  end
+  Midi.scene_edit("nudge " .. rg.name, function()
+    -- remove all first, then write all (a moved change never replaces another moved one)
+    for _, s in ipairs(sc) do Midi.delete_scene(d, s) end
+    for _, x in ipairs(kv) do Midi.delete_cc(d, x.k.cc, x.e) end
+    for _, s in ipairs(sc) do Midi.put_scene(d, Midi.nudged(s.t, dir), s.v) end
+    for _, x in ipairs(kv) do Midi.write_cc(d, x.k.cc, Midi.nudged(x.e.t, dir), x.e.v, x.e.shape, x.e.tension) end
+  end)
+  return true
 end
 
 -- Scene test: CFG.TEST_SEQ (I-A up to II-D and back to I-A), a change every CFG.TEST_BEATS beats from time t.
@@ -1676,6 +1799,183 @@ function Midi.ccs(d, cc)
   R.pcs[key] = c
   return c
 end
+-- The end of a ramp that starts at t0: len = an index of RAMP_LENS (beats follow the tempo, bars the time
+-- signature; the last item: the end of REAPER's time selection, nil when there is none after t0).
+-- A typed length "bars.beats": "3" = 3 bars, "0.6" = 6 beats, "2.2" = 2 bars and 2 beats. Returns bars, beats or nil.
+function Midi.parse_length(s)
+  s = (s or ""):match("^%s*(.-)%s*$")
+  local bars, beats = s:match("^(%d*)%.(%d+)$")
+  if not bars then bars, beats = s:match("^(%d+)$"), "0" end
+  bars, beats = tonumber(bars ~= "" and bars or "0"), tonumber(beats)
+  if not bars or not beats or (bars == 0 and beats == 0) then return nil end
+  return bars, beats
+end
+-- custom: the typed length of the "Custom..." item (nil when it is not a length).
+function Midi.ramp_end(t0, len, custom)
+  local l = RAMP_LENS[len]
+  if l.custom then
+    local bars, beats = Midi.parse_length(custom)
+    if not bars then return nil end
+    local b, m = r.TimeMap2_timeToBeats(R.proj, t0)
+    local t = (bars > 0) and r.TimeMap2_beatsToTime(R.proj, b, m + bars) or t0
+    return r.TimeMap2_QNToTime(R.proj, r.TimeMap2_timeToQN(R.proj, t) + beats)
+  end
+  if l[1] > 0 then return r.TimeMap2_QNToTime(R.proj, r.TimeMap2_timeToQN(R.proj, t0) + l[1]) end
+  if l[2] > 0 then
+    local b, m = r.TimeMap2_timeToBeats(R.proj, t0)
+    return r.TimeMap2_beatsToTime(R.proj, b, m + l[2])
+  end
+  local _, e = r.GetSet_LoopTimeRange2(R.proj, false, false, 0, 0, false)
+  if e and e > t0 + 0.001 then return e end
+  return nil
+end
+-- A ramp or a swell of a knob, in 1 undo step: pts = { { t, v, shape, tension } } in time order (the slope of a
+-- point goes to the next point; the last point: a jump). The values of that knob between the first and the last
+-- point are replaced.
+function Midi.add_ramp(d, cc, pts, name)
+  local t0, t1 = pts[1].t, pts[#pts].t
+  r.Undo_BeginBlock()
+  for _, e in ipairs(Midi.ccs(d, cc)) do
+    if e.t >= t0 - 0.0005 and e.t <= t1 + 0.0005 then Midi.delete_cc(d, cc, e) end
+  end
+  R.pcs = {}
+  for i, pt in ipairs(pts) do
+    Midi.write_cc(d, cc, pt.t, pt.v, i < #pts and pt.shape or 0, i < #pts and pt.tension or 0)
+  end
+  R.pcs = {}
+  r.UpdateArrange()
+  r.Undo_EndBlock("MIDI Pilot: " .. (name or "ramp"), -1)
+end
+-- The points of a ramp from t0 (v0) to t1 (v1); a swell (sw): a hold at v1 (sw.hold: an index of RAMP_LENS or 0),
+-- then the way back to sw.v2 over sw.len with its own slope. Returns the points and the end time.
+function Midi.ramp_points(t0, t1, v0, v1, shape, tension, sw)
+  local pts = { { t = t0, v = v0, shape = shape, tension = tension } }
+  if not sw then
+    pts[2] = { t = t1, v = v1 }
+    return pts, t1
+  end
+  local tb = t1
+  if sw.hold > 0 then
+    pts[2] = { t = t1, v = v1, shape = 0, tension = 0 } -- (the hold: the value stays)
+    tb = Midi.ramp_end(t1, sw.hold, sw.hold_c)
+    if not tb then return nil end
+  end
+  pts[#pts + 1] = { t = tb, v = v1, shape = sw.shape, tension = sw.tension }
+  local t2 = Midi.ramp_end(tb, sw.len, sw.len_c)
+  if not t2 then return nil end
+  pts[#pts + 1] = { t = t2, v = sw.v2 }
+  return pts, t2
+end
+
+-- The value of a knob at time t: the last value at or before t (on a slope: the value on the way to the next
+-- value, straight between them), and that value event. nil when no value comes before t.
+function Midi.cc_at(d, cc, t)
+  local list = Midi.ccs(d, cc)
+  local prev, nxt
+  for i, e in ipairs(list) do
+    if e.t <= t + 0.0005 then prev, nxt = e, list[i + 1] else break end
+  end
+  if not prev then return nil end
+  if prev.shape ~= 0 and nxt and nxt.t > prev.t then
+    local f = Util.clamp((t - prev.t) / (nxt.t - prev.t), 0, 1)
+    return Util.clamp(math.floor(prev.v + (nxt.v - prev.v) * f + 0.5), 0, 127), prev
+  end
+  return prev.v, prev
+end
+
+-- The state of a device at time t: its preset, its scene and the value of each control (Live chase, Send state now).
+function Midi.state_at(d, t)
+  local st = {}
+  local rg = Midi.song_at(t)
+  st.pc = rg and Midi.preset_at(d, rg, t) or Midi.active_at(d, t + 0.0002)
+  for _, s in ipairs(Midi.scenes(d)) do if s.t <= t + CFG.EDGE then st.scene = s.v else break end end
+  if rg then -- (before the start scene, at the song start: the song's own start scene)
+    local ss = Midi.start_scene(d, rg)
+    if ss and t < ss.t then st.scene = ss.v end
+  end
+  st.ccs = {}
+  for _, k in ipairs(S.knobs[d.id] or {}) do
+    local v = Midi.cc_at(d, k.cc, t)
+    if v then st.ccs[#st.ccs + 1] = { cc = k.cc, v = v } end
+  end
+  return st
+end
+
+-- Sends the state of a device at time t to the unit: the preset now, the scene and the control values
+-- CFG.START_AFTER_PC later (the unit first loads the preset). from: the time where playback was before (Live
+-- chase): only what differs from the state there is sent, and the same preset is not loaded again (a reload is a
+-- gap in the sound); with the same preset, the changes go at once. Returns false when the output is not available.
+function Midi.send_state(d, t, from)
+  if not Dev.port_index(d.port) then return false end
+  local st, send_pc, scene, ccs = Midi.state_changes(d, t, from)
+  if send_pc then Midi.send_now(d, st.pc.folder, st.pc.index) end
+  if not scene and #ccs == 0 then return true end
+  R.send_q = R.send_q or {}
+  R.send_q[#R.send_q + 1] = { at = Util.now() + (send_pc and CFG.START_AFTER_PC or 0), fn = function()
+    if scene then Midi.send_scene(d, scene) end
+    for _, c in ipairs(ccs) do Midi.send_cc(d, c.cc, c.v) end
+  end }
+  return true
+end
+-- What Midi.send_state sends: the state at t, whether the preset goes, the scene (or nil) and the control values.
+function Midi.state_changes(d, t, from)
+  local st = Midi.state_at(d, t)
+  local old = from and Midi.state_at(d, from)
+  local same_pc = old and ((st.pc == nil and old.pc == nil)
+    or (st.pc and old.pc and st.pc.folder == old.pc.folder and st.pc.index == old.pc.index))
+  local send_pc = st.pc ~= nil and not same_pc
+  -- (a new preset: the unit loads its own scene and values, so all of them go again)
+  local scene = st.scene
+  if scene and old and not send_pc and old.scene == scene then scene = nil end
+  local ccs = st.ccs
+  if old and not send_pc then
+    local was = {}
+    for _, c in ipairs(old.ccs) do was[c.cc] = c.v end
+    ccs = {}
+    for _, c in ipairs(st.ccs) do if was[c.cc] ~= c.v then ccs[#ccs + 1] = c end end
+  end
+  return st, send_pc, scene, ccs
+end
+-- Every frame: the messages that wait for their time (R.send_q).
+function Midi.run_send_q()
+  local q = R.send_q
+  if not q or #q == 0 then return end
+  local now = Util.now()
+  for i = #q, 1, -1 do
+    if now >= q[i].at then local job = table.remove(q, i); job.fn() end
+  end
+end
+
+-- Live chase (Settings > Playback): while the window is open, a play start or a jump to a place that is not a song
+-- start sends the state there to every device (at a song start, the MIDI there does it). Every frame: cheap.
+function Midi.live_chase()
+  local playing = Util.playing()
+  local pos = r.GetPlayPosition2()
+  local now = Util.now()
+  local lc = R.chase or {}
+  R.chase = lc
+  local jump = false
+  local from = lc.played -- (the last place that really played: the unit is in the state there)
+  if playing then
+    if not lc.playing then jump = true
+    elseif lc.pos then
+      local want = lc.pos + (now - lc.t) * r.Master_GetPlayRate(R.proj)
+      if math.abs(pos - want) > CFG.CHASE_JUMP then jump = true end
+    end
+    lc.played = pos
+  end
+  lc.playing, lc.pos, lc.t = playing, pos, now
+  if not (jump and S.live_chase) then return end
+  local rg = Midi.song_at(pos)
+  for _, d in ipairs(S.devices) do
+    if Dev.track(d) then
+      -- (at a song start the song's own preset change and start scene play: nothing is sent twice)
+      local at_start = rg and pos < Midi.start_time(d, rg) + 0.05
+      if not at_start then Midi.send_state(d, pos, from) end
+    end
+  end
+end
+
 -- Removes 1 CC event of a knob.
 function Midi.delete_cc(d, cc, e)
   if not r.ValidatePtr2(R.proj, e.take, "MediaItem_Take*") then return end
@@ -1695,24 +1995,28 @@ function Midi.set_cc(d, cc, t, val, old)
     if math.abs(e.t - t) < 0.001 and e ~= old then Midi.delete_cc(d, cc, e) end
   end
   R.pcs = {}
-  local take = Midi.take_at(d, t)
-  if take then
-    local ppq = math.floor(r.MIDI_GetPPQPosFromProjTime(take, t) + 0.5)
-    r.MIDI_InsertCC(take, false, false, ppq, 0xB0, Midi.chan(d), cc, Util.clamp(val, 0, 127))
-    if shape ~= 0 then
-      local _, _, ncc = r.MIDI_CountEvts(take)
-      for i = 0, ncc - 1 do
-        local _, _, _, p2, cm, chn, m2 = r.MIDI_GetCC(take, i)
-        if math.abs(p2 - ppq) < 0.5 and cm == 0xB0 and m2 == cc and Midi.is_mine(d, chn) then
-          r.MIDI_SetCCShape(take, i, shape, tension, true)
-        end
-      end
-    end
-    r.MIDI_Sort(take)
-  end
+  Midi.write_cc(d, cc, t, val, shape, tension)
   R.pcs = {}
   r.UpdateArrange()
   r.Undo_EndBlock("MIDI Pilot: knob value", -1)
+end
+-- Writes 1 CC value at time t with its slope (no undo step).
+function Midi.write_cc(d, cc, t, val, shape, tension)
+  local take = Midi.take_at(d, t)
+  if not take then return end
+  local ppq = math.floor(r.MIDI_GetPPQPosFromProjTime(take, t) + 0.5)
+  r.MIDI_InsertCC(take, false, false, ppq, 0xB0, Midi.chan(d), cc, Util.clamp(val, 0, 127))
+  if (shape or 0) ~= 0 then
+    local _, _, ncc = r.MIDI_CountEvts(take)
+    for i = 0, ncc - 1 do
+      local _, _, _, p2, cm, chn, m2 = r.MIDI_GetCC(take, i)
+      if math.abs(p2 - ppq) < 0.5 and cm == 0xB0 and m2 == cc and Midi.is_mine(d, chn) then
+        r.MIDI_SetCCShape(take, i, shape, tension or 0, true)
+      end
+    end
+  end
+  r.MIDI_Sort(take)
+  R.pcs = {}
 end
 -- Sets the slope from a value to the next one: shape 0-5 (CC_SHAPE_ITEMS), tension -1 .. 1 (Curve only); 1 undo step.
 function Midi.set_shape(d, cc, e, shape, tension)
@@ -1829,13 +2133,15 @@ for _, n in ipairs(PC_NOTES) do PC_NOTE_ITEMS = PC_NOTE_ITEMS .. n[2] .. "\0" en
 local HELP_TEXT = [[
 MIDI Pilot writes the MIDI for a Neural DSP Quad Cortex or Quad Cortex mini in REAPER. The MIDI is normal REAPER MIDI: it plays without MIDI Pilot, also when its window is closed.
 
-This is step 4 of the first version: the devices, their tracks, the presets, the scenes and the knob values. Nudges, ramps and the state at the song starts follow in the next steps.
+This is the first version, in development: the devices, their tracks, the presets, the scenes, the knob values with ramps and swells, the nudge, the latency and the state at the song starts (Fill songs, Live chase, Send state).
 
-Lanes: a control is a CC that moves a knob of the unit (for example Expression 1, CC#1, assigned on the unit to a filter). Enter the range that you set on the unit (heel = Min, toe = Max) and the unit (%, Hz, dB, ms). "Values in <song>" lists the values of the selected control in the song at the edit cursor ("All songs" shows them in every song, under the song names): type a value in the knob's unit (for example 650 or 1.2k), and MIDI Pilot writes the nearest CC value (a CC has 128 steps). "Add at edit cursor" adds a value there. A yellow warning sign marks a CC that the unit also uses for a function (scenes, tuner, footswitches ...). Slope: how a value goes to the next one (Jump, Straight, Slow start and end, Fast start, Fast end, or a Curve that you bend), for swells and fades; REAPER plays the curve to the unit.
+Lanes: a control is a CC that moves a knob of the unit (for example Expression 1, CC#1, assigned on the unit to a filter). Enter the range that you set on the unit (heel = Min, toe = Max) and the unit (%, Hz, dB, ms). "Values in <song>" lists the values of the selected control in the song at the edit cursor ("All songs" shows them in every song, under the song names; a click on a song name closes or opens its values; a long list scrolls, Settings > Lists): type a value in the knob's unit (for example 650 or 1.2k), and MIDI Pilot writes the nearest CC value (a CC has 128 steps). Each value row: its position and time (type a new one to move it), the nudge buttons, the value, the slope to the next value, send (the triangle) and remove (the red X). "Add a value": "Value" and "Add at edit cursor" write 1 value (the control jumps there). "Add a ramp" is separate and needs no value first: "From / to / swell" (the start value, the arrow, the end value, the Swell switch), "Length", "Slope" and "Add ramp" write 2 values with a slope between them, from the edit cursor, in 1 step ("Swell": there and back, for example 0 - 100 - 0: under it, "Hold" keeps the top for a time, then "Back to" (empty: the start value), "Length" and "Slope" set the way back; it cannot go past the top). The text after the button says what is missing, or where it goes: for example a filter sweep over 4 bars; the length is in beats, in bars, "Custom..." (type bars.beats: 3 = 3 bars, 0.6 = 6 beats, 2.2 = 2 bars and 2 beats; also for Hold and the way back), or up to the end of REAPER's time selection. A yellow warning sign marks a CC that the unit also uses for a function (scenes, tuner, footswitches ...). Slope: how a value goes to the next one (Jump, Straight, Slow start and end, Fast start, Fast end, or a Curve that you bend), for swells and fades; REAPER plays the curve to the unit.
 
-Songs: each region is a song. The dropdown sets the song's preset: MIDI Pilot writes a preset change (CC#0, CC#32 and a Program Change, as REAPER's Bank/Program Select lane) near the song start, in the device's MIDI item. It also reads the preset changes that are already there. Grey: the song has no change, and the preset from before goes on. "Choose by number..." picks a preset without a name. ">" sends the preset to the unit now. The red X removes the change. "Fill songs" gives each song without a change the preset that is already playing there, and a start scene, so playback can start in any song. "Presets match Regions" gives a song (region) the preset with its name.
+Songs: each region is a song. The dropdown sets the song's preset: MIDI Pilot writes a preset change (CC#0, CC#32 and a Program Change, as REAPER's Bank/Program Select lane) near the song start, in the device's MIDI item. It also reads the preset changes that are already there. Grey: the song has no change, and the preset from before goes on. "Choose by number..." picks a preset without a name. The triangle sends the preset to the unit now. The red X removes the change. "Fill songs" gives each song without a change the preset that is already playing there, and a start scene, so playback can start in any song. "Presets match Regions" gives a song (region) the preset with its name.
 
-Scenes: the strip under each song shows its scene changes (CC#43), with the scene names of the preset that plays there; a click on a block moves the edit cursor there. The arrow at the song number opens the song's scene list: the Start scene, then each scene change with its position in bars and beats and its time in the song, the scene, ">" (send it now) and the red X. "Add scene at edit cursor": put REAPER's edit cursor where the scene must change (during playback: the play position), then choose the scene; it is written exactly there, and nothing else changes. "Scene test" in that list adds every scene from I-A to II-D and back to I-A, a change every 2 beats from the edit cursor, to hear all scenes of the preset; the strip and the list show it as 1 "Scene test" (type a new position to move it; its red X removes it), and the edit cursor goes to its end. Type a new position or time in a row to move that scene change. A song without scene changes shows an empty strip. "Fill songs" gives each song without a start scene its default start scene (at the song start, or just after the song's preset change); the strip shows it from the song start. "Merge repeated scenes" (button) removes a scene change to the scene that already plays. "Clear scenes" removes the scene changes of a song; "Clear all scenes" and "Clear all presets" remove them from the whole project (they ask first). A click on a song name opens its list too. Right-click a block of the strip to change or remove its scene. The colours of the scenes are the colours of the unit (Presets > Scenes...). "Scenes match Markers" gives a marker inside a song the scene with its name (for example a marker "Chorus"). A MIDI item that you add to a device's track is checked once (Settings > Tracks > Check new MIDI items): its MIDI channel becomes the device's channel (more than 1 channel: MIDI Pilot asks), and each song that starts inside it gets a scene change exactly at its start when it has none there (the scene that plays there, else I-A).
+Scenes: the strip under each song shows its scene changes (CC#43), with the scene names of the preset that plays there; a click on a block moves the edit cursor there. The arrow at the song number opens the song's scene list, with labels above the columns (Position, Time, Nudge, Scene): the start scene first (its place shows but cannot be changed), then each scene change with its position in bars and beats and its time in the song (type a new one to move it), the nudge buttons, the scene, send (the triangle) and the red X. The bottom row: "Song" and its nudge buttons (the whole song), "Add scene at edit cursor" and "Clear scenes". A long list scrolls (Settings > Lists). "Add scene at edit cursor": put REAPER's edit cursor where the scene must change (during playback: the play position), then choose the scene; it is written exactly there, and nothing else changes. "Scene test" in that list adds every scene from I-A to II-D and back to I-A, a change every 2 beats from the edit cursor, to hear all scenes of the preset; the strip and the list show it as 1 "Scene test" (type a new position to move it; its red X removes it), and the edit cursor goes to its end. Type a new position or time in a row to move that scene change. A song without scene changes shows an empty strip. "Fill songs" gives each song without a start scene its default start scene (at the song start, or just after the song's preset change); the strip shows it from the song start. "Merge repeated scenes" (button) removes a scene change to the scene that already plays. "Clear scenes" removes the scene changes of a song; "Clear all scenes" and "Clear all presets" remove them from the whole project (they ask first). A click on a song name opens its list too. Right-click a block of the strip to change or remove its scene. The colours of the scenes are the colours of the unit (Presets > Scenes...). "Scenes match Markers" gives a marker inside a song the scene with its name (for example a marker "Chorus"). A MIDI item that you add to a device's track is checked once (Settings > Tracks > Check new MIDI items): its MIDI channel becomes the device's channel (more than 1 channel: MIDI Pilot asks), and each song that starts inside it gets a scene change exactly at its start when it has none there (the scene that plays there, else I-A).
+
+Playback: the MIDI plays from the device tracks. "Fill songs" gives every song its preset, start scene and the value of each control at its start, so playback from any song start is right, also with the window closed. Live chase (Settings > Playback, window open): a play start or a jump into the middle of a song sends the state there at once (the preset, then the scene and the control values); only what differs from the place that played before is sent, so the same preset is never loaded again (no gap in the sound). "Send state" (the status bar) sends the state at the edit cursor now.
 
 Status bar (at the bottom): line 1 shows the device, its MIDI output and channel (green: READY; red: NOT AVAILABLE), and the song, preset and scene at the play position (stopped: at the edit cursor). Line 2 shows the most important message: red for a problem (for example 2 devices on the same output and channel), yellow for a hint (songs without a preset or a start scene, a Scene test that is still in a song: "Ignore" hides it for that song, saved in the project), else "Ready".
 
@@ -1851,11 +2157,13 @@ Devices (Settings tab): add 1 device for each unit. Adding a device also adds it
 
 MIDI input: the input from the unit, for the recording in a later version.
 
-Latency: the delay of the unit, in milliseconds. Later steps use it to send the MIDI a little earlier.
+Latency: the delay of the unit, in milliseconds. MIDI Pilot sets the playback offset of the device's track to minus the latency, so REAPER sends its MIDI that much earlier and the unit changes on the beat; the MIDI stays on the beat in the project. (One shared track: the largest latency of the devices.)
+
+Nudge: the nudge buttons (the 2 triangles) move a change earlier (left) or later (right), by the amount in Settings > Nudge (milliseconds, or a note value that follows the tempo). Each scene change and each knob value has them in its row; "Song" (in the scene list) moves all scene changes (not the start scene) and knob values of the song together. A nudge never moves a change out of its song.
 
 Tracks: each device writes on its own track (default), or all devices write on 1 shared track (Settings > Tracks), separated by their channels. "Create track" adds a track called MIDI + the device name at the end of the project, with its MIDI output set to the device and an empty MIDI item for the MIDI. No plug-in is needed: REAPER sends the MIDI of the item to the unit. "Use selected track" uses a track that you already have. The MIDI output of the track and the device settings follow each other (also a change in REAPER's routing window).
 
-Saved on this computer: the devices and the window. Saved in the project: which track belongs to which device, and the track mode.]]
+Saved on this computer: the devices, the preset, folder and scene names, the controls (Lanes), Live chase, the preset timing, the nudge, the list sizes, "Check new MIDI items" and the window. Saved in the project: which track belongs to which device, the track mode, and the songs whose Scene test hint you ignored. The MIDI itself is in the device tracks.]]
 
 function UI.tip(text)
   if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then ImGui.SetTooltip(ctx, text) end
@@ -1971,16 +2279,8 @@ function UI.help_icon(id, text)
   end
 end
 
--- A short notice that goes away by itself (shown in the title line of a section: UI.heading's note).
+-- A short notice that goes away by itself (line 2 of the status bar, for CFG.TOAST_SEC: UI.draw_status).
 function UI.toast(text, warn) R.toast = { text = text, t0 = Util.now(), warn = warn } end
-function UI.toast_note()
-  local tt = R.toast
-  if not tt then return nil end
-  local age = Util.now() - tt.t0
-  if age > CFG.TOAST_SEC then R.toast = nil; return nil end
-  local a = (age < CFG.TOAST_SEC - 1) and 1 or (CFG.TOAST_SEC - age) -- the last second: it fades
-  return tt.text, ((tt.warn and COL.YELLOW or COL.GREEN) & 0xFFFFFF00) | math.floor(255 * a)
-end
 
 -- Section heading, as in Chart Cue: bold, blue, a full-width blue underline, a "?" at the right.
 -- note / note_col: a short text at the right end of the title line (a notice).
@@ -2170,6 +2470,134 @@ function UI.draw_ask()
   end
 end
 
+-- A square button with a drawn icon: "send" (a play triangle), "back" / "fwd" (2 triangles: nudge earlier / later),
+-- "minus", "plus". Returns true when clicked.
+function UI.icon_button(id, kind, size)
+  local hit = ImGui.Button(ctx, "##" .. id, size, size)
+  local x0, y0 = ImGui.GetItemRectMin(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local col = ImGui.GetColor(ctx, ImGui.Col_Text()) -- (dimmed when disabled)
+  local cx, cy = math.floor(x0 + size / 2) + 0.5, math.floor(y0 + size / 2) + 0.5
+  local s = math.max(3, math.floor(size * 0.18))
+  if kind == "send" then
+    ImGui.DrawList_AddTriangleFilled(dl, cx - s + 1, cy - s - 1, cx - s + 1, cy + s + 1, cx + s + 2, cy, col)
+  elseif kind == "fwd" or kind == "back" then
+    local dir = (kind == "fwd") and 1 or -1
+    for k = 0, 1 do
+      local bx = cx + dir * (k * (s + 1) - s / 2 - 1)
+      ImGui.DrawList_AddTriangleFilled(dl, bx - dir * s * 0.6, cy - s, bx - dir * s * 0.6, cy + s, bx + dir * s * 0.8, cy, col)
+    end
+  else
+    ImGui.DrawList_AddLine(dl, cx - s - 1, cy, cx + s + 1, cy, col, 2)
+    if kind == "plus" then ImGui.DrawList_AddLine(dl, cx, cy - s - 1, cx, cy + s + 1, col, 2) end
+  end
+  return hit
+end
+
+-- A whole-number field with drawn "-" and "+" buttons after it (in place of ImGui's text buttons). The width set
+-- with SetNextItemWidth is the width of the field and its 2 buttons. A visible label goes after the buttons.
+function UI.input_int(label, v, step)
+  local fh = ImGui.GetFrameHeight(ctx)
+  local id, vis = label:match("^(.-)##(.*)$")
+  if not id then id, vis = label, label else id, vis = vis, id end
+  local w = ImGui.CalcItemWidth(ctx) - 2 * (fh + CFG.CTRL_GAP)
+  ImGui.SetNextItemWidth(ctx, math.max(40, w))
+  local ch, nv = ImGui.InputInt(ctx, "##ii" .. id, v, 0, 0)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  if UI.icon_button("iim" .. id, "minus", fh) then ch, nv = true, v - (step or 1) end
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  if UI.icon_button("iip" .. id, "plus", fh) then ch, nv = true, v + (step or 1) end
+  if vis ~= "" then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP); UI.row_text(vis, COL.TEXT_MAIN) end
+  return ch, nv
+end
+
+-- The 2 nudge buttons (earlier / later) of a row: returns -1, 1 or nil.
+function UI.nudge_buttons(id, fh, what)
+  local dir
+  if UI.icon_button("nl" .. id, "back", fh) then dir = -1 end
+  UI.tip("Move " .. what .. " " .. Midi.nudge_text() .. " earlier (Settings > Nudge).")
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  if UI.icon_button("nr" .. id, "fwd", fh) then dir = 1 end
+  UI.tip("Move " .. what .. " " .. Midi.nudge_text() .. " later (Settings > Nudge).")
+  return dir
+end
+
+-- A clickable row, as Chart Cue's list rows: under the mouse a light highlight (COL.ROW_HOVER, corners 4) and a
+-- hand cursor (UI.row_click_area); the row at the edit cursor (during playback: the play position) gets the
+-- current-row look (UI.row_highlight: a blue tint and a blue bar on its left). Both reach the right side of the
+-- panel. A click on the row (not on one of its controls) moves the edit cursor to the row's time.
+-- UI.pill_begin before the row's controls (from the last frame's hover), UI.pill_end after them (the click).
+function UI.pill_right(x)
+  local cx = ImGui.GetCursorScreenPos(ctx)
+  return math.max(x + 40, cx + ImGui.GetContentRegionAvail(ctx) - 4)
+end
+function UI.pill_begin(key, x, y, w, cur)
+  local h = ImGui.GetFrameHeight(ctx)
+  local x1 = UI.pill_right(x)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  R.pill_hov = R.pill_hov or {}
+  R.pill_x1 = R.pill_x1 or {}
+  R.pill_x1[key] = x1 -- (for UI.pill_end: there the cursor is no longer at the row start)
+  if cur then
+    ImGui.DrawList_AddRectFilled(dl, x - 6, y - 2, x1, y + h + 2, COL.ACTIVE_BG, 4)
+    ImGui.DrawList_AddRectFilled(dl, x - 6, y - 2, x - 3, y + h + 2, COL.ACCENT, 2)
+  end
+  if R.pill_hov[key] then ImGui.DrawList_AddRectFilled(dl, x - 6, y - 2, x1, y + h + 2, COL.ROW_HOVER, 4) end
+end
+function UI.pill_end(key, x, y, w, t, what)
+  local h = ImGui.GetFrameHeight(ctx)
+  local mx, my = ImGui.GetMousePos(ctx)
+  local on = mx >= x - 6 and mx < (R.pill_x1[key] or x + w + 6) and my >= y - 2 and my < y + h + 2
+    and ImGui.IsWindowHovered(ctx) and not ImGui.IsAnyItemHovered(ctx)
+    and not ImGui.IsPopupOpen(ctx, "", ImGui.PopupFlags_AnyPopupId())
+  R.pill_hov[key] = on or nil
+  if on then
+    ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand())
+    ImGui.SetTooltip(ctx, "Click: move the edit cursor to " .. (what or "this change") .. " (" .. Util.fmt_beats(t) .. ").")
+    if ImGui.IsMouseClicked(ctx, 0) then r.SetEditCurPos(t, true, false) end
+  end
+end
+
+-- An editable position or time of a row (key: unique for the row): returns the typed time when Enter or a click
+-- elsewhere ends the edit, false when the text is not a time, else nil.
+function UI.edit_time(key, width, text, parse, tip, right)
+  R.st_text = R.st_text or {}
+  ImGui.SetNextItemWidth(ctx, width)
+  -- right: the text right-aligned while it is not edited (ImGui's field has no alignment: it is drawn on top)
+  local over = right and R.st_text[key] == nil
+  if over then ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.TRANSPARENT) end
+  local _, nt = ImGui.InputText(ctx, "##" .. key, R.st_text[key] or text)
+  if over then
+    ImGui.PopStyleColor(ctx)
+    local x1, y0 = ImGui.GetItemRectMax(ctx), select(2, ImGui.GetItemRectMin(ctx))
+    local tw = ImGui.CalcTextSize(ctx, text)
+    ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), x1 - tw - 8, UI.text_y(y0), COL.TEXT_MAIN, text)
+  end
+  local res
+  if ImGui.IsItemActive(ctx) then R.st_text[key] = nt
+  elseif ImGui.IsItemDeactivated(ctx) then
+    res = parse(R.st_text[key] or nt) or false
+    R.st_text[key] = nil
+  else R.st_text[key] = nil end
+  UI.tip(tip)
+  return res
+end
+local BEATS_TIP = "Bar, beat and hundredths of a beat in the project (as REAPER's ruler). Type a new position and\n"
+  .. "press Enter, for example 9.1 or 9.2.50 (half a beat after beat 2)."
+local TIME_TIP = "The time from the song start (m:ss.s). Type a new time and press Enter, for example 0:32.5."
+
+-- A box of rows that scrolls when there are more than max_rows (its scrollbar right after the rows, always shown):
+-- returns true when the box is open (then call ImGui.EndChild after the rows). w: the width of the rows.
+function UI.begin_rows_box(id, n, max_rows, w)
+  if n <= max_rows then return false end
+  local rh = ImGui.GetFrameHeightWithSpacing(ctx)
+  ImGui.PushStyleColor(ctx, ImGui.Col_ScrollbarBg(), COL.FIELD)
+  ImGui.PushStyleColor(ctx, ImGui.Col_ScrollbarGrab(), COL.TOGGLE_OFF)
+  local vis = ImGui.BeginChild(ctx, id, w + 18, max_rows * rh + 4, 0, ImGui.WindowFlags_AlwaysVerticalScrollbar())
+  ImGui.PopStyleColor(ctx, 2)
+  return vis
+end
+
 -- The question after a new MIDI item with more than 1 MIDI channel (R.chq): which channel the device uses.
 function UI.draw_chan_ask()
   local q = R.chq
@@ -2190,7 +2618,7 @@ function UI.draw_chan_ask()
   local pick
   for k, ch in ipairs(q.chans) do
     if k > 1 then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP) end
-    local label = "Channel " .. (ch + 1)
+    local label = (ch + 1 == q.d.chan) and ("Keep channel " .. (ch + 1)) or ("Channel " .. (ch + 1))
     if UI.button(label .. "##chq" .. ch, UI.btn_w(label, 90), nil, (ch + 1 == q.d.chan) and "primary" or nil) then pick = ch + 1 end
   end
   if pick then
@@ -2318,7 +2746,7 @@ function UI.draw_pick()
   local ch, v = ImGui.Combo(ctx, "Folder", pk.folder, Preset.folder_items(d))
   if ch then pk.folder = v end
   ImGui.SetNextItemWidth(ctx, 200)
-  ch, v = ImGui.InputInt(ctx, "Bank", pk.bank, 1, 4)
+  ch, v = UI.input_int("Bank", pk.bank, 1)
   if ch then pk.bank = Util.clamp(v, 1, m.banks) end
   ImGui.SetNextItemWidth(ctx, 200)
   local letters = R.letter_items and R.letter_items[pk.d.model]
@@ -2412,14 +2840,14 @@ function UI.draw_song_row(d, i, rg, aw)
     ImGui.EndCombo(ctx)
   end
   if ImGui.IsItemHovered(ctx) then
-    ImGui.SetTooltip(ctx, ch and ("The preset change of this song, at " .. Util.fmt_mmss(ch.t) .. ".")
+    ImGui.SetTooltip(ctx, ch and ("The preset change of this song, at " .. Util.fmt_beats(ch.t) .. ".")
       or (inherited and "No preset change in this song: the preset from before goes on (grey).\nChoose a preset to add a change."
       or "No preset change yet. Choose a preset, or 'Choose by number...' for a preset without a name."))
   end
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   local cur = ch or Midi.active_at(d, rg.start)
   ImGui.BeginDisabled(ctx, cur == nil)
-  if UI.button(">##send", fh, fh) and cur then
+  if UI.icon_button("send", "send", fh) and cur then
     if not Midi.send_now(d, cur.folder, cur.index) then UI.toast(d.name .. ": the MIDI output is not available.", true) end
   end
   ImGui.EndDisabled(ctx)
@@ -2463,7 +2891,7 @@ function UI.draw_scene_strip(d, rg, sx, w)
       if ts > t0 + 0.0001 then blocks[#blocks + 1] = { t0 = t0, t1 = ts, v = v, ev = ev } end
       if g then
         blocks[#blocks + 1] = { t0 = math.max(ts, rg.start), t1 = g.t1, test = g }
-        skip, t0, v, ev = g, g.t1, CFG.TEST_SEQ[#CFG.TEST_SEQ], g.evs[#g.evs]
+        skip, t0, v, ev = g, g.t1, CFG.TEST_SEQ[#CFG.TEST_SEQ], nil -- (its change is the test's: no menu)
       else
         t0, v, ev = math.max(ts, rg.start), s.v, s
       end
@@ -2553,6 +2981,7 @@ end
 -- change: its time in the song, the scene, send, remove. "Add a scene at the edit cursor" adds one.
 function UI.draw_scene_list(d, rg, x0, w)
   local fh = ImGui.GetFrameHeight(ctx)
+  local gap = CFG.CTRL_GAP
   local list = Midi.song_scenes(d, rg)
   local st = Midi.start_scene(d, rg)
   local pcs = Midi.preset_at(d, rg, rg.start)
@@ -2566,45 +2995,81 @@ function UI.draw_scene_list(d, rg, x0, w)
       if g ~= skip then rows[#rows + 1] = { ev = s, test = g }; skip = g end
     else rows[#rows + 1] = { ev = s, start = (s == st) } end
   end
+  -- the columns (from the left of the list): position, time, nudge, scene, then send and remove
+  local C_POS, C_TIME, C_NUDGE = 0, 78, 150
+  local C_SCENE = C_NUDGE + 2 * fh + 2 * gap
+  local cw = math.max(80, math.min(220, w - C_SCENE - 2 * (fh + gap) - 20))
+  local C_SEND = C_SCENE + cw + gap
+  local C_X = C_SEND + fh + gap
+  local row_w = C_X + fh
+  -- the labels above the columns
+  local hy = select(2, ImGui.GetCursorScreenPos(ctx))
+  for _, hc in ipairs({ { C_POS, "Position" }, { C_TIME, "Time" }, { C_NUDGE, "Nudge" }, { C_SCENE, "Scene" } }) do
+    ImGui.SetCursorScreenPos(ctx, x0 + hc[1], hy)
+    ImGui.TextColored(ctx, COL.TEXT_DIM, hc[2])
+  end
   local change, remove, movem, test_rm, test_mv
+  ImGui.SetCursorScreenPos(ctx, x0, select(2, ImGui.GetCursorScreenPos(ctx)))
+  local box = UI.begin_rows_box("##scbox", #rows, S.scene_rows, row_w + 8)
+  local rx = (box and select(1, ImGui.GetCursorScreenPos(ctx)) or x0) + (box and 4 or 0)
+  local function at(col, y) ImGui.SetCursorScreenPos(ctx, rx + col, y) end
+  -- the current row: the last one at or before the edit cursor (during playback: the play position), in this song
+  local tc = Util.playing() and r.GetPlayPosition() or r.GetCursorPosition()
+  local cur_n
+  if tc >= rg.start - CFG.EDGE and tc < rg.stop - CFG.EDGE then
+    for n, row in ipairs(rows) do
+      local rt = row.start and rg.start or (row.ev and row.ev.t)
+      if rt and rt <= tc + CFG.EDGE then cur_n = n end
+    end
+  end
   for n, row in ipairs(rows) do
     ImGui.PushID(ctx, n)
-    ImGui.SetCursorScreenPos(ctx, x0, select(2, ImGui.GetCursorScreenPos(ctx)))
+    local y = select(2, ImGui.GetCursorScreenPos(ctx))
     local ev = row.ev
     local t = ev and ev.t or Midi.start_time(d, rg)
-    local function time_field(idk, width, text, parse, tip)
-      local id = idk .. string.format("%.4f", ev.t)
-      R.st_text = R.st_text or {}
-      ImGui.SetNextItemWidth(ctx, width)
-      local _, nt = ImGui.InputText(ctx, "##" .. idk, R.st_text[id] or text)
-      if ImGui.IsItemActive(ctx) then R.st_text[id] = nt
-      elseif ImGui.IsItemDeactivated(ctx) then
-        local tn = parse(R.st_text[id] or nt)
-        R.st_text[id] = nil
-        if tn and tn >= rg.start and tn < rg.stop then
-          if math.abs(tn - ev.t) > 0.0005 then
-            if row.test then test_mv = { g = row.test, t = tn } else movem = { ev = ev, t = tn } end
-          end
-        else UI.toast("Type a time inside the song, before its end.", true) end
-      else R.st_text[id] = nil end
-      UI.tip(tip)
-    end
+    local pkey = "sc" .. rg.start .. ":" .. n
+    UI.pill_begin(pkey, rx, y, row_w, n == cur_n)
+    -- position and time: the start scene shows them (they cannot be changed: it marks the song start)
+    at(C_POS, y)
     if row.start then
-      UI.row_text("Start", COL.TEXT_MAIN)
-      UI.tip("The scene at the song start: every song starts on a known scene.")
+      local ps = Util.fmt_beats(math.max(t, rg.start))
+      local cx0 = ImGui.GetCursorPosX(ctx)
+      ImGui.SetCursorPosX(ctx, cx0 + 70 - 8 - (ImGui.CalcTextSize(ctx, ps)))
+      UI.row_text(ps, COL.TEXT_DIM)
+      UI.tip("The start scene: the scene at the song start. Its place cannot be changed (it marks the song start);\n"
+        .. "choose its scene on the right.")
+      at(C_TIME, y)
+      UI.row_text(Util.fmt_song_time(rg, math.max(t, rg.start)), COL.TEXT_DIM)
+      UI.tip("The start scene: at the song start.")
     else
-      time_field("scb", 70, Util.fmt_beats(ev.t), Util.parse_beats,
-        "Bars and beats in the project (as REAPER's ruler). Type a new position and press Enter,\nfor example 9.1 or 9.2.5 (half a beat after beat 2).")
-      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-      time_field("sct", 64, Util.fmt_song_time(rg, ev.t), function(s) return Util.parse_song_time(rg, s) end,
-        "The time from the song start (m:ss.s). Type a new time and press Enter, for example 0:32.5.")
+      local key = string.format("%.4f", ev.t)
+      local tb = UI.edit_time("scb" .. key, 70, Util.fmt_beats(ev.t), Util.parse_beats, BEATS_TIP, true)
+      at(C_TIME, y)
+      local tt = UI.edit_time("sct" .. key, 64, Util.fmt_song_time(rg, ev.t),
+        function(s) return Util.parse_song_time(rg, s) end, TIME_TIP)
+      local tn = tb or tt
+      if tb == false or tt == false then UI.toast("Type a time inside the song, before its end.", true)
+      elseif tn then
+        if tn < rg.start or tn >= rg.stop - CFG.EDGE then UI.toast("Type a time inside the song, before its end.", true)
+        elseif math.abs(tn - ev.t) > 0.0005 then
+          if row.test then test_mv = { g = row.test, t = tn } else movem = { ev = ev, t = tn } end
+        end
+      end
+      -- nudge
+      at(C_NUDGE, y)
+      local nd = UI.nudge_buttons("s", fh, row.test and "the Scene test" or "this scene change")
+      if nd then
+        local nt = Midi.nudged(ev.t, nd)
+        if nt < rg.start or nt >= rg.stop - CFG.EDGE then UI.toast("A nudge cannot move it out of the song.", true)
+        elseif row.test then test_mv = { g = row.test, t = nt }
+        else movem = { ev = ev, t = nt } end
+      end
     end
-    ImGui.SameLine(ctx, x0 - ImGui.GetWindowPos(ctx) + 70 + 64 + 2 * CFG.CTRL_GAP)
+    at(C_SCENE, y)
     local pc = Midi.preset_at(d, rg, t) or pcs
     local cur = ev and ev.v
-    local cw = math.max(80, math.min(220, w - 70 - 64 - 2 * CFG.CTRL_GAP - 2 * (fh + CFG.CTRL_GAP)))
     if row.test then
-      -- a scene test: 1 row, its name, no scene choice and no ">"; the red X removes the whole test
+      -- a scene test: 1 row, its name, no scene choice and no send; the red X removes the whole test
       ImGui.PushStyleColor(ctx, ImGui.Col_Button(), COL.FIELD)
       ImGui.BeginDisabled(ctx, true)
       UI.button("Scene test##sctest", cw, fh)
@@ -2612,42 +3077,49 @@ function UI.draw_scene_list(d, rg, x0, w)
       ImGui.PopStyleColor(ctx)
       UI.tip("Every scene from I-A to II-D and back to I-A, a change every " .. CFG.TEST_BEATS .. " beats. Then the song stays on I-A.\n"
         .. "Type a new position to move the whole test.")
-      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP + fh + CFG.CTRL_GAP)
-      if UI.remove_x_button("##sctx", fh) then test_rm = row.test end
-      UI.tip("Remove this scene test (all its scene changes).")
-      ImGui.PopID(ctx)
-      goto next_row
-    end
-    ImGui.SetNextItemWidth(ctx, cw)
-    local preview = cur and Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, cur)
-      or ("(" .. Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, Midi.default_start(d, pc)) .. ")")
-    if not cur then ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.TEXT_DIM) end
-    local open = ImGui.BeginCombo(ctx, "##scv", preview)
-    if not cur then ImGui.PopStyleColor(ctx) end
-    if open then
-      for v = 0, 7 do
-        local nm = Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, v)
-        if Preset.has_scene_name(d, pc and pc.folder, pc and pc.index or 0, v) then nm = nm .. "  (" .. MODELS[d.model].scenes[v + 1] .. ")" end
-        if ImGui.Selectable(ctx, nm .. "##v" .. v, cur == v) then change = { ev = ev, t = t, v = v } end
+    else
+      ImGui.SetNextItemWidth(ctx, cw)
+      local preview = cur and Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, cur)
+        or ("(" .. Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, Midi.default_start(d, pc)) .. ")")
+      if not cur then ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.TEXT_DIM) end
+      local open = ImGui.BeginCombo(ctx, "##scv", preview)
+      if not cur then ImGui.PopStyleColor(ctx) end
+      if open then
+        for v = 0, 7 do
+          local nm = Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, v)
+          if Preset.has_scene_name(d, pc and pc.folder, pc and pc.index or 0, v) then nm = nm .. "  (" .. MODELS[d.model].scenes[v + 1] .. ")" end
+          if ImGui.Selectable(ctx, nm .. "##v" .. v, cur == v) then change = { ev = ev, t = t, v = v } end
+        end
+        ImGui.EndCombo(ctx)
       end
-      ImGui.EndCombo(ctx)
+      UI.tip(row.start and not ev and "No start scene yet. Choose one (or click Fill songs)." or "The scene from here on.")
+      at(C_SEND, y)
+      local sv = cur or Midi.default_start(d, pc)
+      if UI.icon_button("scs", "send", fh) and not Midi.send_scene(d, sv) then UI.toast(d.name .. ": the MIDI output is not available.", true) end
+      UI.tip("Send this scene to the unit now (to hear it).")
     end
-    UI.tip(row.start and not ev and "No start scene yet. Choose one (or click Fill songs)." or "The scene from here on.")
-    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-    local sv = cur or Midi.default_start(d, pc)
-    if UI.button(">##scs", fh, fh) and not Midi.send_scene(d, sv) then UI.toast(d.name .. ": the MIDI output is not available.", true) end
-    UI.tip("Send this scene to the unit now (to hear it).")
-    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+    at(C_X, y)
     ImGui.BeginDisabled(ctx, ev == nil)
-    if UI.remove_x_button("##scx", fh) and ev then remove = ev end
+    if UI.remove_x_button("##scx", fh) and ev then
+      if row.test then test_rm = row.test else remove = ev end
+    end
     ImGui.EndDisabled(ctx)
-    UI.tip("Remove this scene change.")
+    UI.tip(row.test and "Remove this scene test (all its scene changes)." or "Remove this scene change.")
+    UI.pill_end(pkey, rx, y, row_w, row.start and rg.start or t,
+      row.start and "the song start" or (row.test and "the Scene test" or "this scene change"))
     ImGui.PopID(ctx)
-    ::next_row::
   end
-  -- add at the edit cursor (during playback: at the play position)
-  ImGui.SetCursorScreenPos(ctx, x0, select(2, ImGui.GetCursorScreenPos(ctx)))
-  ImGui.SetNextItemWidth(ctx, math.min(220, w))
+  if box then ImGui.EndChild(ctx) end
+  -- the bottom row: the song nudge (under the nudge column), add at the edit cursor, clear
+  local by = select(2, ImGui.GetCursorScreenPos(ctx))
+  ImGui.SetCursorScreenPos(ctx, x0 + C_POS, by)
+  UI.row_text("Song", COL.TEXT_DIM)
+  UI.tip("The nudge of the whole song: all scene changes (not the start scene) and knob values.")
+  ImGui.SetCursorScreenPos(ctx, x0 + C_NUDGE, by)
+  local snd = UI.nudge_buttons("song", fh, "all scene changes (not the start scene) and knob values of this song")
+  if snd and not Midi.nudge_song(d, rg, snd) then UI.toast("A nudge cannot move a change out of the song (or before its start scene).", true) end
+  ImGui.SetCursorScreenPos(ctx, x0 + C_SCENE, by)
+  ImGui.SetNextItemWidth(ctx, math.max(cw, 200))
   if ImGui.BeginCombo(ctx, "##scadd", "Add scene at edit cursor", ImGui.ComboFlags_HeightLargest()) then
     local tc = Util.playing() and r.GetPlayPosition() or r.GetCursorPosition()
     local pc = Midi.preset_at(d, rg, tc) or pcs
@@ -2676,9 +3148,8 @@ function UI.draw_scene_list(d, rg, x0, w)
   end
   UI.tip("Put REAPER's edit cursor where the scene must change (during playback: the play position),\n"
     .. "then choose the scene. It goes exactly at the edit cursor.")
-  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  local has = #list > 0
-  ImGui.BeginDisabled(ctx, not has)
+  ImGui.SameLine(ctx, 0, gap)
+  ImGui.BeginDisabled(ctx, #list == 0)
   if UI.button("Clear scenes", UI.btn_w("Clear scenes", 0)) then
     UI.toast(string.format("%d scene change(s) removed from '%s'.", Midi.clear(d, rg), rg.name))
   end
@@ -2719,10 +3190,11 @@ function UI.draw_songs_tab()
     .. "with its preset. A preset change is written as normal MIDI (Bank/Program Select) at the song start "
     .. "(Settings > Preset timing). Grey: the song has no preset change, and the preset from before goes on.\n\n"
     .. "Fill songs: each song without its own change gets the preset that is already playing there, at its "
-    .. "start, and a start scene. Then playback can start in any song, and the unit loads the right preset.\n"
+    .. "start, a start scene, and the value of each control (Lanes) that plays there. Then playback can start in "
+    .. "any song, and the unit loads the right preset, scene and values.\n"
     .. "Presets match Regions: a song (region) with the name of a preset (Presets tab) gets that preset.\n"
     .. "Scenes match Markers: a marker in a song with the name of a scene gets that scene change.\n"
-    .. "Merge repeated scenes: a scene change to the scene that already plays is removed.", UI.toast_note())
+    .. "Merge repeated scenes: a scene change to the scene that already plays is removed.")
   if #R.regions == 0 then
     UI.note("This project has no regions. Make 1 region for each song (Insert > Region from time selection).")
     return
@@ -2741,8 +3213,8 @@ function UI.draw_songs_tab()
     UI.toast(n == 0 and "Every song has its preset and start scene." or string.format("%d change(s) added.", n))
   end
   UI.tip("Songs without their own preset change (grey) get the preset that is already playing there,\n"
-    .. "and songs without a start scene get one. Then playback can start in any song, and the unit loads the\n"
-    .. "right preset and scene.")
+    .. "songs without a start scene get one, and each control gets the value that plays at each song start.\n"
+    .. "Then playback can start in any song, and the unit loads the right preset, scene and values.")
   if UI.button("Presets match Regions", flow("Presets match Regions")) then
     local n = Midi.match_names(d)
     UI.toast(n == 0 and "No song name matches a preset name." or string.format("%d song(s) matched.", n))
@@ -2789,7 +3261,7 @@ function UI.draw_lanes_tab()
     .. "Expression 1 (CC#1) when you assign the expression pedal to a filter on the unit. Enter the range that you "
     .. "set on the unit (heel = Min, toe = Max) and its unit: MIDI Pilot then shows and writes the values in that "
     .. "unit (650 Hz in place of a CC value of 97).\n\nA CC has 128 steps, so some values cannot be sent exactly: "
-    .. "MIDI Pilot uses the nearest one. Saved on this computer, for this device.", UI.toast_note())
+    .. "MIDI Pilot uses the nearest one. Saved on this computer, for this device.")
   local rm
   -- the columns: CC, name, min, max, unit (the labels above them)
   local x0 = ImGui.GetCursorPosX(ctx)
@@ -2806,7 +3278,7 @@ function UI.draw_lanes_tab()
     ImGui.PushID(ctx, n)
     ImGui.SetCursorPosX(ctx, cols[1])
     ImGui.SetNextItemWidth(ctx, CW[1])
-    local ch, v = ImGui.InputInt(ctx, "##cc", k.cc, 1, 10)
+    local ch, v = UI.input_int("##cc", k.cc, 1)
     if ch then k.cc = Util.clamp(v, 0, 127); Util.mark_sdirty(); R.pcs = {} end
     UI.tip("The CC number." .. (QC_CCS[k.cc] and ("\nCC#" .. k.cc .. " is the unit's " .. QC_CCS[k.cc] .. " CC: it also does that.") or ""))
     ImGui.SameLine(ctx, cols[2])
@@ -2864,7 +3336,7 @@ function UI.draw_lanes_tab()
     .. "or in all songs ('All songs'). Type a value in its unit: MIDI Pilot writes the nearest CC value. Bars and "
     .. "beats: in the project; time: from the song start.\n\nSlope: how the value goes to the next value. Jump: it "
     .. "changes at the next value. Straight, Slow start and end, Fast start, Fast end: it moves there in that way "
-    .. "(for swells and fades). Curve: you choose how much it bends.", UI.toast_note())
+    .. "(for swells and fades). Curve: you choose how much it bends.")
   local _, cw = UI.row_start("Control")
   ImGui.SetNextItemWidth(ctx, math.min(cw, 240))
   if ImGui.BeginCombo(ctx, "##lk", string.format("%s  (CC#%d)", k.name, k.cc)) then
@@ -2881,42 +3353,124 @@ function UI.draw_lanes_tab()
     return
   end
   -- the songs to show, each with its values of this control
-  local groups = {}
-  for _, g in ipairs(all and R.regions or { rg }) do
-    local gl = {}
-    for _, e in ipairs(Midi.ccs(d, k.cc)) do if e.t >= g.start and e.t < g.stop then gl[#gl + 1] = e end end
-    if #gl > 0 or not all then groups[#groups + 1] = { rg = g, list = gl } end
+  -- (cached until the MIDI changes; a value up to CFG.EDGE before a song start belongs to that song)
+  local ccs = Midi.ccs(d, k.cc)
+  local gkey = "lg" .. d.id .. ":" .. k.cc .. ":" .. (all and "*" or (rg and rg.start or "-"))
+  local groups = R.pcs[gkey]
+  if not groups then
+    groups = {}
+    for _, g in ipairs(all and R.regions or { rg }) do
+      local gl = {}
+      for _, e in ipairs(ccs) do if e.t >= g.start - CFG.EDGE and e.t < g.stop - CFG.EDGE then gl[#gl + 1] = e end end
+      if #gl > 0 or not all then groups[#groups + 1] = { rg = g, list = gl } end
+    end
+    R.pcs[gkey] = groups
   end
-  local change, remove, shape
+  local change, remove, shape, nudge
   local vx = ImGui.GetCursorPosX(ctx)
-  local VC = { vx, vx + 70, vx + 140, vx + 260, nil, vx + 260 + fh + CFG.CTRL_GAP } -- (the red X: after the slope)
+  -- the columns: position, time, nudge, value, slope (and its bend), then send and remove
+  local gap = CFG.CTRL_GAP
+  local NUD = vx + 150
+  local VAL = NUD + 2 * fh + 2 * gap
+  local SLO = VAL + 110 + gap
+  local SND = SLO + 160 + gap -- (send and remove right after the slope; a Curve's bend goes after them)
+  local VC = { vx, vx + 78, NUD, VAL, SLO, SND, SND + fh + gap }
   local any = false
   for _, g in ipairs(groups) do if #g.list > 0 then any = true end end
-  if any then
-    local vh = { "Bar.beat", "Time", "Value", "", "", "Slope to the next value" }
+  -- the labels above the columns: in each song's section (under its title)
+  local function col_labels()
+    local vh = { "Position", "Time", "Nudge", "Value", "Slope to the next value" }
     for i, hname in ipairs(vh) do
-      if hname ~= "" then
-        if i > 1 then ImGui.SameLine(ctx, VC[i]) else ImGui.SetCursorPosX(ctx, VC[1]) end
-        ImGui.TextColored(ctx, COL.TEXT_DIM, hname)
-      end
+      if i > 1 then ImGui.SameLine(ctx, VC[i]) else ImGui.SetCursorPosX(ctx, VC[1]) end
+      ImGui.TextColored(ctx, COL.TEXT_DIM, hname)
     end
   end
   for gi, g in ipairs(groups) do
     local grg, list = g.rg, g.list
-    if all then -- the song name above its values
+    local closed = false
+    if all then -- the song name above its values, with an arrow: a click closes / opens the song
+      local key = string.format("%.3f", grg.start)
+      R.lane_closed = R.lane_closed or {}
+      closed = R.lane_closed[key] == true
       ImGui.SetCursorPosX(ctx, VC[1])
+      local x, y = ImGui.GetCursorScreenPos(ctx)
+      local fh2 = ImGui.GetFrameHeight(ctx)
+      local title = (grg.name ~= "" and grg.name or "(unnamed region)") .. "  (" .. #list .. ")"
       ImGui.PushFont(ctx, bold)
-      UI.row_text(grg.name ~= "" and grg.name or "(unnamed region)", grg == rg and COL.ACCENT_HOVER or COL.TEXT_MAIN)
+      local tw = ImGui.CalcTextSize(ctx, title)
+      ImGui.InvisibleButton(ctx, "##lg" .. gi, 14 + tw, fh2)
+      local hov = ImGui.IsItemHovered(ctx)
+      local dl = ImGui.GetWindowDrawList(ctx)
+      local col = hov and COL.TEXT_BRIGHT or (grg == rg and COL.ACCENT_HOVER or COL.TEXT_MAIN)
+      local cx, cy = x + 4, y + fh2 / 2
+      if closed then ImGui.DrawList_AddTriangleFilled(dl, cx - 2, cy - 4, cx - 2, cy + 4, cx + 3, cy, col)
+      else ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 2, cx + 4, cy - 2, cx, cy + 3, col) end
+      ImGui.DrawList_AddText(dl, x + 14, UI.text_y(y), col, title)
       ImGui.PopFont(ctx)
-      if grg == rg then UI.tip("The song at the edit cursor.") end
+      if hov then
+        ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand())
+        ImGui.SetTooltip(ctx, (closed and "Open" or "Close") .. " the values of this song." .. (grg == rg and "\nThe song at the edit cursor." or ""))
+      end
+      if ImGui.IsItemClicked(ctx, 0) then R.lane_closed[key] = (not closed) or nil; closed = not closed end
     end
-    for n, e in ipairs(list) do
+    if not closed and #list > 0 then col_labels() end
+    -- a long list scrolls (Settings > Lists): the rows go in a child window; its columns start at its own left edge
+    local scroll = not closed and #list > S.lane_rows
+    local VC, vx = VC, vx
+    if scroll then
+      local rh = ImGui.GetFrameHeightWithSpacing(ctx)
+      ImGui.SetCursorPosX(ctx, vx)
+      -- as wide as the rows (the slope, its bend and the red X), so its scrollbar is right after the X buttons;
+      -- the scrollbar always shows, in a lighter colour than the page's
+      local bw = (VC[7] - vx) + fh + gap + 110 + 26 -- (the bend of a Curve after the red X; room for the pills)
+      ImGui.PushStyleColor(ctx, ImGui.Col_ScrollbarBg(), COL.FIELD)
+      ImGui.PushStyleColor(ctx, ImGui.Col_ScrollbarGrab(), COL.TOGGLE_OFF)
+      local vis = ImGui.BeginChild(ctx, "##lscroll" .. gi, bw, S.lane_rows * rh + 4, 0,
+        ImGui.WindowFlags_AlwaysVerticalScrollbar())
+      ImGui.PopStyleColor(ctx, 2)
+      if not vis then scroll = false; closed = true
+      else
+        local ox = ImGui.GetCursorPosX(ctx) - vx + 4
+        local sh = {}
+        for i2 = 1, 7 do sh[i2] = VC[i2] + ox end
+        VC, vx = sh, vx + ox
+      end
+    end
+    local tcur = Util.playing() and r.GetPlayPosition() or r.GetCursorPosition()
+    local cur_n
+    if tcur >= grg.start - CFG.EDGE and tcur < grg.stop - CFG.EDGE then
+      for n, e in ipairs(list) do if e.t <= tcur + CFG.EDGE then cur_n = n end end
+    end
+    for n, e in ipairs(closed and {} or list) do
       ImGui.PushID(ctx, "v" .. gi .. ":" .. n)
+      -- the pill of the row (a click moves the edit cursor there)
       ImGui.SetCursorPosX(ctx, VC[1])
-      UI.row_text(Util.fmt_beats(e.t), COL.TEXT_DIM)
+      local px, py = ImGui.GetCursorScreenPos(ctx)
+      local pw = VC[7] - VC[1] + fh
+      local pkey = "kv" .. k.cc .. ":" .. string.format("%.4f", e.t)
+      UI.pill_begin(pkey, px, py, pw, n == cur_n)
+      -- position and time (editable: a typed time moves the value)
+      local key = string.format("k%d:%.4f", k.cc, e.t)
+      local tb = UI.edit_time("kb" .. key, 70, Util.fmt_beats(e.t), Util.parse_beats, BEATS_TIP, true)
       ImGui.SameLine(ctx, VC[2])
-      UI.row_text(Util.fmt_song_time(grg, e.t), COL.TEXT_DIM)
+      local tt = UI.edit_time("kt" .. key, 64, Util.fmt_song_time(grg, e.t),
+        function(s) return Util.parse_song_time(grg, s) end, TIME_TIP)
+      local tn = tb or tt
+      if tb == false or tt == false then UI.toast("Type a time inside the song, before its end.", true)
+      elseif tn then
+        if tn < grg.start or tn >= grg.stop - CFG.EDGE then UI.toast("Type a time inside the song, before its end.", true)
+        elseif math.abs(tn - e.t) > 0.0005 then nudge = { e = e, t = tn } end
+      end
+      -- nudge
       ImGui.SameLine(ctx, VC[3])
+      local nd = UI.nudge_buttons("k", fh, "this value")
+      if nd then
+        local nt = Midi.nudged(e.t, nd)
+        if nt < grg.start or nt >= grg.stop - CFG.EDGE then UI.toast("A nudge cannot move it out of the song.", true)
+        else nudge = { e = e, t = nt } end
+      end
+      -- the value
+      ImGui.SameLine(ctx, VC[4])
       local id = string.format("%d:%.4f", k.cc, e.t)
       R.kv_text = R.kv_text or {}
       ImGui.SetNextItemWidth(ctx, 110)
@@ -2928,11 +3482,8 @@ function UI.draw_lanes_tab()
         if val then change = { e = e, v = Knob.to_cc(k, val), want = val } else UI.toast("Type a number, for example 650.", true) end
       else R.kv_text[id] = nil end
       UI.tip(string.format("CC value %d. Type a new value in %s and press Enter.", e.v, k.unit ~= "" and k.unit or "numbers"))
-      ImGui.SameLine(ctx, VC[4])
-      if UI.button(">##ks", fh, fh) and not Midi.send_cc(d, k.cc, e.v) then UI.toast(d.name .. ": the MIDI output is not available.", true) end
-      UI.tip("Send this value to the unit now.")
       -- the slope to the next value (not on the last value of a song: there is no next one)
-      ImGui.SameLine(ctx, VC[6])
+      ImGui.SameLine(ctx, VC[5])
       local last = (n == #list)
       ImGui.BeginDisabled(ctx, last)
       ImGui.SetNextItemWidth(ctx, 160)
@@ -2941,21 +3492,27 @@ function UI.draw_lanes_tab()
       ImGui.EndDisabled(ctx)
       UI.tip(last and "The last value of the song: no next value to move to."
         or "How the value goes to the next value: Jump (changes at the next value), or it moves there in that way.")
+      ImGui.SameLine(ctx, VC[6])
+      if UI.icon_button("ks", "send", fh) and not Midi.send_cc(d, k.cc, e.v) then UI.toast(d.name .. ": the MIDI output is not available.", true) end
+      UI.tip("Send this value to the unit now.")
+      ImGui.SameLine(ctx, VC[7])
+      if UI.remove_x_button("##kx", fh) then remove = e end
+      UI.tip("Remove this value.")
+      UI.pill_end(pkey, px, py, pw, e.t, "this value")
       if e.shape == 5 and not last then
         ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
         ImGui.SetNextItemWidth(ctx, 110)
         local tch, tv = ImGui.SliderDouble(ctx, "##ten", e.tension, -1, 1, "%.2f")
         if ImGui.IsItemDeactivatedAfterEdit(ctx) or (tch and not ImGui.IsItemActive(ctx)) then shape = { e = e, s = 5, ten = tv }
         elseif tch then e.tension = tv end
-        UI.tip("How much the curve bends: below 0 it starts fast, above 0 it starts slowly.")
+        UI.tip("Curve: how much it bends. Below 0 it starts fast, above 0 it starts slowly.")
       end
-      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-      if UI.remove_x_button("##kx", fh) then remove = e end
-      UI.tip("Remove this value.")
       ImGui.PopID(ctx)
     end
+    if scroll then ImGui.EndChild(ctx) end
   end
   if not any then UI.note(all and "No values of this control in any song yet." or "No values of this control in this song yet.") end
+  if nudge then Midi.set_cc(d, k.cc, nudge.t, nudge.e.v, nudge.e) end
   if not rg then -- (All songs, the cursor outside the songs: nothing to add to)
     if change then Midi.set_cc(d, k.cc, change.e.t, change.v, change.e) end
     if remove then Midi.remove_cc(d, k.cc, remove) end
@@ -2963,31 +3520,172 @@ function UI.draw_lanes_tab()
     UI.note("Put the edit cursor inside a song to add a value.")
     return
   end
-  -- add a value at the edit cursor
+  -- add at the edit cursor: 2 groups with a small title each, "Add a value" and "Add a ramp" (a swell: its rows
+  -- indented under the Swell toggle), in the label column form of the Settings tab
+  local unit = k.unit ~= "" and k.unit or ""
+  local function hint(v) return Knob.fmt(k, v) end
+  local function subtitle(s, extra)
+    UI.vgap(10)
+    local sx, sy = ImGui.GetCursorScreenPos(ctx)
+    local full = math.max(60, ImGui.GetContentRegionAvail(ctx) - 4)
+    ImGui.PushFont(ctx, bold)
+    UI.row_text(s, COL.HEADING)
+    ImGui.PopFont(ctx)
+    if extra then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP); UI.row_text(extra, COL.TEXT_DIM) end
+    local fh2 = ImGui.GetFrameHeight(ctx)
+    ImGui.DrawList_AddLine(ImGui.GetWindowDrawList(ctx), sx, sy + fh2 + 1, sx + full, sy + fh2 + 1, COL.LINE, 1)
+    UI.vgap(CFG.SP_ROW + 2)
+  end
+  -- the field of a "Custom..." length, next to its dropdown
+  local function custom_field(id, cur)
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+    ImGui.SetNextItemWidth(ctx, 70)
+    local _, nv = ImGui.InputTextWithHint(ctx, id, "2.2", cur or "")
+    UI.tip("The length in bars.beats: 3 = 3 bars, 0.6 = 6 beats, 2.2 = 2 bars and 2 beats\n"
+      .. "(bars follow the time signature, beats the tempo).")
+    if not Midi.parse_length(nv) then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP); UI.row_text("bars.beats", COL.TEXT_DIM) end
+    return nv
+  end
+  local function hint_field(id, w, cur, hint_text, tip)
+    ImGui.SetNextItemWidth(ctx, w)
+    local _, nv = ImGui.InputTextWithHint(ctx, id, hint_text, cur)
+    UI.tip(tip)
+    return nv
+  end
+  -- a value: the control jumps there
+  subtitle("Add a value", "at the edit cursor (" .. Util.fmt_beats(tc) .. ")")
   R.kadd = R.kadd or ""
-  _, cw = UI.row_start("New value")
-  ImGui.SetNextItemWidth(ctx, 120)
-  local _, na = ImGui.InputText(ctx, "##kadd", R.kadd)
-  R.kadd = na
+  UI.row_start("Value")
+  R.kadd = hint_field("##kadd", 110, R.kadd, hint(k.min),
+    "A value in " .. (unit ~= "" and unit or "numbers") .. " (" .. hint(k.min) .. " to " .. hint(k.max) .. "). The control jumps there and stays.")
   local val = Knob.parse_value(R.kadd)
-  UI.tip("A value in " .. (k.unit ~= "" and k.unit or "numbers") .. " (" .. Knob.fmt(k, k.min) .. " to " .. Knob.fmt(k, k.max) .. ").")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   ImGui.BeginDisabled(ctx, val == nil)
   if UI.button("Add at edit cursor", UI.btn_w("Add at edit cursor", 0), nil, "primary") and val then
-    local ts = tc -- (exactly at the edit cursor: never snapped again)
-    Midi.set_cc(d, k.cc, ts, Knob.to_cc(k, val))
-    UI.toast("Added " .. Knob.fmt(k, Knob.from_cc(k, Knob.to_cc(k, val))) .. " at " .. Util.fmt_beats(ts) .. ".")
+    Midi.set_cc(d, k.cc, tc, Knob.to_cc(k, val))
+    UI.toast("Added " .. hint(Knob.from_cc(k, Knob.to_cc(k, val))) .. " at " .. Util.fmt_beats(tc) .. ".")
   end
   ImGui.EndDisabled(ctx)
-  UI.tip("Writes the value at the edit cursor (during playback: the play position), exactly there.")
+  UI.tip("Writes the value exactly at the edit cursor (during playback: the play position).")
   if val then
     local c = Knob.to_cc(k, val)
     local near = Knob.from_cc(k, c)
     local outside = val < math.min(k.min, k.max) or val > math.max(k.min, k.max)
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-    UI.row_text(outside and ("Outside " .. Knob.fmt(k, k.min) .. " - " .. Knob.fmt(k, k.max))
-      or (math.abs(near - val) > 1e-6 and ("Nearest: " .. Knob.fmt(k, near)) or ("CC value " .. c)), outside and COL.YELLOW or COL.TEXT_DIM)
+    UI.row_text(outside and ("Outside " .. hint(k.min) .. " - " .. hint(k.max))
+      or (math.abs(near - val) > 1e-6 and ("Nearest: " .. hint(near)) or ("CC value " .. c)), outside and COL.YELLOW or COL.TEXT_DIM)
   end
+  -- a ramp (needs no value first): from, to, length, slope; a swell goes back
+  local rp = R.ramp or { from = "", to = "", len = 5, shape = 0, ten = 0, back = false,
+    v2 = "", hold = 0, blen = 5, bshape = 0, bten = 0 }
+  R.ramp = rp
+  subtitle("Add a ramp", "from the edit cursor (" .. Util.fmt_beats(tc) .. ")")
+  local _, cw = UI.row_start("From / to / swell")
+  local DW = math.min(cw, 220) -- (the width of the Length dropdown)
+  local AW = 18                -- (the arrow between the 2 fields)
+  local FW = math.floor((DW - AW - 2 * CFG.CTRL_GAP) / 2)
+  rp.from = hint_field("##rfrom", FW, rp.from, hint(k.min), "The value at the start" .. (unit ~= "" and (" (" .. unit .. ")") or "") .. ".")
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  do -- the arrow: a line and a head
+    local ax, ay = ImGui.GetCursorScreenPos(ctx)
+    local fh2 = ImGui.GetFrameHeight(ctx)
+    ImGui.Dummy(ctx, AW, fh2)
+    local dl = ImGui.GetWindowDrawList(ctx)
+    local cy = math.floor(ay + fh2 / 2) + 0.5
+    ImGui.DrawList_AddLine(dl, ax + 2, cy, ax + AW - 5, cy, COL.TEXT_DIM, 2)
+    ImGui.DrawList_AddTriangleFilled(dl, ax + AW - 7, cy - 5, ax + AW - 7, cy + 5, ax + AW, cy, COL.TEXT_DIM)
+  end
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  rp.to = hint_field("##rto", FW, rp.to, hint(k.max), "The value at the end (a swell: the top). Then the value stays there.")
+  ImGui.SameLine(ctx, 0, 2 * CFG.CTRL_GAP)
+  local bch, bk = UI.toggle_line("Swell", rp.back, "Swell: there and back (for example 0 - 100 - 0): a hold at the top, then the way back.")
+  if bch then rp.back = bk end
+  _, cw = UI.row_start("Length")
+  ImGui.SetNextItemWidth(ctx, math.min(cw, 220))
+  local lch, li = ImGui.Combo(ctx, "##rlen", rp.len - 1, RAMP_LEN_ITEMS)
+  if lch then rp.len = li + 1 end
+  UI.tip("How long (beats follow the tempo, bars the time signature). Custom...: type it.\n"
+    .. "'To the time selection end': select the end with REAPER's time selection.")
+  if RAMP_LENS[rp.len].custom then rp.lenc = custom_field("##rlenc", rp.lenc) end
+  _, cw = UI.row_start("Slope")
+  ImGui.SetNextItemWidth(ctx, math.min(cw, 220))
+  local sch2, sh = ImGui.Combo(ctx, "##rshape", rp.shape, RAMP_SHAPE_ITEMS)
+  if sch2 then rp.shape = sh end
+  UI.tip("How the value moves.")
+  if rp.shape == 4 then
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+    ImGui.SetNextItemWidth(ctx, 110)
+    _, rp.ten = ImGui.SliderDouble(ctx, "##rten", rp.ten, -1, 1, "%.2f")
+    UI.tip("Curve: how much it bends. Below 0 it starts fast, above 0 it starts slowly.")
+  end
+  local v0, v1 = Knob.parse_value(rp.from), Knob.parse_value(rp.to)
+  local sw, bad
+  if rp.back then
+    -- the swell rows, indented under Swell
+    _, cw = UI.row_start("      Hold")
+    ImGui.SetNextItemWidth(ctx, math.min(cw, 220))
+    local hch, hi = ImGui.Combo(ctx, "##rhold", rp.hold, HOLD_ITEMS)
+    if hch then rp.hold = hi end
+    UI.tip("How long the value stays at the top before it goes back. Custom...: type it.")
+    if rp.hold > 0 and RAMP_LENS[rp.hold].custom then rp.holdc = custom_field("##rholdc", rp.holdc) end
+    UI.row_start("      Back to")
+    rp.v2 = hint_field("##rv2", 110, rp.v2, "= start", "The value at the end of the swell. Empty: back to the start value.\n"
+      .. "It cannot go past the top (a swell up stays at or below its top, a swell down at or above its bottom).")
+    _, cw = UI.row_start("      Length")
+    ImGui.SetNextItemWidth(ctx, math.min(cw, 220))
+    local blch, bli = ImGui.Combo(ctx, "##rblen", rp.blen - 1, BACK_LEN_ITEMS)
+    if blch then rp.blen = bli + 1 end
+    UI.tip("How long the way back is. Custom...: type it.")
+    if RAMP_LENS[rp.blen].custom then rp.blenc = custom_field("##rblenc", rp.blenc) end
+    _, cw = UI.row_start("      Slope")
+    ImGui.SetNextItemWidth(ctx, math.min(cw, 220))
+    local bsch, bsh = ImGui.Combo(ctx, "##rbshape", rp.bshape, RAMP_SHAPE_ITEMS)
+    if bsch then rp.bshape = bsh end
+    UI.tip("How the value moves on the way back.")
+    if rp.bshape == 4 then
+      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+      ImGui.SetNextItemWidth(ctx, 110)
+      _, rp.bten = ImGui.SliderDouble(ctx, "##rbten", rp.bten, -1, 1, "%.2f")
+      UI.tip("Curve: how much it bends. Below 0 it starts fast, above 0 it starts slowly.")
+    end
+    local v2 = rp.v2:match("^%s*$") and v0 or Knob.parse_value(rp.v2)
+    if v0 and v1 and v2 then
+      if (v1 > v0 and v2 > v1) or (v1 < v0 and v2 < v1) then bad = "'Back to' cannot go past the top (" .. hint(v1) .. ")." end
+      sw = { hold = rp.hold, v2 = Knob.to_cc(k, v2), len = rp.blen, shape = rp.bshape + 1, tension = rp.bten,
+        hold_c = rp.holdc, len_c = rp.blenc }
+    elseif v0 and v1 then bad = "Type a number in 'Back to', or leave it empty." end
+  end
+  local t1 = Midi.ramp_end(tc, rp.len, rp.lenc)
+  local pts, tend
+  if v0 and v1 and t1 and not bad then
+    pts, tend = Midi.ramp_points(tc, t1, Knob.to_cc(k, v0), Knob.to_cc(k, v1), rp.shape + 1, rp.ten, sw)
+    if not pts then bad = "Type the custom length as bars.beats (for example 2.2)." end
+  end
+  -- what is missing (grey), a problem (red), or where it goes
+  local why, why_col = nil, COL.TEXT_DIM
+  if bad then why, why_col = bad, COL.RED
+  elseif not v0 then why = "Type the start value."
+  elseif not v1 then why = "Type the end value."
+  elseif not t1 and RAMP_LENS[rp.len].custom then why = "Type the length as bars.beats (for example 2.2)."
+  elseif not t1 then why = "Select the end with REAPER's time selection (after the edit cursor)."
+  elseif tend >= rg.stop - CFG.EDGE then why, why_col = "It goes past the end of '" .. rg.name .. "': choose a shorter length.", COL.RED
+  else why = Util.fmt_beats(tc) .. " to " .. Util.fmt_beats(tend) end
+  local ok_add = pts and tend < rg.stop - CFG.EDGE
+  ImGui.SetCursorPosX(ctx, (UI.form("Length")))
+  local blabel = rp.back and "Add swell" or "Add ramp"
+  ImGui.BeginDisabled(ctx, not ok_add)
+  if UI.button(blabel .. "##radd", UI.btn_w(blabel, 0), nil, "primary") and ok_add and pts and tend then
+    Midi.add_ramp(d, k.cc, pts, rp.back and "swell" or "ramp")
+    local function f(c) return hint(Knob.from_cc(k, c)) end
+    UI.toast((rp.back and ("Swell " .. f(pts[1].v) .. " - " .. f(Knob.to_cc(k, v1)) .. " - " .. f(pts[#pts].v))
+      or ("Ramp " .. f(pts[1].v) .. " to " .. f(pts[#pts].v))) .. ", " .. Util.fmt_beats(tc) .. " to " .. Util.fmt_beats(tend) .. ".")
+  end
+  ImGui.EndDisabled(ctx)
+  UI.tip("Writes it from the edit cursor. Its values show in the list; the values of this control inside it are\n"
+    .. "replaced. Ctrl+Z takes it back.")
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  UI.row_text(UI.trunc(why, math.max(40, ImGui.GetContentRegionAvail(ctx) - 8)), why_col)
+  UI.tip(why)
   if change then
     Midi.set_cc(d, k.cc, change.e.t, change.v, change.e)
     local got = Knob.from_cc(k, change.v)
@@ -3039,7 +3737,7 @@ function UI.draw_presets_tab()
   local m = MODELS[d.model]
   UI.heading("Add a preset", "Give your presets names, for example 3B = Song One. The Songs tab shows them, "
     .. "'Presets match Regions' uses them, and REAPER can show them (Settings > General).\n\n"
-    .. "Saved on this computer, for all projects. Scene names and knob profiles come in later steps.")
+    .. "Saved on this computer, for all projects. The scene names and colours of a preset: 'Scenes...' in the list.")
   local a = R.lib_add or { folder = 1, bank = 1, letter = 1, name = "" }
   R.lib_add = a
   local ch, v
@@ -3055,7 +3753,7 @@ function UI.draw_presets_tab()
   UI.tip("Give this folder your own name (for example the name of your band).")
   _, cw = UI.row_start("Bank and preset")
   ImGui.SetNextItemWidth(ctx, 110)
-  ch, v = ImGui.InputInt(ctx, "##lbank", a.bank, 1, 4)
+  ch, v = UI.input_int("##lbank", a.bank, 1)
   if ch then a.bank = Util.clamp(v, 1, m.banks) end
   UI.tip(string.format("The bank number (1-%d).", m.banks))
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
@@ -3092,7 +3790,7 @@ function UI.draw_presets_tab()
 
   local keys = Preset.sorted_keys(S.lib[d.id])
   UI.heading(string.format("Preset list (%d)", #keys), "Click a name to change it. Edit... changes its folder, bank "
-    .. "or preset (asks first). The red X removes the name (the presets in your songs stay).", UI.toast_note())
+    .. "or preset (asks first). The red X removes the name (the presets in your songs stay).")
   if #keys == 0 then UI.note("No names yet. Add the first one above.") end
   local fh = ImGui.GetFrameHeight(ctx)
   local aw = ImGui.GetContentRegionAvail(ctx)
@@ -3130,7 +3828,10 @@ function UI.draw_presets_tab()
     if UI.remove_x_button("##rmn", fh) then rm = { f, i } end
     UI.tip("Remove this name.")
     ImGui.PopID(ctx)
-    if n > 300 then break end
+    if n >= 300 then
+      UI.note(string.format("Showing the first 300 of %d names.", #keys))
+      break
+    end
   end
   if rm then Preset.set_name(d, rm[1], rm[2], "") end
   UI.draw_folder_rename()
@@ -3213,7 +3914,7 @@ function UI.draw_preset_edit()
     ch, v = ImGui.Combo(ctx, "Folder", pe.folder, Preset.folder_items(d))
     if ch then pe.folder = v end
     ImGui.SetNextItemWidth(ctx, 200)
-    ch, v = ImGui.InputInt(ctx, "Bank", pe.bank, 1, 4)
+    ch, v = UI.input_int("Bank", pe.bank, 1)
     if ch then pe.bank = Util.clamp(v, 1, m.banks) end
     ImGui.SetNextItemWidth(ctx, 200)
     ch, v = ImGui.Combo(ctx, "Preset", pe.letter - 1, R.letter_items and R.letter_items[d.model] or "A\0")
@@ -3250,7 +3951,7 @@ function UI.draw_device_list()
     .. "With USB, the MIDI output has the unit's name: a new device selects it and the model. "
     .. "With a MIDI cable, select the output of your MIDI interface and the model yourself.\n\n"
     .. "A track keeps the settings of its device: a device that you removed (and kept its track) comes back "
-    .. "with Add device; Ctrl+Z of a removed track brings its device back too.", UI.toast_note())
+    .. "with Add device; Ctrl+Z of a removed track brings its device back too.")
   local fh = ImGui.GetFrameHeight(ctx)
   local aw = ImGui.GetContentRegionAvail(ctx)
   for i, d in ipairs(S.devices) do
@@ -3377,9 +4078,13 @@ function UI.draw_device_form()
   _, cw = UI.row_start("Latency (ms)")
   ImGui.SetNextItemWidth(ctx, math.min(cw, 160))
   local lat
-  ch, lat = ImGui.InputInt(ctx, "##lat", d.latency, 5, 20)
-  if ch then d.latency = Util.clamp(lat, 0, CFG.LATENCY_MAX); Util.mark_sdirty() end
-  UI.tip("The delay of the unit after a MIDI message (0-500 ms). Later steps send the MIDI this much earlier.")
+  ch, lat = UI.input_int("##lat", d.latency, 5)
+  if ch then
+    d.latency = Util.clamp(lat, 0, CFG.LATENCY_MAX); Util.mark_sdirty()
+    for _, x in ipairs(S.devices) do if x == d or P.track_mode == "shared" then Dev.apply_latency(x) end end
+  end
+  UI.tip("The delay of the unit after a MIDI message (0-500 ms). REAPER sends the MIDI of the track this much\n"
+    .. "earlier (the track's playback offset), so the unit changes on the beat. The MIDI stays on the beat in the project.")
 
   local cx = UI.row_start("Track")
   local tr = Dev.track(d)
@@ -3404,7 +4109,9 @@ function UI.draw_settings_tab()
   UI.draw_device_form()
   UI.heading("Tracks", "One track for each device (default): each device writes on its own track.\n"
     .. "One shared track: all devices write on 1 track, and their MIDI channels keep them apart. "
-    .. "The track then sends all channels to the MIDI output of the first device.\n\nSaved in this project.")
+    .. "The track then sends all channels to the MIDI output of the first device. Track mode: saved in this project.\n\n"
+    .. "Check new MIDI items: a MIDI item that you add to a device's track is checked once (its channel, a scene "
+    .. "at each song start). Saved on this computer.")
   local _, cw = UI.row_start("Track mode")
   ImGui.SetNextItemWidth(ctx, cw)
   local ti = (P.track_mode == "shared") and 1 or 0
@@ -3412,7 +4119,7 @@ function UI.draw_settings_tab()
   ch, ti = ImGui.Combo(ctx, "##trackmode", ti, TRACK_MODE_ITEMS)
   if ch then
     P.track_mode = (ti == 1) and "shared" or "own"; Util.mark_pdirty(); R.conflicts = nil; R.pcs = {}
-    for _, d in ipairs(S.devices) do Dev.apply_out(d) end
+    for _, d in ipairs(S.devices) do Dev.apply_out(d); Dev.apply_latency(d) end
   end
   UI.tip("One shared track: the devices must use different channels, and the same MIDI output.")
   local cich
@@ -3422,9 +4129,18 @@ function UI.draw_settings_tab()
     .. "and each song that starts inside it gets a scene change at its start when it has none there\n"
     .. "(the scene that plays there, else I-A). Ctrl+Z removes the added scenes.")
   if cich then Util.mark_sdirty() end
+  UI.heading("Playback", "Live chase: while the MIDI Pilot window is open, a play start or a jump into the middle of "
+    .. "a song sends the state there to the units at once: the preset, then the scene and the value of each control. "
+    .. "At a song start the MIDI of the song does it. With the window closed, playback from a song start is right "
+    .. "when every song has its preset, start scene and control values (Songs > Fill songs).\n\nSaved on this computer.")
+  local lch2
+  lch2, S.live_chase = UI.checkbox("Live chase", S.live_chase,
+    "On: a play start or a jump inside a song sends the preset, the scene and the control values there (window open).")
+  if lch2 then Util.mark_sdirty() end
+
   UI.heading("Preset timing", "Where a song's preset change goes. The unit needs a moment to load a preset, "
     .. "so 'Before the song start' (default: 250 ms before) has it ready when the song starts. A song that starts at "
-    .. "0:00 gets its change at 0:00.\n\nThe timing is used for new changes. Saved on this computer.", UI.toast_note())
+    .. "0:00 gets its change at 0:00.\n\nThe timing is used for new changes. Saved on this computer.")
   _, cw = UI.row_start("Preset change")
   ImGui.SetNextItemWidth(ctx, math.min(cw, 220))
   local wi = 0
@@ -3448,11 +4164,50 @@ function UI.draw_settings_tab()
     UI.tip("How far before or after the song start, in notes of the project tempo.")
   else
     local ms
-    ch, ms = ImGui.InputInt(ctx, "##pcms", S.pc_ms, 50, 250)
+    ch, ms = UI.input_int("##pcms", S.pc_ms, 50)
     if ch then S.pc_ms = Util.clamp(ms, 0, CFG.PC_MS_MAX); Util.mark_sdirty() end
     UI.tip("How many milliseconds before or after the song start (0-2000).")
   end
   ImGui.EndDisabled(ctx)
+
+  UI.heading("Lists", "A song's scene list (Songs) and its list of values (Lanes) scroll when they have more rows "
+    .. "than this, so the page stays short. In Lanes 'All songs', a click on a song name closes or opens its values.\n\n"
+    .. "Saved on this computer.")
+  _, cw = UI.row_start("Scene rows")
+  ImGui.SetNextItemWidth(ctx, math.min(cw, 160))
+  local sr
+  ch, sr = UI.input_int("##srows", S.scene_rows, 1)
+  if ch then S.scene_rows = Util.clamp(sr, 3, 100); Util.mark_sdirty() end
+  UI.tip("A song's scene list scrolls after this many rows (3-100).")
+  _, cw = UI.row_start("Lane rows")
+  ImGui.SetNextItemWidth(ctx, math.min(cw, 160))
+  local lr
+  ch, lr = UI.input_int("##lrows", S.lane_rows, 1)
+  if ch then S.lane_rows = Util.clamp(lr, 3, 100); Util.mark_sdirty() end
+  UI.tip("A song's values in Lanes scroll after this many rows (3-100).")
+
+  UI.heading("Nudge", "The amount of the nudge buttons (the 2 triangles): the left one moves a change earlier, the right one later. In the scene list "
+    .. "(each scene change, and 'Song': all scene changes and knob values of the song) and in Lanes (each value). "
+    .. "Milliseconds: a fixed time. Note value: on the beat grid, so it follows the tempo.\n\nSaved on this computer.")
+  _, cw = UI.row_start("Nudge by")
+  ImGui.SetNextItemWidth(ctx, math.min(cw, 220))
+  local nui = (S.nudge_unit == "notes") and 1 or 0
+  ch, nui = ImGui.Combo(ctx, "##nunit", nui, PC_UNIT_ITEMS)
+  if ch then S.nudge_unit = (nui == 1) and "notes" or "ms"; Util.mark_sdirty() end
+  UI.tip("Milliseconds: a fixed time. Note value: on the beat grid, so it follows the tempo.")
+  _, cw = UI.row_start(S.nudge_unit == "notes" and "Note value" or "Milliseconds")
+  ImGui.SetNextItemWidth(ctx, math.min(cw, 220))
+  if S.nudge_unit == "notes" then
+    local nni
+    ch, nni = ImGui.Combo(ctx, "##nnote", S.nudge_note - 1, PC_NOTE_ITEMS)
+    if ch then S.nudge_note = nni + 1; Util.mark_sdirty() end
+    UI.tip("How far 1 click moves a change, in notes of the project tempo.")
+  else
+    local nms
+    ch, nms = UI.input_int("##nms", S.nudge_ms, 5)
+    if ch then S.nudge_ms = Util.clamp(nms, 1, CFG.NUDGE_MS_MAX); Util.mark_sdirty() end
+    UI.tip("How far 1 click moves a change (1-1000 ms).")
+  end
 
   UI.heading("General", "Preset names in REAPER: MIDI Pilot writes your preset names into a bank file. Load it "
     .. "in ReaControlMIDI on a device's track (Bank/Program Select > Load File); REAPER then shows '3B Song One' "
@@ -3569,13 +4324,37 @@ function UI.draw_status(y)
   local dev = UI.trunc(c.dev, aw - 12)
   ImGui.TextColored(ctx, c.dev_col, dev)
   if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, c.dev) end
+  -- Send state now: a small button at the end of line 1
+  local sbw = ImGui.CalcTextSize(ctx, "Send state") + 16
+  local d0 = S.devices[R.cur_dev or 1]
   if c.l1 ~= "" and dev == c.dev then
-    local left = aw - 12 - (ImGui.CalcTextSize(ctx, dev))
+    local left = aw - 12 - (ImGui.CalcTextSize(ctx, dev)) - sbw - 8
     if left > 40 then
       ImGui.SameLine(ctx, 0, 0)
       ImGui.TextColored(ctx, COL.TEXT_MAIN, UI.trunc(c.l1, left))
       if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, c.l1:sub(8)) end
     end
+  end
+  if d0 and Dev.track(d0) then
+    ImGui.SameLine(ctx, math.max(ImGui.GetCursorPosX(ctx), aw - sbw + 6))
+    if ImGui.SmallButton(ctx, "Send state##sendstate") then
+      local tc = Util.playing() and r.GetPlayPosition() or r.GetCursorPosition()
+      if Midi.send_state(d0, tc) then UI.toast(d0.name .. ": the preset, scene and control values at " .. Util.fmt_beats(tc) .. " were sent.")
+      else UI.toast(d0.name .. ": the MIDI output is not available.", true) end
+    end
+    if ImGui.IsItemHovered(ctx) then
+      ImGui.SetTooltip(ctx, "Send state now: sends the preset, the scene and the control values at the edit cursor\n"
+        .. "(during playback: the play position) to " .. d0.name .. ". For a soundcheck, or after the unit restarts.")
+    end
+  end
+  -- a fresh notice (UI.toast) first, for CFG.TOAST_SEC: the status bar is always visible (the title lines can be
+  -- scrolled away); a problem in red, else green
+  local tt = R.toast
+  if tt and Util.now() - tt.t0 <= CFG.TOAST_SEC then
+    ImGui.TextColored(ctx, tt.warn and COL.RED or COL.GREEN, UI.trunc(tt.text, aw - 12))
+    if ImGui.IsItemHovered(ctx) then ImGui.SetTooltip(ctx, tt.text) end
+    ImGui.Unindent(ctx, 6)
+    return
   end
   local bw = c.ignore and (ImGui.CalcTextSize(ctx, "Ignore") + 16) or 0
   ImGui.TextColored(ctx, c.col, UI.trunc(c.l2, aw - 12 - bw))
@@ -3675,6 +4454,8 @@ end
 local function loop()
   R.frames = R.frames + 1
   Project.update()
+  Midi.run_send_q()
+  Midi.live_chase()
   ImGui.SetNextWindowSize(ctx, CFG.DEFAULT_W, CFG.DEFAULT_H, ImGui.Cond_FirstUseEver())
   if R.dock_req then ImGui.SetNextWindowDockID(ctx, R.dock_req); R.dock_req = nil end
   UI.pre_begin()
