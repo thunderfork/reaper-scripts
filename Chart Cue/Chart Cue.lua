@@ -209,9 +209,9 @@ local COL = {
   ACTIVE_BG = 0x3B82F633,      -- active row background (accent, transparent)
   HEADING = 0x8DB8FFFF,        -- section titles
   -- surfaces (flat dark theme)
-  WIN_BG = 0x1A1C21FF,         -- window background
-  TAB_BG = 0x15171BFF,         -- tab strip background
-  PANEL_BG = 0x23262DFF,       -- settings panel (and the selected tab, so they look connected)
+  WIN_BG = 0x131518FF,         -- window background (darker panels: more contrast, 7 November 2026)
+  TAB_BG = 0x0F1114FF,         -- tab strip background
+  PANEL_BG = 0x1A1C21FF,       -- settings panel (and the selected tab, so they look connected)
   TAB_HOVER = 0x343944FF,
   FIELD = 0x2B2F38FF, FIELD_HOVER = 0x333844FF, FIELD_ACTIVE = 0x2C3A55FF,   -- inputs, dropdowns
   BTN = 0x30343EFF, BTN_HOVER = 0x3B404CFF, BTN_ACTIVE = 0x464C5AFF,          -- secondary buttons

@@ -29,6 +29,16 @@
   Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
   (tags segue-vX.Y, midipilot-vX.Y).
 
+## Done for the next versions (not released yet)
+- All 3 scripts (7 November 2026): darker panels for more contrast: window #131518, tab strip #0F1114, panels /
+  menus / setlist and now playing views #1A1C21 (MIDI Pilot: its scene list card #22252B). Next push: Chart Cue 1.5.3,
+  Segue 1.1, MIDI Pilot 0.1.2.
+
+## Next UI task (planned 7 November 2026)
+- Light / Dark option in each script (its own setting; Dark stays the default): first move the colours that are
+  written in the code into the COL tables (Chart Cue about 28, Segue 6, MIDI Pilot 22; scene colours and accent stay),
+  then 1 light palette for all 3, then a check of every screen in both themes. Order: Chart Cue, Segue, MIDI Pilot.
+
 ## Release checklist (do before sharing a new version)
 1. Version: @version and CFG.VERSION are equal; @changelog has 1–3 user-facing lines.
 2. Start: Chart Cue starts without errors; the last tab and the open Settings section come back.
@@ -81,6 +91,8 @@
   red outline, small buttons), Songs bar: Fill songs + Tools / Clear dropdowns, Help in formatted topics, Presets
   list icons. Forms 280 wide. Settings in 5 sections (Devices, Tracks, Playback,
   Lists, General), 1 open at a time, saved (as in Chart Cue).
+- Not released yet: the scene colours (the unit's 8 colours; only the active block in full colour, the others
+  semi-transparent); double-click opens REAPER's MIDI editor at that place. The Pastel option is removed.
 - Next: the 2 open tests on the unit (below), then 0.2.
 - 0.2 (after the 0.1 release, the user's decision on 7 November 2026): device profiles, so other units are a table
   entry: first Line 6 Helix (Floor, LT, Rack) and HX Stomp / Stomp XL (snapshots on CC#69: 8 / 3 / 4; their preset

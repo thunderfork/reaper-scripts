@@ -110,7 +110,7 @@ MIDI Pilot writes the MIDI for a Neural DSP Quad Cortex or Quad Cortex mini in R
 - **Scenes by name:** a coloured strip under each song, a scene list with bar.beat positions, a Scene test that plays every scene, and scenes from marker names.
 - **Knob values in real units (Lanes):** 650 Hz or -6 dB in place of a CC value, with ramps and swells (there and back), for an expression pedal assigned to a knob.
 - **Nudge and latency:** move a change by milliseconds or a note value; the latency of the unit is the track's playback offset.
-- **The state at the song starts:** Fill songs gives every song its preset, scene and knob values; Live chase sends the right state when playback starts or jumps inside a song; Send state sends it now.
+- **The state at the song starts:** Set up songs gives every song its preset, scene and knob values; Live chase sends the right state when playback starts or jumps inside a song; Send state sends it now.
 - A status bar with the state of the unit (READY / NOT AVAILABLE) and hints.
 - Needs ReaImGui 0.9.3 or newer. It uses only REAPER and ReaImGui. Tested with a Quad Cortex mini.
 
