@@ -1,5 +1,5 @@
 -- @description Segue: Setlist player
--- @version 0.1
+-- @version 1.0
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -9,8 +9,7 @@
 -- @provides
 --   [main] Segue - Next song.lua
 -- @changelog
---   First version: setlists with Stop / Continue and pauses, the play buttons, a large "now playing" area,
---   the lock, undo and the "Next song" action. REAPER stops at the exact end of a song.
+--   Version 1.0: questions open in the centre of the window, and tooltips show after a short delay.
 
 -- MIT License
 --
@@ -38,7 +37,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Segue"          -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "0.1"            -- keep equal to @version in the header
+CFG.VERSION = "1.0"            -- keep equal to @version in the header
 CFG.EXT = "Segue"              -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.SL_EARLY = 0.02            -- the least time before the region end that the end is handled (Setlist.lead)

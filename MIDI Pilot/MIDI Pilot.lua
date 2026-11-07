@@ -7,8 +7,8 @@
 --   song starts, scenes by name, knob values in real units, nudges and ramps. The MIDI plays without the
 --   script. Requires: the free ReaImGui extension (ReaPack).
 -- @changelog
---   First version: devices and tracks, presets at the song starts, scenes by name (strip, list, Scene test), knob
---   values in real units (Lanes), and a status bar with the state of the unit.
+--   First version: presets and scenes by name at the song starts, knob values in real units with ramps and
+--   swells, nudge and latency, and the state at the song starts (Fill songs, Live chase, Send state).
 
 -- MIT License
 --

@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 1.5.1
+-- @version 1.5.2
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,8 +13,8 @@
 --   [main] Chart Cue - Toggle performance mode.lua
 --   [main] Chart Cue - Next song.lua
 -- @changelog
---   Code clean-up with no visible change: settings and project values of old development versions are no
---   longer read or written. Each existing project is marked as changed once, the next time Chart Cue saves it.
+--   Questions open in a window in the centre of Chart Cue. Tooltips show after a short delay, with wrapped lines.
+--   Right-click menus on the panel, the tabs and the toolbar items (Hide ...); a Sync folder dropdown in the Library.
 
 -- MIT License
 --
@@ -100,7 +100,7 @@ CFG.WIN_MIN_W, CFG.WIN_MIN_H = 300, 200 -- smallest window size when resizing
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.5.1"      -- keep equal to @version in the header
+CFG.VERSION = "1.5.2"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.FEEDBACK_URL = "https://github.com/thunderfork/reaper-scripts/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
