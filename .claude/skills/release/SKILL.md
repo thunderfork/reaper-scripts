@@ -14,7 +14,7 @@ restart of VS Code fixes it.
 
 ## 0. What is being released
 
-- `git status` and `git log <last tag>..HEAD`: what is new. Scripts in `Chart Cue/` changed = a new
+- `git status` and `git log <last tag>..HEAD`: what is new. Scripts (.lua) in `Chart Cue/` changed = a new
   Chart Cue version; scripts in `Segue/` changed = a new Segue version (both can change in one commit).
   Scripts in `MIDI Pilot/` changed = a new MIDI Pilot version (`@version` and `CFG.VERSION`), with its own GitHub
   Release (tag `midipilot-vX.Y`).
