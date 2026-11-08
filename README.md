@@ -107,7 +107,7 @@ Segue saves the setlists in the REAPER project, and its settings in REAPER's own
 MIDI Pilot helps you prepare the MIDI for your amp modeler in REAPER: a Neural DSP Quad Cortex or Quad Cortex mini, or a Line 6 Helix, HX Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are not tested on a unit yet). It writes normal MIDI on a track for each unit, and REAPER plays it without MIDI Pilot.
 
 - **Presets:** each region is a song; choose its preset by name (3B = Song One). A second preset inside a song is possible.
-- **Scenes by name:** a coloured strip under each song, a scene list with positions, a Scene test, and scenes from marker names.
+- **Scenes by name:** a coloured timeline under each song, a scene list with positions, a Scene test, and scenes from marker names.
 - **Lanes:** the 2 expression pedals of the Quad Cortex as pedal positions, with what they move in each preset; the unit's footswitches, tuner, tap tempo, Gig View and mode; ramps and swells. Line 6: your own CCs in real units.
 - **Set up songs:** each song gets its preset and first scene, so playback can start at any song.
 - **Show overview** of all songs, and **Export MIDI**: 1 standard MIDI file for the show, or 1 per song.

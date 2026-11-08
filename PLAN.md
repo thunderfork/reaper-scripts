@@ -29,6 +29,9 @@
   Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
   (tags segue-vX.Y, midipilot-vX.Y).
 
+## Released on 9 November 2026: MIDI Pilot 1.0.1
+- The scene strip is called the scene timeline in every text (the setting keeps its key show_strip).
+
 ## Released on 8 November 2026: MIDI Pilot 1.0
 - Save fix: the settings of this computer keep their line breaks (REAPER keeps only the first line of a value):
   preset, folder and scene names, the controls and the device list survive a restart.

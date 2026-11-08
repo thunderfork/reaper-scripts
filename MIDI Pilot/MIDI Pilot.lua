@@ -1,5 +1,5 @@
 -- @description MIDI Pilot: MIDI editor for amp modelers (Quad Cortex, Line 6 Helix / HX)
--- @version 1.0
+-- @version 1.0.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -7,9 +7,7 @@
 --   HX Stomp XL or HX Effects in REAPER: presets at the song starts, scenes (snapshots) by name, knob values in real
 --   units, nudges and ramps. The MIDI plays without the script. Requires: the free ReaImGui extension (ReaPack).
 -- @changelog
---   Line 6 Helix, HX Stomp, HX Stomp XL and HX Effects (untested); Add device lists connected units and all models.
---   Quad Cortex: the 2 expression pedals per preset, the unit's footswitches, tuner, tap tempo, Gig View and mode in Lanes; a second preset inside a song.
---   Show overview and Export MIDI (1 file for the show or per song); settings now save correctly; clearer Help.
+--   The scene strip is now called the scene timeline (Settings > Appearance > Scene timelines, Help).
 
 -- MIT License
 --
@@ -37,7 +35,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "MIDI Pilot"       -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.0"            -- keep equal to @version in the header
+CFG.VERSION = "1.0.1"            -- keep equal to @version in the header
 CFG.EXT = "MIDI Pilot"         -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DEFAULT_W, CFG.DEFAULT_H = 560, 640
@@ -2655,7 +2653,7 @@ Each song row has a preset dropdown. It writes a preset change near the song sta
 - Tools > Export MIDI: saves the device's MIDI as a standard MIDI file, 1 file for the whole show or 1 file per song. A gradual tempo change (a tempo ramp) is saved as a sudden change, so events inside a ramp can move a little.
 - Clear: removes all scene changes or all preset changes of the device (asks first).]] },
   { title = "Scenes", text = [[
-The coloured strip under a song shows its scenes from start to end. Each block is 1 scene, with the name it has in the preset that plays there.
+The coloured timeline under a song shows its scenes from start to end. Each block is 1 scene, with the name it has in the preset that plays there.
 - Click a block: the edit cursor goes there.
 - Double-click a block: REAPER's MIDI editor opens at that place.
 - Right-click a block: change or remove that scene change.
@@ -2670,13 +2668,13 @@ Click the arrow next to the song number to open the list of its scene changes.
 # The last row of the list
 - Song (the 2 triangles): move all scene changes and pedal values of the song a little earlier or later.
 - Add scene at edit cursor: add a scene change exactly at REAPER's edit cursor. This list also has "Scene test" and "Preset change...".
-- Preset change...: add a second preset inside the song. It gets its own row and a white line on the strip.
+- Preset change...: add a second preset inside the song. It gets its own row and a white line on the timeline.
 - Clear scenes: remove all scene changes of this song.
 
 # Good to know
 - Name your scenes and choose their colours in the Presets tab (the Scenes icon of a preset).
 - The block that plays now is in full colour.
-- Settings > Appearance > Scene strips: turn the strips off for a shorter song list.]] },
+- Settings > Appearance > Scene timelines: turn the timelines off for a shorter song list.]] },
   { title = "Scene test", text = [[
 "Scene test" (in the Add scene list) plays every scene of the unit, 1 after the other and back to the first, 2 beats each, from the edit cursor. Use it to listen to all the scenes of a preset.
 
@@ -2733,7 +2731,7 @@ Add 1 device for each unit (Settings > Devices). Each device writes on its own t
   { title = "Settings and the bank file", text = [[
 - Preset timing (Playback): when the preset change comes. "Before the song start" (250 ms) gives the unit time to load the preset.
 - Nudge (Playback): how far the nudge triangles move a change.
-- Appearance: the theme (Dark or Light), the scene strips under the songs (on or off), and how many rows a list shows before it scrolls.
+- Appearance: the theme (Dark or Light), the scene timelines under the songs (on or off), and how many rows a list shows before it scrolls.
 
 # Preset names in REAPER
 MIDI Pilot writes your preset names into a bank file (Settings > General). Load it in ReaControlMIDI on the device's track (Bank/Program Select > Load File) to see the names in REAPER's MIDI editor.]] },
@@ -4051,7 +4049,7 @@ function UI.draw_songs_tab()
   end
   UI.heading(string.format("Songs (%d)", #R.regions), "Each region of the project is a song.\n\n"
     .. "The dropdown of a song sets its preset. A grey preset: the song has no preset change of its own, so the "
-    .. "preset before it keeps playing.\n\nThe strip under a song shows its scenes. The arrow next to the song number "
+    .. "preset before it keeps playing.\n\nThe timeline under a song shows its scenes. The arrow next to the song number "
     .. "opens its scene list.")
   if #R.regions == 0 then
     UI.note("This project has no regions. Make 1 region for each song (Insert > Region from time selection).")
@@ -5515,7 +5513,7 @@ end
 -- Settings > Appearance: the theme, the scene strips, after how many rows a list scrolls.
 function UI.set_appearance()
   local ch, cw, _
-  UI.heading("Look", "Theme: Dark (the default) or Light.\nScene strips: the coloured strip of scenes under each song "
+  UI.heading("Look", "Theme: Dark (the default) or Light.\nScene timelines: the coloured timeline of scenes under each song "
     .. "(Songs tab). Off: a shorter song list; the scene lists stay.\n\nSaved on this computer.")
   _, cw = UI.row_start("Theme")
   ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
@@ -5524,8 +5522,8 @@ function UI.set_appearance()
   if ch then S.theme = (thi == 1) and "light" or "dark"; apply_theme(S.theme); Util.mark_sdirty() end
   UI.tip("Dark: for dark rooms. Light: for daylight.")
   local sch
-  sch, S.show_strip = UI.checkbox("Scene strips", S.show_strip,
-    "On: the coloured strip of scenes under each song (Songs tab). Off: a shorter song list.")
+  sch, S.show_strip = UI.checkbox("Scene timelines", S.show_strip,
+    "On: the coloured timeline of scenes under each song (Songs tab). Off: a shorter song list.")
   if sch then Util.mark_sdirty() end
 
   UI.heading("List sizes", "How many rows a list shows before it scrolls (scene lists in Songs, value lists in Lanes).\n\n"
