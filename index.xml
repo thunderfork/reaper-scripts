@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Thunderfork Scripts" commit="4a3cdeed9442ae8d3e574d189cbd5edde7b76f3d">
+<index version="1" name="Thunderfork Scripts" commit="774c921d327c42329ab028844ff367e01e56409b">
   <category name="Chart Cue">
     <reapack name="Chart Cue.lua" type="script" desc="Chart Cue: Open PDF Viewer">
       <metadata>
@@ -133,6 +133,10 @@ formatted Help topics; darker panels and a Light / Dark theme (Settings > Genera
 Quad Cortex: the 2 expression pedals per preset, the unit's footswitches, tuner, tap tempo, Gig View and mode in Lanes; a second preset inside a song.
 Show overview and Export MIDI (1 file for the show or per song); settings now save correctly; clearer Help.]]></changelog>
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/4a3cdeed9442ae8d3e574d189cbd5edde7b76f3d/MIDI%20Pilot/MIDI%20Pilot.lua</source>
+      </version>
+      <version name="1.0.1" author="Nick Gkogkomitros" time="2026-11-08T22:48:33Z">
+        <changelog><![CDATA[The scene strip is now called the scene timeline (Settings > Appearance > Scene timelines, Help).]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/774c921d327c42329ab028844ff367e01e56409b/MIDI%20Pilot/MIDI%20Pilot.lua</source>
       </version>
     </reapack>
   </category>
