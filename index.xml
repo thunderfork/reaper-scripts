@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Thunderfork Scripts" commit="29656541debfd73163fdd8a7ab2f00f450770078">
+<index version="1" name="Thunderfork Scripts" commit="4a3cdeed9442ae8d3e574d189cbd5edde7b76f3d">
   <category name="Chart Cue">
     <reapack name="Chart Cue.lua" type="script" desc="Chart Cue: Open PDF Viewer">
       <metadata>
@@ -103,13 +103,13 @@ Darker panels for more contrast; the window title bar follows the theme.]]></cha
     </reapack>
   </category>
   <category name="MIDI Pilot">
-    <reapack name="MIDI Pilot.lua" type="script" desc="MIDI Pilot: MIDI editor for Quad Cortex">
+    <reapack name="MIDI Pilot.lua" type="script" desc="MIDI Pilot: MIDI editor for amp modelers (Quad Cortex, Line 6 Helix / HX)">
       <metadata>
         <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
 {\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
 \widowctrl\hyphauto
 
-{\pard \ql \f0 \sa180 \li0 \fi0 MIDI Pilot - write the MIDI for a Neural DSP Quad Cortex or Quad Cortex mini in REAPER: presets at the song starts, scenes by name, knob values in real units, nudges and ramps. The MIDI plays without the script. Requires: the free ReaImGui extension (ReaPack).\par}
+{\pard \ql \f0 \sa180 \li0 \fi0 MIDI Pilot - write the MIDI for a Neural DSP Quad Cortex / Quad Cortex mini or a Line 6 Helix, HX Stomp, HX Stomp XL or HX Effects in REAPER: presets at the song starts, scenes (snapshots) by name, knob values in real units, nudges and ramps. The MIDI plays without the script. Requires: the free ReaImGui extension (ReaPack).\par}
 }
 ]]></description>
       </metadata>
@@ -127,6 +127,12 @@ swells, nudge and latency, and the state at the song starts (Fill songs, Live ch
 A calmer Songs page ('Set up songs', Tools and Clear menus, cards); consistent forms; Settings in sections;
 formatted Help topics; darker panels and a Light / Dark theme (Settings > General > Theme).]]></changelog>
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/29656541debfd73163fdd8a7ab2f00f450770078/MIDI%20Pilot/MIDI%20Pilot.lua</source>
+      </version>
+      <version name="1.0" author="Nick Gkogkomitros" time="2026-11-08T05:45:30Z">
+        <changelog><![CDATA[Line 6 Helix, HX Stomp, HX Stomp XL and HX Effects (untested); Add device lists connected units and all models.
+Quad Cortex: the 2 expression pedals per preset, the unit's footswitches, tuner, tap tempo, Gig View and mode in Lanes; a second preset inside a song.
+Show overview and Export MIDI (1 file for the show or per song); settings now save correctly; clearer Help.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/4a3cdeed9442ae8d3e574d189cbd5edde7b76f3d/MIDI%20Pilot/MIDI%20Pilot.lua</source>
       </version>
     </reapack>
   </category>
