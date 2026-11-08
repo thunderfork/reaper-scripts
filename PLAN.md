@@ -29,11 +29,61 @@
   Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
   (tags segue-vX.Y, midipilot-vX.Y).
 
+## Released on 8 November 2026: MIDI Pilot 1.0
+- Save fix: the settings of this computer keep their line breaks (REAPER keeps only the first line of a value):
+  preset, folder and scene names, the controls and the device list survive a restart.
+- Track and device names in both directions: a device rename renames its track; a track rename in REAPER renames
+  the device (without "MIDI "); a track with an older name gets the device name when a project opens.
+- "Reset MIDI devices" (Settings > Devices; "Reset MIDI" in the status bar when a device is NOT AVAILABLE).
+- Review (8 November 2026): a muted MIDI item is never written; the Scene test texts use the device's scene names;
+  texts (Presets help, the channel question); clean-ups.
+- Light theme: every scene block in its full colour; the block that plays has a blue outline (Dark: unchanged).
+- Device profiles (8 November 2026, toward 1.0): Line 6 Helix (Floor, LT, Rack), HX Stomp, HX Stomp XL, HX Effects
+  (untested, from the unofficial Helix MIDI guide): 8 setlists (CC#32) x 128 presets (Program Change, no CC#0),
+  snapshots on CC#69 (8 / 3 / 4 / 4), their reserved CCs, USB names. Per device "Preset numbers": Bank + letter
+  (01A) or Numbers (000), as the unit's Preset Numbering. Description: "MIDI editor for amp modelers".
+- Quad Cortex expression pedals (8 November 2026): CC#1 / CC#2 write the pedal position 0-100% (no Min / Max /
+  Unit); per preset (Presets tab, pedal icon; settings key exp_<device>) what each pedal moves: name, range in knob %
+  (backwards allowed), optional note, no limit; Lanes rows show "-> Hi Pass 22%, Low Pass 66%". (A "Target" to type a
+  knob % was built and removed: the user found it too complicated.) Other CCs keep Min / Max / Unit. Line 6 unchanged.
+- Quad Cortex functions (8 November 2026, from the Neural DSP manuals' Incoming MIDI CC List): Lanes > Control lists
+  Expression 1 / 2 (always there, CC fixed, names only), then Footswitch A-H (mini: A-D page I / II) and the mini's
+  footswitch page (CC#64), Tap tempo (1 tap, or 4 taps on the beat), Tuner, Gig View (Open / Close), Mode (slot 1-3).
+  Add by kind (press, tap, choice; no ramps). Only the pedals play on (Set up songs, Live chase). No "Add control" on
+  a Quad Cortex. Later: Looper X (CC#48-61) in its own section.
+- Lanes, used controls (8 November 2026): in the Control dropdown a blue dot and the count for each control with
+  values in the song at the edit cursor (or all songs). (A row of buttons was tried; the user did not like it.)
+- The device choice (2 or more devices) is at the right end of the tab's first heading: the name and a small arrow.
+- Add device is a dropdown (8 November 2026): "Connected" (free units found on USB, with output and model), then all
+  models (the Line 6 ones marked untested).
+- Presets: Factory Presets and My Presets cannot be renamed (Quad Cortex); mini scenes are A-I ... D-II.
+- Fixed: the send and remove buttons of a song row did nothing (the quiet row went away while the mouse was down).
+- Mini tests (8 November 2026): a preset change loads the preset's own pedal positions (so Set up songs writes the
+  pedal positions at the start scene time, after the song's preset change; Live chase sends them after the preset);
+  REAPER's own MIDI chase depends on the items (a preset changed with Live chase off).
+- Live chase removed (the user, 8 November 2026): MIDI Pilot does not send MIDI by itself during playback; REAPER
+  plays the track. Send state (status bar) stays.
+- Preset changes inside a song (8 November 2026): "Preset change..." in the Add scene list (Choose a preset window,
+  at the edit cursor); its own row in the scene list (position, time, nudge, preset, send, X); a thin line on the
+  strip. The song row keeps the song's own preset.
+- Songs > Tools (8 November 2026): "Show overview" (a table: song, start, preset, its scenes in order with inside
+  preset changes in brackets, its Lanes values; a click moves the edit cursor) and "Export MIDI" (standard MIDI file,
+  type 0, 960 ppq, tempo map; 1 file for the show, or 1 per song from 0:00 with its preset and start scene; slopes
+  as steps of a 1/32 note; MIDI Pilot's own writer, not REAPER's export). The folder: a field with Browse...
+  (js_ReaScriptAPI, else the Windows folder window) and Default; saved in the project (key export_dir, only when
+  chosen); default "MIDI Pilot export" next to the project file. A song event list was rejected (the
+  scene list is already full). MIDI Pilot is a preparation tool: no live features (the user).
+- "Set up songs" adds only presets (CC#0, CC#32, Program Change) and start scenes; no control values (the user).
+- 1.0 (the user, 8 November 2026): everything above, plus the tests on the mini (Hz/dB spread, pedal value after a
+  preset change, REAPER's own chase of PC/CC) and their fixes.
+- Open: REAPER crashes in reaper_imgui-x64.dll 0.10.0.5 when a docked script window closes or hides (middle-click
+  on its dock tab, or a dock tab switch); not in the scripts' code. A report for the ReaImGui author was written.
+
 ## Released on 7 November 2026 (2nd release): Chart Cue 1.5.3, Segue 1.1, MIDI Pilot 0.1.2
 - All 3 scripts (7 November 2026): darker panels for more contrast: window #131518, tab strip #0F1114, panels /
   menus / setlist and now playing views #1A1C21 (MIDI Pilot: its scene list card #22252B). Next push: Chart Cue 1.5.3,
   Segue 1.1, MIDI Pilot 0.1.2.
-- Open: MIDI Pilot's scene colours do not suit the light theme well (the user: not important, fix later).
+- (Fixed in MIDI Pilot 1.0: the scene colours in the Light theme.)
 - All 3 scripts (7 November 2026): Light / Dark theme, 1 option in each (Chart Cue: Settings > Appearance > Theme;
   Segue: gear menu > Light theme; MIDI Pilot: Settings > General > Theme); Dark is the default. The colours that were
   written in the code are named in COL; the style reads COL every frame (no restart); the window title bar follows
@@ -68,7 +118,8 @@
 - PDF 2: a "(both)" view of the 2 cue lists in the Cues tab, and MIDI CCs for PDF 2 (not in 1.3).
 - UI scale 100 / 125 / 150 %: the drawn icons already use CFG.UI_SCALE, and the repeated sizes have names in CFG (since the code clean-up after 1.4). Still needed: the fonts rebuilt between frames, every pixel size in CFG times the scale, and a test of every screen at each scale. Ask the user first.
 
-## MIDI Pilot (MIDI editor for Quad Cortex / Quad Cortex mini, since 6 November 2026)
+## MIDI Pilot (MIDI editor for amp modelers: Quad Cortex, mini, Line 6 Helix / HX; since 6 November 2026)
+- 1.0 (released 8 November 2026): see "Released on 8 November 2026" above.
 - 0.1.1 (released 7 November 2026): the full version 1 (steps 1-7, below). 0.1 on ReaPack points to an early build:
   ReaPack links a version to the commit where its number first appeared (the release skill now checks this).
 - Done (version 1, steps 1-4): devices (model, MIDI output / input, channel, latency, own or shared track,
@@ -91,19 +142,16 @@
   red outline, small buttons), Songs bar: Fill songs + Tools / Clear dropdowns, Help in formatted topics, Presets
   list icons. Forms 280 wide. Settings in 5 sections (Devices, Tracks, Playback,
   Lists, General), 1 open at a time, saved (as in Chart Cue).
-- Not released yet: the scene colours (the unit's 8 colours; only the active block in full colour, the others
-  semi-transparent); double-click opens REAPER's MIDI editor at that place. The Pastel option is removed.
-- Next: the 2 open tests on the unit (below), then 0.2.
-- 0.2 (after the 0.1 release, the user's decision on 7 November 2026): device profiles, so other units are a table
-  entry: first Line 6 Helix (Floor, LT, Rack) and HX Stomp / Stomp XL (snapshots on CC#69: 8 / 3 / 4; their preset
-  and setlist numbering; their own CCs). The user provides the MIDI tables from the manuals; no units to test, so
-  the profiles are marked "untested" in the device list. Generalize: preset labels, scene CC and count, folder CC,
-  the word scene / snapshot.
-- Version 2: Record and Learn, copy scenes between songs, scenes from the keyboard, a check report, a cue
-  sheet, import / export of the names, Tuner / Looper items.
-- To test on the unit: are Hz and dB spread evenly over the pedal range? Does the pedal value survive a preset
-  change? The USB port name: the mini is checked ("2- Quad Cortex mini MIDI OUT", 7 November 2026); the full-size Quad
-  Cortex is not checked (no unit; expected to work when its name has "Cortex"; the output can be picked by hand). REAPER's own chase of Program Changes and CCs.
+- 0.1.2 (released 7 November 2026): the scene colours (the unit's 8 colours; only the active block in full colour,
+  the others semi-transparent); double-click opens REAPER's MIDI editor at that place; the Pastel option is removed.
+- Next: version 2 (below).
+- Device profiles (planned as 0.2, done in 1.0): Line 6 Helix, HX Stomp, HX Stomp XL, HX Effects, from the
+  unofficial Helix MIDI guide; marked "untested" (no units).
+- Version 2: Record (a real pedal move into Lanes, from the unit's Preset MIDI Out expression messages) and Learn,
+  copy scenes between songs, a check report, a cue sheet, import / export of the names, Looper X (CC#48-61) in its
+  own section. Not planned: live / show-time features (MIDI Pilot is a preparation tool).
+- Unit tests done (8 November 2026): a preset change loads the preset's own pedal positions; REAPER's own chase
+  depends on the items. Not checked: the full-size Quad Cortex's USB port name (no unit; it contains "Cortex").
 
 ## Segue (the setlist script, since 4 November 2026)
 

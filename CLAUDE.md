@@ -9,7 +9,7 @@ ReaPack category; keep each script's files there):
 - **Segue** (`Segue/Segue.lua`): a setlist-only script (no PDFs), with its own window and its own data. It
   reads 1 Chart Cue setting to avoid a conflict (see "Segue" at the end of this file). The 2 scripts have the
   same setlist logic and the same now playing view (a copy in each file).
-- **MIDI Pilot** (`MIDI Pilot/MIDI Pilot.lua`): "MIDI editor for Quad Cortex", version 0.1.1 released (see "MIDI Pilot"
+- **MIDI Pilot** (`MIDI Pilot/MIDI Pilot.lua`): "MIDI editor for amp modelers", version 1.0 (see "MIDI Pilot"
   at the end of this file). No relation to the other 2 scripts.
 
 The general rules (Working with me, Editing, Patch, Saved data, REAPER/Lua, Performance, Verification,
@@ -213,14 +213,17 @@ Every time I ask to commit and push:
 ## MIDI Pilot
 
 - File: `MIDI Pilot/MIDI Pilot.lua`. Version: `@version` and `CFG.VERSION` together (started at 0.1).
-- Modules: `CFG`, `COL`, `MODELS` (Quad Cortex / mini), `S` (this computer: ExtState "MIDI Pilot": the devices,
-  the tab, the docker, the preset / scene / folder names, the timing), `R` (runtime), `P` (project data, ProjExtState "MIDI Pilot"/"cfg": the device tracks,
-  the track mode), `Util`, `Project`, `Dev` (devices, MIDI outputs, tracks), `Preset` (numbers, names, .reabank), `Midi` (preset and
-  scene changes in the MIDI items), `UI` (tabs: Songs, Lanes, Presets,
-  Settings, Help).
-- The agreed plan is in my memory: version 1 (all 7 steps) is done and released as 0.1.1 (7 November 2026); next is
-  0.2 (device profiles for Helix and HX Stomp, PLAN.md), then version 2.
-- Rule: the MIDI is normal REAPER MIDI; the show never needs the window.
+- Modules: `CFG`, `COL`, `MODELS` (device profiles: Quad Cortex, mini, Line 6 Helix, HX Stomp, HX Stomp XL, HX Effects:
+  presets, folders, scene CC and count, reserved CCs, the Quad Cortex functions), `S` (this computer: ExtState "MIDI
+  Pilot": the devices, the preset / folder / scene names, the expression pedal assignments, the controls, the settings),
+  `R` (runtime), `P` (project data, ProjExtState "MIDI Pilot"/"cfg": the device tracks, the track mode, the export
+  folder, the ignored Scene tests), `Util`, `Project`, `Dev` (devices, MIDI outputs, tracks), `Preset` (numbers,
+  names, .reabank), `Knob` (Lanes controls), `Midi` (preset, scene and CC changes in the MIDI items, the MIDI file
+  export), `UI` (tabs: Songs, Lanes, Presets, Settings, Help).
+- The plan is in my memory: 1.0 released 8 November 2026; next is version 2 (Record / Learn, copy scenes, check
+  report, cue sheet, import / export of the names, Looper X).
+- Rules: the MIDI is normal REAPER MIDI; the show never needs the window. MIDI Pilot is a preparation tool: no live
+  features (no automatic sending during playback, no stage actions).
 - Checks, tests (`tests\midipilot.lua`, result in `tests\result_midipilot.txt`) and deploy (`Scripts\MIDI Pilot\`,
   or the ReaPack folder) include it.
 - Release: a change in `MIDI Pilot/` is a new MIDI Pilot version (raise its version, changelog) with its own GitHub

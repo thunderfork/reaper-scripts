@@ -81,8 +81,9 @@ test("MIDI hardware output value", function()
   eq(Dev.hw_out(nil, 1), -1); eq(Dev.hw_out(0, 0), 0); eq(Dev.hw_out(2, 5), 69)
 end)
 
-test("models: 256 presets each", function()
-  for _, m in pairs(C.MODELS) do eq(#m.letters * m.banks, 256); eq(#m.scenes, 8) end
+test("models: presets = banks x letters (Quad Cortex 256, Line 6 128); scenes", function()
+  for _, m in pairs(C.MODELS) do eq(#m.letters * m.banks, m.presets); eq(#m.scenes, m.n_snap or 8) end
+  eq(C.MODELS.qc.presets, 256); eq(C.MODELS.helix.presets, 128); eq(#C.MODELS.hxstomp.scenes, 3)
 end)
 
 test("warnings: same output and channel, All channels, shared track", function()
@@ -243,6 +244,8 @@ test("folder names: your name, else the unit's; saved and read; in the bank file
   Preset.set_name(d, 2, 0, "Intro")
   ok(Preset.reabank_text():find("Gtr - My Band (1-128)", 1, true), "bank file")
   Preset.set_folder_name(d, 2, ""); eq(Preset.folder_name(d, 2), "User 1", "back to the unit's name")
+  Preset.set_folder_name(d, 1, "Mine"); eq(Preset.folder_name(d, 1), "My Presets", "My Presets keeps its name")
+  Preset.set_folder_name(d, 1, "")
   S.devices, S.lib, S.fnames = keep, kl, kf
 end)
 
@@ -293,8 +296,8 @@ test("scenes: written exactly where asked, nothing else changes; replace; change
   Midi.remove_scene(d, Midi.song_scenes(d, B)[1]); eq(#Midi.song_scenes(d, B), 2, "removed; nothing comes back")
   -- names
   Preset.set_scene_names(d, 1, 4, { "Verse", "", "Chorus" })
-  eq(Preset.scene_name(d, 1, 4, 0), "Verse"); eq(Preset.scene_name(d, 1, 4, 1), "I-B", "the mini's name")
-  eq(Preset.scene_name(d, nil, 0, 2), "I-C", "no preset there"); eq(Preset.has_scene_name(d, nil, 0, 2), false, "no preset: no error")
+  eq(Preset.scene_name(d, 1, 4, 0), "Verse"); eq(Preset.scene_name(d, 1, 4, 1), "B-I", "the mini's name")
+  eq(Preset.scene_name(d, nil, 0, 2), "C-I", "no preset there"); eq(Preset.has_scene_name(d, nil, 0, 2), false, "no preset: no error")
   eq(Preset.parse_snames(Preset.serialize_snames(S.snames.S1))["1:4"][3], "Chorus")
   -- markers: exactly at the marker
   r.AddProjectMarker2(0, false, 40, 0, "Chorus", -1, 0)
@@ -368,7 +371,7 @@ test("scene test: exactly at the cursor, 15 changes every 2 beats, 1 test; repla
   ok(tend and math.abs(tend - 35) < 0.002, "its end: 2 beats after its last change")
   local g = Midi.song_tests(d, B)
   eq(#g, 1, "1 test"); eq(#g[1].evs, 15); ok(math.abs(g[1].t0 - 20) < 0.001, "exactly at the cursor")
-  eq(g[1].evs[8].v, 7, "II-D in the middle"); eq(g[1].evs[15].v, 0, "back to I-A")
+  eq(g[1].evs[8].v, 7, "D-II in the middle"); eq(g[1].evs[15].v, 0, "back to A-I")
   eq(#Midi.song_scenes(d, B), 16, "the scene at 22.5 replaced, the one at 45 stays")
   eq(Midi.merge_all(d), 0, "merge keeps the test")
   ok(Midi.remove_test(d, B, g[1], 30), "moved"); ok(math.abs(Midi.song_tests(d, B)[1].t0 - 30) < 0.001)
@@ -381,7 +384,7 @@ test("scene test: exactly at the cursor, 15 changes every 2 beats, 1 test; repla
   S.devices, S.lib, S.snames = keep, kl, ks
 end)
 
-test("new MIDI items: the channel of the item; a scene at each song start inside it (the scene that plays, else I-A)", function()
+test("new MIDI items: the channel of the item; a scene at each song start inside it (the scene that plays, else A-I)", function()
   local Midi = C.Midi
   local keep, kl, ks, kci = S.devices, S.lib, S.snames, S.check_items
   S.devices = { { id = "N1", name = "Gtr", model = "qc", chan = 1, port = "", latency = 0, inport = "" } }
@@ -390,7 +393,7 @@ test("new MIDI items: the channel of the item; a scene at each song start inside
   Dev.create_track(d)
   local tr = Dev.track(d)
   R.seen = nil; Midi.find_new_items() -- (the first look: only notes the items)
-  -- a copied item from 0 to 60 on channel 5, with 1 scene change (II-B at 5 s, inside song A)
+  -- a copied item from 0 to 60 on channel 5, with 1 scene change (B-II at 5 s, inside song A)
   local item = r.CreateNewMIDIItemInProj(tr, 0, 60, false)
   local take = r.GetActiveTake(item)
   r.MIDI_InsertCC(take, false, false, r.MIDI_GetPPQPosFromProjTime(take, 5), 0xB0, 4, 43, 5); r.MIDI_Sort(take)
@@ -398,8 +401,8 @@ test("new MIDI items: the channel of the item; a scene at each song start inside
   eq(d.chan, 5, "the channel of the item")
   local A, B = R.regions[1], R.regions[2]
   local sa, sb = Midi.song_scenes(d, A)[1], Midi.song_scenes(d, B)[1]
-  ok(sa and math.abs(sa.t - 0) < 0.001 and sa.v == 0, "song A: I-A at its start (nothing before)")
-  ok(sb and math.abs(sb.t - 20) < 0.001 and sb.v == 5, "song B: the scene that plays (II-B) at its start")
+  ok(sa and math.abs(sa.t - 0) < 0.001 and sa.v == 0, "song A: A-I at its start (nothing before)")
+  ok(sb and math.abs(sb.t - 20) < 0.001 and sb.v == 5, "song B: the scene that plays (B-II) at its start")
   Midi.find_new_items(); eq(#Midi.song_scenes(d, B), 1, "an item is checked only once")
   -- more than 1 channel: a question, nothing changes before the answer
   local item2 = r.CreateNewMIDIItemInProj(tr, 70, 80, false)
@@ -470,7 +473,7 @@ test("latency: the track's playback offset; nudge: ms and note values, a row, a 
   Midi.set_song(d, R.regions[1], 1, 9); Midi.add_scene(d, 6, 3)
   local st = Midi.state_at(d, 8)
   ok(st.pc and st.pc.index == 9, "the preset"); eq(st.scene, 3, "the scene"); eq(st.ccs[1].cc, 1); eq(st.ccs[1].v, 75)
-  -- Live chase: only what differs from the place that played before (the same preset is not loaded again)
+  -- send_state with "from": only what differs from that place (the same preset is not loaded again)
   local _, pc1, sc1, cc1 = Midi.state_changes(d, 8)
   eq(pc1, true, "no place before: the preset"); eq(sc1, 3); eq(#cc1, 1)
   local _, pc2, sc2, cc2 = Midi.state_changes(d, 8, 7)
@@ -479,9 +482,7 @@ test("latency: the track's playback offset; nudge: ms and note values, a row, a 
   eq(pc3, false); eq(sc3, nil); eq(#cc3, 0, "the same place: nothing")
   local n0 = #Midi.ccs(d, 1)
   Midi.fill_starts(d)
-  local at20
-  for _, e in ipairs(Midi.ccs(d, 1)) do if math.abs(e.t - 20) < 0.002 then at20 = e end end
-  ok(at20 and at20.v == 100, "Fill songs: the value that plays at song B's start"); ok(#Midi.ccs(d, 1) > n0)
+  eq(#Midi.ccs(d, 1), n0, "Set up songs writes no control values")
   eq(Midi.fill_starts(d), 0, "again: nothing")
   r.DeleteTrack(tr)
   S.devices, S.lib, S.snames, S.knobs, S.nudge_unit, S.nudge_ms, S.nudge_note = keep, kl, ks, kk, ku, km, kn
@@ -613,6 +614,245 @@ test("knobs: units, nearest CC value, typed values, saved and read; CC values wr
   eq(Midi.song_at(25).name, "Song B"); eq(Midi.song_at(15), nil)
   eq(Midi.song_at(19.9995).name, "Song B", "a moment before the start (a rounded start scene): the song")
   r.DeleteTrack(Dev.track(d))
+  S.devices = keep
+end)
+
+test("settings of this computer: a list of several lines is saved as 1 line (REAPER keeps only line 1)", function()
+  local U = C.Util
+  local v = "2\t8\t1\t\tDistortion\n2\t8\t2\t3\tClean \\ wide\n2\t8\t3\t\tSolo\\n"
+  U.ext_set("test_lines", v)
+  local raw = r.GetExtState(C.CFG.EXT, "test_lines")
+  ok(not raw:find("\n", 1, true), "saved as 1 line")
+  eq(U.ext_get("test_lines"), v, "read back")
+  r.DeleteExtState(C.CFG.EXT, "test_lines", true)
+end)
+
+test("track names: an old name gets the device name when a project opens; a rename in REAPER renames the device", function()
+  local Dev, S = C.Dev, C.S
+  local keep = S.devices
+  S.devices = { { id = "n1", name = "Quad Cortex mini", model = "mini", chan = 5, port = "", latency = 0 } }
+  local d = S.devices[1]
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  ok(tr, "track")
+  d.name = "QC Bass" -- (renamed while another project was open: the track kept the old name)
+  r.GetSetMediaTrackInfo_String(tr, "P_NAME", "MIDI Quad Cortex mini", true)
+  eq(Dev.sync_names(), 1, "renamed")
+  eq(Dev.track_name(tr), "MIDI QC Bass", "track follows")
+  eq(Dev.sync_names(), 0, "nothing to do")
+  C.R.name_sync = nil
+  Dev.sync_from_tracks() -- (the names of this scan)
+  r.GetSetMediaTrackInfo_String(tr, "P_NAME", "MIDI QC asdasd", true)
+  Dev.sync_from_tracks()
+  eq(d.name, "QC asdasd", "a rename in REAPER renames the device")
+  r.GetSetMediaTrackInfo_String(tr, "P_NAME", "Bass", true)
+  Dev.sync_from_tracks()
+  eq(d.name, "Bass", "without MIDI at the start")
+  eq(Dev.sync_names(), 0, "'Bass' matches the device")
+  eq(Dev.track_name(tr), "Bass", "the track keeps your name")
+  Dev.rename(d, "Bass 2"); eq(Dev.track_name(tr), "MIDI Bass 2", "a device rename")
+  eq(r.kbd_getTextFromCmd(41175, 0), "Reset all MIDI devices", "the reset action")
+  -- the start of MIDI Pilot (a track renamed while it was closed): the first scan gives the track the device name
+  C.Project.save()
+  r.GetSetMediaTrackInfo_String(tr, "P_NAME", "Renamed while closed", true)
+  C.R.proj, C.R.state_cc = nil, -1
+  C.Project.update()
+  eq(Dev.track_name(tr), "MIDI Bass 2", "at start: the device name")
+  C.Project.update()
+  eq(d.name, "Bass 2", "the device keeps its name")
+  eq(Dev.track_name(tr), "MIDI Bass 2", "next scan")
+  r.DeleteTrack(tr)
+  S.devices = keep
+end)
+
+test("Line 6 profiles: labels (01A / 000), setlists, no CC#0, snapshots on CC#69, Scene test, USB names, saved format", function()
+  local Dev, S, Midi, Preset = C.Dev, C.S, C.Midi, C.Preset
+  eq(Preset.label("helix", 0), "01A"); eq(Preset.label("helix", 5), "02B"); eq(Preset.label("helix", 127), "32D")
+  eq(Preset.label("helix", 0, "num"), "000"); eq(Preset.label("hxstomp", 127, "num"), "127")
+  eq(Preset.label("qc", 9, "num"), "2B", "the Quad Cortex has no number format")
+  eq(Dev.model_from_port("Line 6 Helix"), "helix"); eq(Dev.model_from_port("HX Stomp XL"), "hxstompxl")
+  eq(Dev.model_from_port("HX Stomp"), "hxstomp"); eq(Dev.model_from_port("HX Effects"), "hxeffects")
+  eq(Dev.model_from_port("2- Quad Cortex mini MIDI OUT"), "mini")
+  local l = Dev.parse_list(Dev.serialize_list({ { id = "h1", name = "Helix", model = "helix", chan = 2, port = "",
+    latency = 0, inport = "", pnum = "num" } }))
+  eq(l[1].model, "helix"); eq(l[1].pnum, "num", "number format saved")
+  eq(Dev.parse_list("d3\tX\tqc\t1\tp\t0\t")[1].pnum, "bank", "old line: bank + letter")
+  local keep = S.devices
+  S.devices = { { id = "h2", name = "Stomp test", model = "hxstomp", chan = 1, port = "", latency = 0, inport = "", pnum = "bank" } }
+  local d = S.devices[1]
+  eq(#Midi.test_seq(d), 5, "HX Stomp: 0 1 2 1 0")
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  C.R.pcs = {}
+  Midi.insert_change(d, 3, 2, 17)
+  local take = r.GetActiveTake(r.GetTrackMediaItem(tr, 0))
+  local _, _, ncc = r.MIDI_CountEvts(take)
+  eq(ncc, 2, "CC#32 and the Program Change only")
+  C.R.pcs = {}
+  local ch = Midi.changes(d)[1]
+  eq(ch.folder, 2, "setlist 3"); eq(ch.index, 17, "preset 17")
+  Midi.put_scene(d, 4, 2)
+  local _, _, _, _, _, _, m2 = r.MIDI_GetCC(take, 2)
+  eq(m2, 69, "snapshot CC")
+  Midi.put_scene(d, 5, 5) -- (beyond the 3 snapshots: not read as a scene)
+  C.R.pcs = {}
+  eq(#Midi.scenes(d), 1, "only valid snapshots")
+  r.DeleteTrack(tr)
+  S.devices = keep
+end)
+
+test("Quad Cortex expression pedals: assignments saved per preset; knob % and pedal position; move with a preset", function()
+  local Preset, Knob, S = C.Preset, C.Knob, C.S
+  local d = { id = "x1", name = "QC", model = "mini", chan = 1, port = "" }
+  ok(Knob.pedal(d, { cc = 1 }) == 1 and Knob.pedal(d, { cc = 2 }) == 2, "CC#1 and CC#2 are pedals")
+  ok(not Knob.pedal(d, { cc = 3 }), "CC#3 is not")
+  ok(not Knob.pedal({ model = "helix" }, { cc = 1 }), "Line 6: no pedal mode")
+  S.expr[d.id] = {}
+  Preset.set_expr(d, 1, 0, { { { name = "Hi Pass", from = 0, to = 55, note = "0% = Off" }, { name = " ", from = 0, to = 1 } },
+    { { name = "Low Pass", from = 100, to = 15, note = "" } } })
+  local back = Preset.parse_expr(Preset.serialize_expr(S.expr[d.id]))
+  local l1, l2 = back["1:0"][1], back["1:0"][2]
+  eq(#l1, 1, "an empty name is dropped"); eq(l1[1].name, "Hi Pass"); eq(l1[1].to, 55); eq(l1[1].note, "0% = Off")
+  eq(l2[1].from, 100); eq(l2[1].to, 15, "backwards")
+  eq(Knob.assign_at(l1[1], 40), 22, "Hi Pass at pedal 40%"); eq(Knob.assign_at(l2[1], 40), 66, "Low Pass at pedal 40%")
+  Preset.set_name(d, 1, 0, "Song"); Preset.move(d, 1, 0, 1, 5)
+  eq(#Preset.expr(d, 1, 5, 2), 1, "moved with the preset"); eq(#Preset.expr(d, 1, 0, 1), 0)
+  S.expr[d.id] = nil; S.lib[d.id] = nil
+end)
+
+test("Quad Cortex functions: the 2 pedals always, then footswitches, tap, tuner, Gig View, mode; labels; 4 taps", function()
+  local Dev, S, Midi, Knob = C.Dev, C.S, C.Midi, C.Knob
+  local keep = S.devices
+  S.devices = { { id = "f1", name = "QC f", model = "mini", chan = 1, port = "", latency = 0, inport = "", pnum = "bank" } }
+  local d = S.devices[1]
+  S.knobs[d.id] = { { cc = 7, name = "Old", min = 0, max = 1, unit = "%" } }
+  local l = Knob.list(d)
+  eq(l[1].cc, 1); eq(l[2].cc, 2); eq(l[1].max, 100, "pedal 0-100%")
+  eq(#l, 2 + 8 + 1 + 4, "pedals, 8 footswitches, page (mini), tap, tuner, Gig View, mode")
+  local by = {}
+  for _, k in ipairs(l) do by[k.cc] = k end
+  eq(by[35].name, "Footswitch A (I)"); eq(by[42].name, "Footswitch D (II)"); eq(by[64].name, "Footswitch page")
+  eq(Knob.label(by[45], 127), "Open"); eq(Knob.label(by[45], 10), "Close"); eq(Knob.label(by[45], 64), "Open")
+  eq(Knob.label(by[47], 2), "Slot 3 (Stomp)"); eq(Knob.label(by[64], 0), "Page I")
+  eq(#Knob.levels(d), 2, "only the pedals play on")
+  ok(not Knob.pedal(d, by[35]), "a footswitch is not a pedal")
+  eq(#Knob.list({ id = "f2", model = "qc" }), 2 + 8 + 4, "full size: no page swap")
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  C.R.pcs = {}
+  Midi.add_taps(d, 44, 4)
+  eq(#Midi.ccs(d, 44), 4, "4 taps")
+  local c = Midi.ccs(d, 44)
+  ok(math.abs((c[2].t - c[1].t) - 0.5) < 0.01, "on the beat (120 bpm)")
+  r.DeleteTrack(tr)
+  S.knobs[d.id] = nil
+  S.devices = keep
+end)
+
+test("Add device: a chosen model (no output), or a connected unit (its output and model)", function()
+  local Dev, S = C.Dev, C.S
+  local keep = S.devices
+  S.devices = {}
+  local d = Dev.new("hxstomp")
+  eq(d.model, "hxstomp"); eq(d.port, "", "no output yet"); eq(d.name, "Line 6 HX Stomp")
+  local d2 = Dev.new(nil, "Quad Cortex mini MIDI OUT")
+  eq(d2.model, "mini", "from the output name"); eq(d2.port, "Quad Cortex mini MIDI OUT")
+  eq(#S.devices, 2)
+  S.devices = keep
+end)
+
+test("a preset change inside a song: add, move, change, remove; the song's own preset stays", function()
+  local Dev, S, Midi = C.Dev, C.S, C.Midi
+  local keep = S.devices
+  S.devices = { { id = "p9", name = "PC test", model = "mini", chan = 1, port = "", latency = 0, inport = "", pnum = "bank" } }
+  local d = S.devices[1]
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  C.R.pcs = {}
+  local A = C.R.regions[1] -- (0-10 s)
+  Midi.set_song(d, A, 1, 4)
+  eq(#Midi.song_extra_pcs(d, A), 0, "only the song's own preset")
+  Midi.put_pc(d, 5, 1, 9)
+  local x = Midi.song_extra_pcs(d, A)
+  eq(#x, 1, "added"); eq(x[1].index, 9); ok(math.abs(x[1].t - 5) < 0.002, "at 5 s")
+  eq(Midi.song_change(d, A).index, 4, "the song's own preset stays")
+  eq(Midi.preset_at(d, A, 6).index, 9, "after it: the new preset"); eq(Midi.preset_at(d, A, 3).index, 4, "before it")
+  Midi.put_pc(d, 7, x[1].folder, x[1].index, x[1])
+  x = Midi.song_extra_pcs(d, A)
+  ok(#x == 1 and math.abs(x[1].t - 7) < 0.002, "moved")
+  Midi.put_pc(d, x[1].t, 2, 30, x[1])
+  x = Midi.song_extra_pcs(d, A)
+  ok(#x == 1 and x[1].folder == 2 and x[1].index == 30, "changed")
+  Midi.put_pc(d, 0, nil, nil, x[1])
+  eq(#Midi.song_extra_pcs(d, A), 0, "removed"); eq(Midi.song_change(d, A).index, 4)
+  r.DeleteTrack(tr)
+  S.devices = keep
+end)
+
+test("export: 1 MIDI file for the show, 1 per song (preset and start scene at 0:00; no next song's preset); ramps as steps", function()
+  local Dev, S, Midi = C.Dev, C.S, C.Midi
+  local keep, kw = S.devices, S.pc_when
+  S.pc_when = "before"
+  S.devices = { { id = "e1", name = "Export test", model = "mini", chan = 2, port = "", latency = 0, inport = "", pnum = "bank" } }
+  local d = S.devices[1]
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  C.R.pcs = {}
+  local A, B = C.R.regions[1], C.R.regions[2] -- (0-10 s and 20-50 s)
+  Midi.set_song(d, A, 1, 4); Midi.set_song(d, B, 1, 200)
+  Midi.add_scene(d, 2, 3); Midi.add_scene(d, 25, 5)
+  Midi.set_cc(d, 1, 26, 0); Midi.set_shape(d, 1, Midi.ccs(d, 1)[1], 1); Midi.set_cc(d, 1, 28, 127)
+  -- the song file of B: its preset (before its start) and its scene at 0:00; no preset of a next song
+  local ev = Midi.song_file_events(d, B)
+  ok(ev[1].cm == 0xB0 and ev[1].m2 == 0 and ev[1].m3 == 1, "CC0 = 1 (preset 200)")
+  ok(ev[2].m2 == 32 and ev[3].cm == 0xC0 and ev[3].m2 == 200 % 128, "CC32, then the Program Change")
+  local steps = 0
+  for _, e in ipairs(ev) do if e.cm == 0xB0 and e.m2 == 1 then steps = steps + 1 end end
+  ok(steps > 5, "the ramp as steps (" .. steps .. ")")
+  local evA = Midi.song_file_events(d, A)
+  for _, e in ipairs(evA) do ok(not (e.cm == 0xC0 and e.m2 == 200 % 128), "no next song's preset in song A") end
+  -- the files
+  local n, dir = Midi.export(d, false)
+  eq(n, 1, "1 file"); ok(dir, "a folder")
+  local n2, sub = Midi.export(d, true)
+  eq(n2, #C.R.regions, "1 file per song")
+  local f = io.open(sub .. "/02 Song B.mid", "rb")
+  ok(f, "Song B's file")
+  local data = f:read("a"); f:close()
+  eq(data:sub(1, 4), "MThd", "a MIDI file"); ok(data:find("MTrk", 1, true), "its track")
+  ok(data:find(string.char(0xC1, 200 % 128), 1, true), "the Program Change on channel 2")
+  for _, fn in ipairs({ sub .. "/01 Song A.mid", sub .. "/02 Song B.mid" }) do os.remove(fn) end
+  -- the export folder: saved in the project only when chosen; the default folder is not saved
+  local P = C.get_P()
+  eq(P.export_dir, "", "default")
+  Midi.set_export_dir("C:/Exports/Show/")
+  eq(Midi.export_dir(), "C:/Exports/Show", "chosen (no slash at the end)")
+  eq(C.Project.parse(C.Project.serialize()).export_dir, "C:/Exports/Show", "saved and read")
+  Midi.set_export_dir(Midi.default_export_dir())
+  eq(P.export_dir, "", "the default folder is not saved")
+  ok(not C.Project.serialize():find("export_dir", 1, true), "nothing written")
+  r.DeleteTrack(tr)
+  S.devices, S.pc_when = keep, kw
+end)
+
+test("a muted MIDI item is never written: a scene goes into a playing item (and shows)", function()
+  local Dev, S, Midi = C.Dev, C.S, C.Midi
+  local keep = S.devices
+  S.devices = { { id = "m1", name = "Mute test", model = "qc", chan = 1, port = "", latency = 0 } }
+  local d = S.devices[1]
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  ok(tr, "track")
+  local item = r.GetTrackMediaItem(tr, 0)
+  r.SetMediaItemInfo_Value(item, "B_MUTE", 1)
+  C.R.pcs = {}
+  Midi.put_scene(d, 5, 2)
+  eq(r.CountTrackMediaItems(tr), 2, "a new item")
+  local sc = Midi.scenes(d)
+  eq(#sc, 1, "the scene shows")
+  eq(sc[1].v, 2, "its scene")
+  ok(r.GetMediaItemTake_Item(sc[1].take) ~= item, "not in the muted item")
+  r.DeleteTrack(tr)
   S.devices = keep
 end)
 

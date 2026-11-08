@@ -4,7 +4,7 @@ Scripts for playing live with REAPER, installed and updated with ReaPack:
 
 - **Chart Cue:** shows your PDF charts and turns and scrolls the pages while the song plays (Windows only).
 - **Segue:** a setlist player: plays your songs (regions) in the order of your show, with stops and pauses.
-- **MIDI Pilot:** writes the MIDI for a Neural DSP Quad Cortex or Quad Cortex mini: presets, scenes and knob values.
+- **MIDI Pilot:** writes the MIDI for amp modelers (Quad Cortex, Line 6 Helix / HX): presets, scenes, pedals.
 
 # Chart Cue
 
@@ -104,19 +104,19 @@ Segue saves the setlists in the REAPER project, and its settings in REAPER's own
 
 # MIDI Pilot
 
-MIDI Pilot writes the MIDI for a Neural DSP Quad Cortex or Quad Cortex mini in REAPER, in plain words and real units in place of CC numbers. The MIDI is normal REAPER MIDI on a track for each unit: it plays without MIDI Pilot, also when its window is closed. First version (0.1).
+MIDI Pilot helps you prepare the MIDI for your amp modeler in REAPER: a Neural DSP Quad Cortex or Quad Cortex mini, or a Line 6 Helix, HX Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are not tested on a unit yet). It writes normal MIDI on a track for each unit, and REAPER plays it without MIDI Pilot.
 
-- **Presets at the song starts:** each region is a song; choose its preset by name (3B = Song One). MIDI Pilot writes the Bank/Program Select messages, before, at or after the song start.
-- **Scenes by name:** a coloured strip under each song, a scene list with bar.beat positions, a Scene test that plays every scene, and scenes from marker names.
-- **Knob values in real units (Lanes):** 650 Hz or -6 dB in place of a CC value, with ramps and swells (there and back), for an expression pedal assigned to a knob.
-- **Nudge and latency:** move a change by milliseconds or a note value; the latency of the unit is the track's playback offset.
-- **The state at the song starts:** Set up songs gives every song its preset, scene and knob values; Live chase sends the right state when playback starts or jumps inside a song; Send state sends it now.
-- A status bar with the state of the unit (READY / NOT AVAILABLE) and hints.
+- **Presets:** each region is a song; choose its preset by name (3B = Song One). A second preset inside a song is possible.
+- **Scenes by name:** a coloured strip under each song, a scene list with positions, a Scene test, and scenes from marker names.
+- **Lanes:** the 2 expression pedals of the Quad Cortex as pedal positions, with what they move in each preset; the unit's footswitches, tuner, tap tempo, Gig View and mode; ramps and swells. Line 6: your own CCs in real units.
+- **Set up songs:** each song gets its preset and first scene, so playback can start at any song.
+- **Show overview** of all songs, and **Export MIDI**: 1 standard MIDI file for the show, or 1 per song.
+- Nudge, latency, a status bar, Light / Dark theme.
 - Needs ReaImGui 0.9.3 or newer. It uses only REAPER and ReaImGui. Tested with a Quad Cortex mini.
 
 Install with ReaPack (search "MIDI Pilot"), then run "Script: MIDI Pilot.lua" and click Settings (the gear) > Add device.
 
-MIDI Pilot saves the devices and your preset and scene names in REAPER's own settings, and which track belongs to which device in the project.
+MIDI Pilot saves the devices, your preset and scene names and the pedal assignments in REAPER's own settings, and which track belongs to which device (and the export folder) in the project.
 
 ## Zips
 
