@@ -372,8 +372,11 @@ test("scene test: exactly at the cursor, 15 changes every 2 beats, 1 test; repla
   local g = Midi.song_tests(d, B)
   eq(#g, 1, "1 test"); eq(#g[1].evs, 15); ok(math.abs(g[1].t0 - 20) < 0.001, "exactly at the cursor")
   eq(g[1].evs[8].v, 7, "D-II in the middle"); eq(g[1].evs[15].v, 0, "back to A-I")
-  eq(#Midi.song_scenes(d, B), 16, "the scene at 22.5 replaced, the one at 45 stays")
-  eq(Midi.merge_all(d), 0, "merge keeps the test")
+  eq(#Midi.song_scenes(d, B), 17, "the scene at 22.5 replaced, the one at 45 stays, a stopping point at 35")
+  local stop
+  for _, s in ipairs(Midi.song_scenes(d, B)) do if math.abs(s.t - 35) < 0.002 then stop = s end end
+  ok(stop and stop.v == 0 and not Midi.song_tests(d, B).of[stop], "the stopping point: a normal scene change back to A")
+  eq(Midi.merge_all(d), 0, "merge keeps the test and its stopping point")
   ok(Midi.remove_test(d, B, g[1], 30), "moved"); ok(math.abs(Midi.song_tests(d, B)[1].t0 - 30) < 0.001)
   eq(Midi.add_test(d, B, 40), nil, "no room at the end: nothing written")
   eq(Midi.remove_test(d, B, Midi.song_tests(d, B)[1], 40), false, "no room to move: it stays")
@@ -833,6 +836,90 @@ test("export: 1 MIDI file for the show, 1 per song (preset and start scene at 0:
   ok(not C.Project.serialize():find("export_dir", 1, true), "nothing written")
   r.DeleteTrack(tr)
   S.devices, S.pc_when = keep, kw
+end)
+
+test("presets from names and markers (P 3B), markers from scenes", function()
+  local Dev, S, Midi, Preset = C.Dev, C.S, C.Midi, C.Preset
+  local keep, kl = S.devices, S.lib
+  S.devices = { { id = "q1", name = "QoL test", model = "qc", chan = 1, port = "", latency = 0, inport = "", pnum = "bank" } }
+  local d = S.devices[1]
+  S.lib = { q1 = { ["1:12"] = "Lead" } }
+  eq(Preset.parse_label(d, "Song One [3B]"), Preset.index("qc", 3, 2), "[3B]")
+  eq(Preset.parse_label(d, "3b Song One"), Preset.index("qc", 3, 2), "3b at the start")
+  eq(Preset.parse_label(d, "Song One"), nil, "no number")
+  eq(Preset.parse_label(d, "Song 99Z"), nil, "not a preset")
+  local hx = { model = "hxstomp", pnum = "num" }
+  eq(Preset.parse_label(hx, "Song - 017"), 17, "Line 6 numbers")
+  local f, i = Preset.from_text(d, "Lead", Preset.by_name(d))
+  ok(f == 1 and i == 12, "a preset name")
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  C.R.pcs = {}
+  local A = C.R.regions[1] -- (0-10 s)
+  -- a marker "P Lead" inside song A
+  local mi = r.AddProjectMarker2(0, false, 6, 0, "P Lead", -1, 0)
+  C.Project.scan()
+  eq(Midi.match_marker_presets(d), 1, "1 preset change from a marker")
+  local at6
+  for _, ch in ipairs(Midi.changes(d)) do if math.abs(ch.t - 6) < 0.002 then at6 = ch end end
+  ok(at6 and at6.index == 12 and at6.folder == 1, "at the marker, preset Lead")
+  ok(A, "song A")
+  eq(Midi.match_marker_presets(d), 0, "again: nothing")
+  r.DeleteProjectMarker(0, mi, false)
+  -- markers from scenes
+  Midi.add_scene(d, 2, 1); Midi.add_scene(d, 4, 3)
+  C.Project.scan()
+  local m0 = #C.R.markers
+  eq(Midi.markers_from_scenes(d), 2, "2 markers")
+  C.Project.scan()
+  eq(#C.R.markers, m0 + 2, "in the project")
+  eq(Midi.markers_from_scenes(d), 0, "again: nothing")
+  for _, mk in ipairs({ "B", "D" }) do
+    for j = r.CountProjectMarkers(0) - 1, 0, -1 do
+      local _, isrgn, _, _, nm, idx = r.EnumProjectMarkers3(0, j)
+      if not isrgn and nm == mk then r.DeleteProjectMarker(0, idx, false) end
+    end
+  end
+  C.Project.scan()
+  r.DeleteTrack(tr)
+  S.devices, S.lib = keep, kl
+end)
+
+test("first scene and other presets / scenes: at, before, after (ms and note values), after the region's preset", function()
+  local Dev, S, Midi = C.Dev, C.S, C.Midi
+  local keep = S.devices
+  local ks = { S.pc_when, S.pc_unit, S.pc_ms, S.pc_note, S.pc_other, S.sc_first, S.sc_other, S.sc_unit, S.sc_ms, S.sc_note }
+  S.devices = { { id = "t1", name = "Timing test", model = "mini", chan = 1, port = "", latency = 0, inport = "", pnum = "bank" } }
+  local d = S.devices[1]
+  Dev.create_track(d)
+  local tr = Dev.track(d)
+  C.R.pcs = {}
+  local B = C.R.regions[2] -- (20-50 s; 120 bpm: 1 beat = 0.5 s)
+  local function near(a, b, what) ok(math.abs(a - b) < 0.002, what .. ": " .. a .. " (want " .. b .. ")") end
+  -- first scene
+  S.sc_unit, S.sc_ms, S.sc_note = "notes", 100, 4 -- (1 beat)
+  S.sc_first = "start"; near(Midi.start_time(d, B), 20, "at the region start")
+  S.sc_first = "before"; near(Midi.start_time(d, B), 19.5, "1 beat before")
+  S.sc_first = "after"; near(Midi.start_time(d, B), 20.5, "1 beat after")
+  S.sc_first = "after_pc"; near(Midi.start_time(d, B), 20, "after the preset: no preset, the start")
+  S.pc_when, S.pc_unit, S.pc_note = "after", "notes", 4
+  Midi.set_song(d, B, 1, 3) -- (the preset 1 beat after the start: 20.5 s)
+  near(Midi.start_time(d, B), 21, "1 beat after the preset (on the grid)")
+  S.pc_when = "before"; Midi.set_song(d, B, 1, 3) -- (the preset 1 beat before: 19.5 s)
+  near(Midi.start_time(d, B), 20, "a preset before the start: never before the start")
+  S.sc_first = "before"
+  Midi.ensure_start_scene(d, B)
+  ok(Midi.start_scene(d, B), "a first scene before the start is found")
+  eq(Midi.ensure_start_scene(d, B), false, "not added again")
+  -- other presets and scenes
+  S.pc_other, S.pc_unit, S.pc_ms = "before", "ms", 250
+  near(Midi.other_time("pc", 30), 29.75, "an added preset 250 ms before")
+  S.sc_other, S.sc_unit, S.sc_ms = "after", "ms", 100
+  near(Midi.other_time("sc", 30), 30.1, "an added scene 100 ms after")
+  S.sc_other = "exact"; near(Midi.other_time("sc", 30), 30, "exactly")
+  r.DeleteTrack(tr)
+  S.devices = keep
+  S.pc_when, S.pc_unit, S.pc_ms, S.pc_note, S.pc_other, S.sc_first, S.sc_other, S.sc_unit, S.sc_ms, S.sc_note = table.unpack(ks)
 end)
 
 test("a muted MIDI item is never written: a scene goes into a playing item (and shows)", function()

@@ -29,6 +29,30 @@
   Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
   (tags segue-vX.Y, midipilot-vX.Y).
 
+## Session handoff (9 November 2026)
+- State: everything is committed and pushed; MIDI Pilot 1.1 is released. All MIDI Pilot changes were tested by the
+  user in REAPER.
+- Open test: the user's read of the rewritten MIDI Pilot Help and tooltips (pending-manual-tests memory).
+- Open: REAPER crashes inside reaper_imgui-x64.dll 0.10.0.5 (offset 0x9fd1c, access violation) when a docked script
+  window closes (middle-click on its dock tab) or its dock tab is switched; seen with Chart Cue and MIDI Pilot, 4 times
+  on 6-7 November 2026. Not in the scripts' code; no newer ReaImGui. Workaround: close with the toolbar button. A
+  report for the ReaImGui author can be written again from these facts.
+- Workflow (9 November 2026): quiet tools, tools\known-warnings.txt, tools\docs-check.ps1 (run by check.ps1), the
+  visible-change gate and short reports in CLAUDE.md, reworked skills.
+- Next decision: none pending; MIDI Pilot version 2 ideas are in the MIDI Pilot section.
+
+## Released on 9 November 2026: MIDI Pilot 1.1
+- Faster input (9 November 2026): Scene keys (1-8 add a scene at the edit cursor; Settings > Playback; on by
+  default); Presets match Regions also reads a preset number in the name ("Song One [3B]"); Presets match Markers
+  ("P 3B" / "P <preset name>"); Markers from scenes; 1 preset for several songs (Ctrl+click / Shift+click on the
+  song names). Later, only if a user asks: "Scenes like..." (copy another song's scenes).
+- Tools: renamed and reordered (Presets from Regions, Presets from Markers, Scenes from Markers, Markers from
+  Scenes, Merge repeated Scenes; Show overview, Export MIDI; Collapse all scene lists); no scrollbar; song rows stay
+  quiet while a dropdown is open.
+- Settings > Playback: "Preset settings" (First preset, Other presets, By) and "Scene settings" (First scene: at /
+  before / after the region start or after the region's preset; Other scenes; By in ms or note values; Scene keys).
+  Keys pc_other, sc_first, sc_other, sc_unit, sc_ms, sc_note. Moves, nudges and the Scene test stay exact.
+
 ## Released on 9 November 2026: MIDI Pilot 1.0.1
 - The scene strip is called the scene timeline in every text (the setting keeps its key show_strip).
 
@@ -133,10 +157,10 @@
 - Done (6 November 2026): scene edits are exact (no gap, no automatic start scene or merge; "Fill songs" and a
   "Merge repeated scenes" button); Scene test; new MIDI items are checked (channel, a scene at each song start;
   Settings > Tracks > Check new MIDI items); only the MIDI that REAPER plays is read; the status bar.
-- Step 5 done (6 November 2026): latency = the track's playback offset; nudge buttons (rows, songs; Settings > Nudge).
+- Step 5 done (6 November 2026): latency = the track's playback offset; nudge buttons (rows, songs; Settings > Playback > Nudge).
 - Step 6 done (7 November 2026): ramps in Lanes (from / to, length in beats, bars or to the time selection end, slope).
 - Layout (7 November 2026): scene list and Lanes rows with column labels, icons (send, nudge, - +), editable
-  positions in bar.beat.hundredths (right-aligned), scrolling lists (Settings > Lists), Chart Cue's row look
+  positions in bar.beat.hundredths (right-aligned), scrolling lists (Settings > Appearance > List sizes), Chart Cue's row look
   (hover and the current row); swell with hold and its own way back; notices only in the status bar.
 - Step 7 done (7 November 2026): Fill songs writes the control values at the song starts; Live chase (window
   open; Settings > Playback); Send state (status bar). Custom ramp lengths (bars.beats).

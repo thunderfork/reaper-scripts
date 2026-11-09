@@ -16,14 +16,30 @@ The rules below apply to all 3 scripts ("the script" = the script being changed)
   technical details.
 - Before a change on your own initiative, explain in plain words what I will see or notice, and ask me only about
   visible behaviour, layout and wording. Do not show diffs or code unless I ask.
+- Visible-change gate: before you build a new control, view, layout, interaction or visual behaviour (also one that
+  I asked for in a few words), show a small text mockup (the question window's preview) and the exact behaviour,
+  and wait for my answer.
 - Chart Cue is the UI style guide: the other scripts copy its look and behaviour (theme, title bar, docked-tab
   triangle, resize edges and grip, spacing, headings, toggles, rows, buttons). After a change to Chart Cue's UI,
   list the same change for each other script and ask me before you make it.
 - Ask me before any change to saved data (see "Saved data") and before you remove a feature or a control.
-- After editing, list only the functions changed, and the manual test I should do in REAPER.
+- After a change, report only: what I will see (or how the behaviour changed), the check / test result in 1 line,
+  and the manual test for me (in a question window: Passed / Failed / Skip for now). The changed functions and files
+  go into the commit message, not into the chat.
+- Ask "what next?" only after a larger piece of work or when there is a real choice (commit, push, release); not
+  after routine steps.
 - Deploy is automatic: after every change to a script, run the checks, then `.\tools\deploy.ps1`.
   Commit, push and release only when I ask.
 - Ask first, in one line, before screenshots (`.\tools\shots.ps1`) or the UI test (it takes the focus).
+- At the end of a session (or a large task): a short handoff in PLAN.md: the state, what is not committed, the open
+  tests, the next decision. Prefer 1 session per topic (a feature or a release).
+
+## Commands
+
+- Bash for git, gh and searches; PowerShell only to run the `.ps1` tools. Always use the repository's absolute path
+  (no relying on the current folder).
+- The tools are quiet: `check.ps1`, `test.ps1` and `deploy.ps1` print 1 summary line, and the details only on a
+  failure or a new warning. Use `-Full` only when you need the details.
 
 ## Editing
 
@@ -66,9 +82,11 @@ The rules below apply to all 3 scripts ("the script" = the script being changed)
 
 ## Verification
 
-- After editing: `.\tools\check.ps1` must end with "Syntax and globals OK" (syntax with `luac -p`, undefined
-  globals, then Lua Language Server warnings as information). Compare the warnings with the known false alarms
-  (on 2026-11-08: Chart Cue 17 "Need check nil" / "unknown|nil", Segue 0, MIDI Pilot 0) and look at every new one.
+- After editing: `.\tools\check.ps1` must print "Syntax and globals OK" (syntax with `luac -p`, undefined
+  globals, then Lua Language Server warnings as information). It compares the warnings with
+  `tools\known-warnings.txt` and shows only new ones: look at each new one; fix it, or (a false alarm) run
+  `.\tools\check.ps1 -UpdateKnown`. It also runs `tools\docs-check.ps1`: paths, skill names and "Settings > ..."
+  paths in the docs and skills that no longer match; fix each one it reports.
 - For logic changes: `.\tools\test.ps1 -Script "<the changed script>"` (all scripts only before a release); it
   must end with "0 failed". Add a test for each fixed bug when practical. The tests run in the portable test
   REAPER `C:\REAPERtest`, in the background; never use, close or save my normal REAPER.
@@ -94,7 +112,7 @@ The rules below apply to all 3 scripts ("the script" = the script being changed)
 - `.claude/skills/`: `release`, `debug-time` (the review round), `ui-test`, `housekeeping` (read-only audit, changes
   only after my approval), `new-feature` (plan and questions before code), `help-sync` (every text that names a
   changed feature).
-- `tools\`: check.ps1 (with `.luarc.json`), test.ps1, deploy.ps1, release.ps1 (`-Script "<name>"`: the zips in
+- `tools\`: check.ps1 (with `.luarc.json` and `known-warnings.txt`), test.ps1, deploy.ps1, release.ps1 (`-Script "<name>"`: the zips in
   the git-ignored `release\`), shots.ps1, ui-test.ps1 / ui-test.lua, background.ps1.
 - `tests\`: run.lua (Chart Cue), segue.lua, midipilot.lua, shots.lua, test.pdf (make_pdf.lua makes it; run it with
   the normal Lua, not REAPER).

@@ -5,12 +5,12 @@ description: Commit, push and release Chart Cue, Segue and MIDI Pilot (a new ver
 
 # Release
 
-CLAUDE.md "Releasing a version" and "Git" are the rules; this is the order. Stop and report at the
+CLAUDE.md "Git and releases" and the folder CLAUDE.md files (the tag and title of each script) are the rules; this is
+the order. Use Bash for git and gh (PowerShell quoting breaks `gh --jq`); PowerShell only for the `.ps1` tools. Stop and report at the
 first failure; never skip a step silently.
 
 `gh` (GitHub CLI) is on the system PATH. If a shell says "gh: not found" (the editor started before
-PATH was updated), use `& "C:\Program Files\GitHub CLI\gh.exe"` in PowerShell, and tell the user that a
-restart of VS Code fixes it.
+PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user that a restart of VS Code fixes it.
 
 ## 0. What is being released
 
@@ -28,7 +28,8 @@ restart of VS Code fixes it.
 
 ## 1. Version (only when the scripts changed and the version was not raised yet)
 
-- `@version` and `CFG.VERSION` together (minor step: 1.4 -> 1.5, unless the user says otherwise).
+- `@version` and `CFG.VERSION` together: a patch step for fixes and text changes only (1.0 -> 1.0.1), a minor step
+  for new features (1.4 -> 1.5), a major step only when the user says so.
 - `@changelog`: 1-3 user-facing lines (what the user gets, plain words), replacing the old lines.
 - `@provides`: every action script of the script's folder is listed.
 - PLAN.md: the history line of this version (Chart Cue: History; Segue: its own section).
@@ -36,7 +37,9 @@ restart of VS Code fixes it.
 
 ## 2. Checks
 
-- `.\tools\check.ps1` (must end with "Syntax and globals OK"), `.\tools\test.ps1` ("0 failed").
+- `.\tools\check.ps1` ("Syntax and globals OK", no new warnings), `.\tools\test.ps1` (all scripts, "0 failed").
+- Before a major release (x.0): the `housekeeping` audit (docs, skills, folder CLAUDE.md files) and a full
+  `debug-time` round of that script.
 - When menus, popups, tabs or views changed since the last UI test: ask for the UI test (`ui-test` skill).
 - `.\tools\deploy.ps1`.
 

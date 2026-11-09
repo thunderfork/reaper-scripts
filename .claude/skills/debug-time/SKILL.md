@@ -1,76 +1,60 @@
 ---
 name: debug-time
-description: Full review of Chart Cue, Segue and MIDI Pilot before a commit - senior developer pass, senior UI/UX designer pass, a cross-review, feedback, fixes, then a final full-code pass and the commit/push question. Use when the user says "debug time" (or asks for a debug / optimize / review round).
+description: A review round of Chart Cue, Segue or MIDI Pilot before a commit or a release - 4 passes (developer, UI/UX, musician, engineer), a cross-review, feedback, fixes and a check of the fixes. Use when the user says "debug time" (or asks for a debug / optimize / review round).
 ---
 
 # Debug time
 
-A review round for Chart Cue (`Chart Cue/Chart Cue.lua`), Segue (`Segue/Segue.lua`) and MIDI Pilot
-(`MIDI Pilot/MIDI Pilot.lua`, no shared code with the others; it copies Chart Cue's look): the action scripts,
-the Help texts, CLAUDE.md, PLAN.md, README.md. Review the script(s) that changed since the last release; the
-shared parts (`Setlist`, `UI.draw_now_view`) must stay the same in both, and the look must match Chart Cue. The user does not read code: report in plain words, with what they will see.
+A review of the script(s) that changed: the code, its Help and tooltips, and the documents (README.md, PLAN.md, the
+folder CLAUDE.md). The user does not read code: report in plain words, with what they will see.
 
-## 1. Collect (before reading)
+## 1. Scope (decide first, it sets the cost)
 
-- `git diff --stat` and `git log` since the last release tag: what changed since then. Look at it first,
-  but the passes below cover the whole file.
-- `.\tools\check.ps1` and `.\tools\test.ps1`: note any new Language Server warning or test failure.
-- Run the `help-sync` search: every "Settings > ..." path (compare with the section and heading names),
-  tab names, Help topic titles, removed features, renamed controls, old setting keys.
+- Normal round: the changes since the last review or release (`git diff --stat <tag>..`, `git log`), plus the code
+  around each change (the callers, the data it reads and writes). Read those parts, not the whole file.
+- Full round: the whole file, in parts. Only before a major release (x.0) or when the user asks for "full".
+- Segue and Chart Cue share `Setlist` and `UI.draw_now_view`: a change there, check the other script too.
+- `.\tools\check.ps1` and `.\tools\test.ps1 -Script "<name>"` (quiet: they show only problems).
+- The `help-sync` search for the changed names.
 
-## 2. Pass 1: senior developer (read the FULL code, in parts)
+## 2. Pass 1: senior developer
 
-Look for:
-- bugs: state that is not reset (project switch, mode change, removed items), copies that miss fields,
-  states that are not handled (paused, stopped, locked, part 2, performance mode, hidden tabs, empty lists);
-- per-frame cost (CLAUDE.md performance rules): scans, allocations, repeated calculations, file access;
-- saved data: new keys written only when used, old projects unchanged, parse / serialize symmetric;
-- ReaImGui: pushes and pops paired, cursor not moved after the last item of a popup, modal dialogs deferred;
-- comments, function names and constants that no longer match the feature.
+- Bugs: state not reset (project switch, mode change, removed items), copies that miss fields, states not handled
+  (playing, paused, stopped, empty lists, hidden tabs; Chart Cue: locked, performance mode, part 2).
+- Per-frame cost (CLAUDE.md "Performance"): scans, allocations, repeated calculations, file access.
+- Saved data: new keys written only when used; parse and serialize symmetric.
+- ReaImGui: pushes and pops paired, End only after a successful Begin, popups in the same ID stack.
+- Comments, names and constants that no longer match the feature.
 
 ## 3. Pass 2: senior UI/UX designer
 
-Look for:
-- texts: Help topics, tooltips, headings, messages and menu items that are wrong, old or inconsistent;
-  the same word for the same thing everywhere; the "?" texts say where a setting is saved;
-- layout: labels that wrap, duplicate names, controls in the wrong section, options split over 2 places;
-- behaviour: every optional feature can be turned off; dangerous actions have an undo or a question;
-  buttons and actions behave the same; locked or greyed controls are clear; stage use (dark, quick, safe).
+- Texts: Help, tooltips, headings, messages, menu items: wrong, old or inconsistent; the same word for the same
+  thing; the "?" texts say where a setting is saved.
+- Layout: wrapping labels, duplicate names, controls in the wrong section, options split over 2 places.
+- Behaviour: every optional feature can be turned off; dangerous actions have an undo or a question; the same
+  look as Chart Cue.
 
-## 3b. Pass 3: pro musician (live and studio use)
+## 4. Pass 3: pro musician, pass 4: studio / live engineer (by script)
 
-Look for: what goes wrong on stage under stress (a wrong click, a hidden warning, a step that needs reading),
-what the player must see at a glance, things left in a show project by mistake (tests, temporary items).
+- Chart Cue and Segue (used on stage): what goes wrong under stress (a wrong click, a hidden warning, a step that
+  needs reading), what the player must see at a glance.
+- MIDI Pilot (a preparation tool, never live): the speed of preparation, things left in a show project by mistake
+  (Scene tests, muted items), MIDI timing and order, routing (outputs, channels), what REAPER really plays, undo
+  steps and side effects on the user's own MIDI and tracks.
 
-## 3c. Pass 4: studio / live engineer
+## 5. Cross-review and feedback
 
-Look for: MIDI timing and order, routing (outputs, channels, unplugged devices), what REAPER really plays (muted
-or trimmed items, lanes), project safety (undo steps, side effects on the user's own MIDI and tracks).
+Merge the 4 lists, settle conflicts, sort by risk: bugs, then texts, then visible changes. Give 1 numbered list in
+plain words (what is wrong, what the user notices, the fix), in a question window. Visible changes need the user's
+answer (CLAUDE.md visible-change gate); bugs, texts and clean-ups can be fixed after a "go".
 
-## 4. Cross-review
+## 6. Fix and check the fixes
 
-Compare the 4 lists: merge duplicates, settle conflicts (for example "a question" against "an undo" on
-stage), and sort by risk: bugs first, then texts (no risk), then visible changes (the user decides).
+CLAUDE.md editing and patch rules; a test for each fixed bug when practical; deploy. Then check only the places
+that the fixes touched (new names, missed callers, broken pairs), and run check and test again. Update PLAN.md
+(history, open items) and the folder CLAUDE.md when they are out of date.
 
-## 5. Feedback to the user
+## 7. Report
 
-One list, numbered, in plain words: what is wrong, what the user would notice, the suggested fix.
-Mark which items change what the user sees (they need the user's answer). Ask before fixing those.
-Bugs, texts and internal clean-ups can be fixed after the user says go.
-
-## 6. Fix
-
-Follow CLAUDE.md and its patch rules: small changes, checks, tests (add a test for each fixed bug when
-practical), deploy. Then the `ui-test` skill (ask first; it takes the focus) when menus, popups, tabs or
-views changed.
-
-## 7. Final full-code pass
-
-Read the whole file once more, quickly, only for problems that the fixes made (new names, missed places,
-broken pairs). Run check.ps1 and test.ps1 again. Update CLAUDE.md (architecture, files) and PLAN.md
-(history, open items) when they are out of date.
-
-## 8. Ask for the commit
-
-Show a short summary of the round, then ask in one question (AskUserQuestion): UI test first, commit
-and push (a release), commit only, or not yet. Then follow the `release` skill for what was chosen.
+A short summary, the manual tests in a question window, then the commit choice (commit and push, commit only, not
+yet). For Chart Cue, offer the UI test first when menus, tabs or views changed (`ui-test`).

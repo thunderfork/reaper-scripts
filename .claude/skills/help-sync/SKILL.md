@@ -18,9 +18,10 @@ old and new place ("Settings > Display > ..." -> "Settings > Viewer > ...").
 - `Chart Cue/Chart Cue.lua`: Help topics (HELP_TOPICS, also "more" texts), UI.tip / tooltips,
   UI.heading "?" texts, Msg.notify messages, menu items, status bar texts, comments.
 - `Segue/Segue.lua`: HELP_TEXT, the "?" texts (SETTINGS_HELP, LIST_HELP), tooltips, the notice texts.
-- `MIDI Pilot/MIDI Pilot.lua`: HELP_TEXT, the "?" texts of the headings, tooltips, the notices (UI.toast),
+- `MIDI Pilot/MIDI Pilot.lua`: HELP_INTRO and HELP_TOPICS, the "?" texts of the headings, tooltips, the notices (UI.toast),
   the questions (UI.ask) and the undo names (Undo_EndBlock).
-- The action scripts' comments, CLAUDE.md, PLAN.md (history and checklist), README.md.
+- The action scripts' comments, the root and folder CLAUDE.md files, the skills, PLAN.md (history and
+  checklist), README.md.
 - Every "Settings > A > B" path: A must be a section name, B a heading in that section.
   `grep -o 'Settings > [A-Z][A-Za-z]*\( > [A-Z][A-Za-z ]*\)\?'`, then compare with SETTINGS_SECTIONS
   and the UI.heading names.
