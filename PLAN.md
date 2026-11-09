@@ -29,6 +29,14 @@
   Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
   (tags segue-vX.Y, midipilot-vX.Y).
 
+## Session handoff (10 November 2026)
+- State: MIDI Pilot Lanes work is done, deployed, tested by the user in REAPER and reviewed (debug time), but NOT
+  committed: collapsible Lanes sections (saved: ExtState `lanes_open`), Add value / Add ramp / Add LFO (shapes with
+  icons, rate in note values, Start / end, Peaks Same / Grow / Shrink), LFO / swell / ramp shown as 1 row in Values
+  (found by pattern; move, nudge, remove, copy; paste bar under the values), the edit cursor goes to the end after
+  an add or a paste, slope icons, double-click resets a Curve bend. Tests in tests\midipilot.lua.
+- Next decision: release it as MIDI Pilot 1.2.
+
 ## Session handoff (9 November 2026)
 - State: everything is committed and pushed; MIDI Pilot 1.1 is released. All MIDI Pilot changes were tested by the
   user in REAPER.

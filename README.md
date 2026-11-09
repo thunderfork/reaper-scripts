@@ -108,7 +108,7 @@ MIDI Pilot helps you prepare the MIDI for your amp modeler in REAPER: a Neural D
 
 - **Presets:** each region is a song; choose its preset by name (3B = Song One). A second preset inside a song is possible.
 - **Scenes by name:** a coloured timeline under each song, a scene list with positions, a Scene test, and scenes from marker names.
-- **Lanes:** the 2 expression pedals of the Quad Cortex as pedal positions, with what they move in each preset; the unit's footswitches, tuner, tap tempo, Gig View and mode; ramps and swells. Line 6: your own CCs in real units.
+- **Lanes:** the 2 expression pedals of the Quad Cortex as pedal positions, with what they move in each preset; the unit's footswitches, tuner, tap tempo, Gig View and mode; ramps, swells and LFOs (Sine, Triangle, Square, Saw; the rate follows the tempo; the peaks can grow or shrink), each shown as 1 row that you can move, remove, copy and paste. Line 6: your own CCs in real units.
 - **Set up songs:** each song gets its preset and first scene, so playback can start at any song.
 - **Show overview** of all songs, and **Export MIDI**: 1 standard MIDI file for the show, or 1 per song.
 - Nudge, latency, a status bar, Light / Dark theme.

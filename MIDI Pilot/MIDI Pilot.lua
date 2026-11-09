@@ -171,14 +171,27 @@ local KNOB_UNITS = { "%", "Hz", "dB", "ms", "" }
 local KNOB_UNIT_ITEMS = "%\0Hz\0dB\0ms\0(none)\0"
 -- The slope from a CC value to the next one (REAPER's CC shapes; REAPER plays the curve to the unit).
 local CC_SHAPE_ITEMS = "Jump\0Straight\0Slow start and end\0Fast start\0Fast end\0Curve\0"
--- A ramp (Lanes): its slope (CC shapes 1-5, no Jump) and its length: { beats, bars } (else the time selection).
-local RAMP_SHAPE_ITEMS = "Straight\0Slow start and end\0Fast start\0Fast end\0Curve\0"
+-- A ramp (Lanes): its slope (CC shapes 1-5, no Jump: RAMP_LABELS) and its length: { beats, bars } (else the time selection).
 local RAMP_LENS = { { 1, 0, "1 beat" }, { 2, 0, "2 beats" }, { 0, 1, "1 bar" }, { 0, 2, "2 bars" }, { 0, 4, "4 bars" },
   { 0, 8, "8 bars" }, { 0, 16, "16 bars" }, { 0, 0, "Custom...", custom = true },
   { 0, 0, "To the time selection end", sel = true } } -- (the last one: not in the Hold and Back lists)
 local RAMP_LEN_ITEMS = ""
 for _, l in ipairs(RAMP_LENS) do RAMP_LEN_ITEMS = RAMP_LEN_ITEMS .. l[3] .. "\0" end
 local BACK_LEN_ITEMS, HOLD_ITEMS = "", "No hold\0"
+-- An LFO (Lanes): its shape (index 0-4) and its rate, the time of 1 cycle: { quarter notes, bars }.
+local LFO_RATES = { { 0, 4, "4 bars" }, { 0, 2, "2 bars" }, { 0, 1, "1 bar" }, { 2, 0, "1/2 note" }, { 1, 0, "1/4 note" },
+  { 0.5, 0, "1/8 note" }, { 0.25, 0, "1/16 note" }, { 3, 0, "1/2 dotted" }, { 1.5, 0, "1/4 dotted" },
+  { 0.75, 0, "1/8 dotted" }, { 2 / 3, 0, "1/4 triplet" }, { 1 / 3, 0, "1/8 triplet" }, { 1 / 6, 0, "1/16 triplet" } }
+local LFO_SHAPE_NAMES = { "Sine", "Triangle", "Square", "Saw up", "Saw down" }
+local LFO_ICONS = { "sine", "tri", "square", "sawup", "sawdown" } -- (UI.wave)
+-- The slopes with an icon before the name (the value rows): the names with room for the icon, and the icons.
+local SLOPE_ICONS = { "jump", "straight", "slow", "fast_start", "fast_end", "curve" }
+local SLOPE_LABELS, RAMP_LABELS, RAMP_ICONS, LFO_LABELS = {}, {}, {}, {}
+for nm in CC_SHAPE_ITEMS:gmatch("([^\0]+)") do SLOPE_LABELS[#SLOPE_LABELS + 1] = "      " .. nm end
+for i = 2, #SLOPE_LABELS do RAMP_LABELS[i - 1] = SLOPE_LABELS[i]; RAMP_ICONS[i - 1] = SLOPE_ICONS[i] end -- (no Jump)
+for i, nm in ipairs(LFO_SHAPE_NAMES) do LFO_LABELS[i] = "      " .. nm end
+local LFO_RATE_ITEMS = ""
+for _, l in ipairs(LFO_RATES) do LFO_RATE_ITEMS = LFO_RATE_ITEMS .. l[3] .. "\0" end
 for i = 1, #RAMP_LENS - 1 do
   BACK_LEN_ITEMS = BACK_LEN_ITEMS .. RAMP_LENS[i][3] .. "\0"; HOLD_ITEMS = HOLD_ITEMS .. RAMP_LENS[i][3] .. "\0"
 end
@@ -245,6 +258,7 @@ local S = {
                     --   { ["folder:index"] = { [1] = { { name, from, to, note } }, [2] = { ... } } } (from / to: knob %)
   lane_all = false, -- Lanes: the values of all songs (else only the song at the edit cursor)
   lane_rows = CFG.LANE_ROWS, -- Lanes: a song's value list scrolls after this many rows
+  lanes_open = { values = true, add_value = true }, -- Lanes: the open sections (pedals, values, add_value, add_ramp, add_lfo)
   settings_open = 1,  -- Settings: the open section (1 Devices, 2 Tracks, 3 Playback, 4 Appearance, 5 General; 0 = none)
   theme = "dark",     -- Settings > Appearance > Theme: "dark" (the default) or "light"
   show_strip = true,  -- Settings > Appearance > Scene timelines: the scene timeline under each song (Songs tab)
@@ -420,6 +434,10 @@ local function load_settings()
     S.knobs[d.id] = Knob.parse(get("knb_" .. d.id))
   end
   S.lane_all = get("lane_all") == "1"
+  if r.HasExtState(CFG.EXT, "lanes_open") then
+    S.lanes_open = {}
+    for key in get("lanes_open"):gmatch("[%w_]+") do S.lanes_open[key] = true end
+  end
   S.theme = (get("theme") == "light") and "light" or "dark"
   S.show_strip = get("show_strip") ~= "0"
   S.scene_keys = get("scene_keys") ~= "0"
@@ -454,6 +472,10 @@ local function save_settings()
     Util.ext_set("knb_" .. d.id, Knob.serialize(S.knobs[d.id]))
   end
   r.SetExtState(CFG.EXT, "lane_all", S.lane_all and "1" or "0", true)
+  local lo = {}
+  for key in pairs(S.lanes_open) do lo[#lo + 1] = key end
+  table.sort(lo)
+  r.SetExtState(CFG.EXT, "lanes_open", table.concat(lo, " "), true)
   r.SetExtState(CFG.EXT, "lane_rows", tostring(S.lane_rows), true)
   r.SetExtState(CFG.EXT, "settings_open", tostring(S.settings_open), true)
   r.SetExtState(CFG.EXT, "theme", S.theme, true)
@@ -2341,6 +2363,228 @@ function Midi.ramp_points(t0, t1, v0, v1, shape, tension, sw)
   return pts, t2
 end
 
+-- The time of 1 LFO cycle at time t, in quarter notes: rate = an index of LFO_RATES (bars: the time signature at t).
+function Midi.lfo_cycle(t, rate)
+  local l = LFO_RATES[rate]
+  if l[2] > 0 then
+    local num, den = r.TimeMap_GetTimeSigAtTime(R.proj, t)
+    return l[2] * num * 4 / den
+  end
+  return l[1]
+end
+-- The points of an LFO from t0 to t1 between the CC values lo and hi (the 2 fields): shape 0 Sine, 1 Triangle,
+-- 2 Square, 3 Saw up, 4 Saw down (a saw goes from lo to hi); cyc: 1 cycle in quarter notes (it follows the tempo);
+-- high: Sine, Triangle and Square start at hi. 1 point at each top and bottom with a slope to the next one (a saw:
+-- a straight slope, then a jump back just before the next cycle); the last point at t1: the value there, or fin (a
+-- CC value: a jump to it at the end); grow: 1 the peaks grow, 2 they shrink, step by step over the whole LFO (the
+-- start value stays: 0-100 with 4 peaks: 0-25, 0-50, 0-75, 0-100). nil when there is no room.
+function Midi.lfo_points(t0, t1, lo, hi, shape, cyc, high, fin, grow)
+  local q0, q1 = r.TimeMap2_timeToQN(R.proj, t0), r.TimeMap2_timeToQN(R.proj, t1)
+  if q1 - q0 < 1e-6 or cyc <= 0 then return nil end
+  local a, b = lo, hi
+  if shape <= 2 and high then a, b = hi, lo end
+  local pts = {}
+  local function add(q, v, s)
+    pts[#pts + 1] = { t = r.TimeMap2_QNToTime(R.proj, q), v = Util.clamp(math.floor(v + 0.5), 0, 127), shape = s, tension = 0 }
+  end
+  local function peak(p, np) -- the value of peak p of np
+    if grow == 1 then return a + (b - a) * p / np elseif grow == 2 then return a + (b - a) * (np - p + 1) / np end
+    return b
+  end
+  if shape <= 2 then -- a top or a bottom every half cycle
+    local half, s = cyc / 2, (shape == 0 and 2) or (shape == 1 and 1) or 0
+    local nh = 0
+    while q0 + nh * half < q1 - 1e-6 do nh = nh + 1 end
+    local np = math.floor((nh + 1) / 2) -- (the peaks: the odd halves, the last one also when the LFO stops in it)
+    local function val(i) return i % 2 == 0 and a or peak((i + 1) / 2, np) end
+    for i = 0, nh - 1 do add(q0 + i * half, val(i), s) end
+    local from, to = val(nh - 1), val(nh)
+    local f = Util.clamp((q1 - (q0 + (nh - 1) * half)) / half, 0, 1)
+    local v = from
+    if shape == 1 then v = from + (to - from) * f
+    elseif shape == 0 then v = from + (to - from) * (1 - math.cos(math.pi * f)) / 2 end
+    add(q1, v, 0)
+  else -- a saw: a ramp each cycle, then a jump back
+    local eps = math.min(1 / 64, cyc / 8)
+    local nc = 0
+    while q0 + nc * cyc < q1 - 1e-6 do nc = nc + 1 end
+    for c = 1, nc do
+      local qs = q0 + (c - 1) * cyc
+      local top = peak(c, nc)
+      add(qs, a, 1)
+      local qe = qs + cyc
+      if qe < q1 - 1e-6 then add(qe - eps, top, 0)
+      else add(q1, a + (top - a) * Util.clamp((q1 - qs) / (cyc - eps), 0, 1), 0) end
+    end
+  end
+  if fin and pts[#pts].v ~= fin then -- the end value: the wave stops just before t1, then a jump to fin
+    local q = q1 - math.min(1 / 64, cyc / 8)
+    if q > r.TimeMap2_timeToQN(R.proj, pts[#pts - 1].t) + 1e-6 then pts[#pts].t = r.TimeMap2_QNToTime(R.proj, q)
+    else pts[#pts] = nil end
+    add(q1, fin, 0)
+  end
+  return pts, t1
+end
+
+-- Groups of values (Lanes): an LFO, a swell or a ramp, found by its pattern (as a Scene test: nothing is saved).
+-- list: the values of 1 control in time order. Returns { { i0, i1, kind ("lfo", "swell", "ramp"), shape (an LFO:
+-- 0-4, as LFO_SHAPE_NAMES), a, b, c (CC values: an LFO's 2 values, a swell's start, top and end, a ramp's start and
+-- end), cyc (an LFO: 1 cycle in quarter notes) } }. A group ends on a value without a slope (or the last value).
+function Midi.find_groups(list)
+  local out, qs, n = {}, {}, #list
+  for i, e in ipairs(list) do qs[i] = r.TimeMap2_timeToQN(R.proj, e.t) end
+  local TOL, EPS = 0.01, 1 / 16 -- (quarter notes: equal distances; the jump of a saw or of an End value)
+  local i = 1
+  while i <= n do
+    local g, j
+    local e1, e2 = list[i], list[i + 1]
+    -- an LFO (Sine, Triangle, Square): 2 values in turn, at equal distances, the same slope
+    local s = e1.shape
+    if i + 2 <= n and (s == 0 or s == 1 or s == 2) and e1.v ~= e2.v and qs[i + 1] - qs[i] > TOL then
+      local h = qs[i + 1] - qs[i]
+      local step, split -- (the peaks: the same, or growing / shrinking by the same step)
+      j = i + 1
+      while j < n and list[j].shape == s and math.abs(qs[j + 1] - qs[j] - h) < TOL do
+        local nv = list[j + 1].v
+        if (j + 1 - i) % 2 == 0 then
+          if nv ~= e1.v then break end
+        else
+          local d2 = nv - list[j - 1].v
+          if nv == e1.v or (step and math.abs(d2 - step) > 1) then split = true; break end
+          step = step or d2
+        end
+        j = j + 1
+      end
+      -- (the peaks change their steps: another LFO starts at value j, right after this one)
+      if split and j - 1 >= i + 2 then j = j - 1
+      elseif j >= i + 2 then
+        if j < n and list[j].shape == s and (qs[j + 1] - qs[j] < h - TOL -- (it stops inside a half; a Square: or holds)
+          or (s == 0 and list[j + 1].v == list[j].v and qs[j + 1] - qs[j] < h + TOL)) then j = j + 1 end
+        if j < n and list[j].shape == 0 and qs[j + 1] - qs[j] <= EPS then j = j + 1 end -- (the End value)
+      end
+      if j >= i + 2 then
+        g = { kind = "lfo", shape = (s == 2 and 0) or (s == 1 and 1) or 2, a = e1.v, b = e2.v, cyc = 2 * h, step = step }
+      end
+    end
+    -- a saw: a straight slope from a to b, a jump back to a just before the next cycle
+    if not g and i + 2 <= n and s == 1 and e2.shape == 0 and e1.v ~= e2.v and list[i + 2].v == e1.v
+      and qs[i + 2] - qs[i + 1] <= EPS then
+      local c = qs[i + 2] - qs[i]
+      local step, split
+      j = i + 2
+      while j + 2 <= n and list[j].shape == 1 and list[j + 1].shape == 0 and list[j + 1].v ~= e1.v
+        and list[j + 2].v == e1.v and math.abs(qs[j + 2] - qs[j] - c) < TOL and qs[j + 2] - qs[j + 1] <= EPS do
+        local d2 = list[j + 1].v - list[j - 1].v
+        if step and math.abs(d2 - step) > 1 then split = true; break end
+        step = step or d2
+        j = j + 2
+      end
+      if split or (j < n and list[j].shape == 1 and list[j + 1].shape == 0 and j + 2 <= n and list[j + 2].v == e1.v
+        and math.abs(list[j + 1].v - list[j - 1].v - (step or 0)) > 1 and math.abs(qs[j + 2] - qs[j] - c) < TOL) then
+        j = j - 1 -- (another saw starts at value j, right after this one)
+      else
+        if j < n and list[j].shape == 1 and list[j + 1].v ~= e1.v and qs[j + 1] - qs[j] < c + TOL then j = j + 1 end -- (the last ramp)
+        if j < n and list[j].shape == 0 and qs[j + 1] - qs[j] <= EPS then j = j + 1 end -- (the End value)
+      end
+      g = { kind = "lfo", shape = e1.v < e2.v and 3 or 4, a = e1.v, b = e2.v, cyc = c, step = step }
+    end
+    -- a swell: up, a hold (or none), back
+    if not g and i + 2 <= n and s ~= 0 and e2.v ~= e1.v then
+      local k2 = i + 1
+      if e2.shape == 0 and i + 3 <= n and list[i + 2].v == e2.v and list[i + 2].shape ~= 0 then k2 = i + 2 end
+      local back = list[k2 + 1]
+      local up = e2.v - e1.v
+      if list[k2].shape ~= 0 and back and (k2 + 1 == n or back.shape == 0)
+        and ((up > 0 and back.v <= e2.v) or (up < 0 and back.v >= e2.v)) then
+        g, j = { kind = "swell", a = e1.v, b = e2.v, c = back.v }, k2 + 1
+      end
+    end
+    -- a ramp: a slope to a value without a slope
+    if not g and i < n and s ~= 0 and (i + 1 == n or e2.shape == 0) then
+      g, j = { kind = "ramp", a = e1.v, b = e2.v }, i + 1
+    end
+    if g and g.kind == "lfo" and g.step and g.step ~= 0 then -- growing / shrinking peaks: the largest one in the name
+      for m = i + 1, j do
+        local v = list[m].v
+        if v ~= g.a and math.abs(v - g.a) > math.abs(g.b - g.a) then g.b = v end
+      end
+      g.grow = ((g.step > 0) == (g.b > g.a)) and 1 or 2
+    end
+    if g then
+      g.i0, g.i1 = i, j
+      out[#out + 1] = g
+      i = j + 1
+    else i = i + 1 end
+  end
+  return out
+end
+-- A length from t0 to t1 in words: "2 bars", "3 beats" (quarter notes), else "1.50 beats".
+function Midi.len_text(t0, t1)
+  local num, den = r.TimeMap_GetTimeSigAtTime(R.proj, t0)
+  local dq = r.TimeMap2_timeToQN(R.proj, t1) - r.TimeMap2_timeToQN(R.proj, t0)
+  local nb = dq / (num * 4 / den)
+  local b = math.floor(nb + 0.5)
+  if b >= 1 and math.abs(nb - b) < 0.01 then return b .. (b == 1 and " bar" or " bars") end
+  local nq = math.floor(dq + 0.5)
+  if nq >= 1 and math.abs(dq - nq) < 0.01 then return nq .. (nq == 1 and " beat" or " beats") end
+  return string.format("%.2f beats", dq)
+end
+-- The name of a group in the units of knob k: "LFO Sine 1/4 note, 20% - 100%, 2 bars" (cached in the group).
+function Midi.group_label(g, k, list)
+  if g.lab and g.lk == k and g.lmin == k.min and g.lmax == k.max and g.lunit == k.unit then return g.lab end
+  local function f(v) return Knob.fmt(k, Knob.from_cc(k, v)) end
+  local t0 = list[g.i0].t
+  local len = Midi.len_text(t0, list[g.i1].t)
+  local lab
+  if g.kind == "lfo" then
+    local rate
+    for i = 1, #LFO_RATES do if math.abs(Midi.lfo_cycle(t0, i) - g.cyc) < 0.02 then rate = LFO_RATES[i][3]; break end end
+    g.lab2 = (rate or "") .. (rate and ", " or "") .. f(g.a) .. " - " .. f(g.b) .. ", " .. len
+      .. ((g.grow == 1 and ", peaks grow") or (g.grow == 2 and ", peaks shrink") or "") -- (after the icon)
+    lab = "LFO " .. LFO_SHAPE_NAMES[g.shape + 1] .. " " .. g.lab2
+  elseif g.kind == "swell" then lab = "Swell " .. f(g.a) .. " - " .. f(g.b) .. " - " .. f(g.c) .. ", " .. len
+  else lab = "Ramp " .. f(g.a) .. " - " .. f(g.b) .. ", " .. len end
+  g.lab, g.lk, g.lmin, g.lmax, g.lunit = lab, k, k.min, k.max, k.unit
+  return lab
+end
+-- A copy of the values i0-i1 of a list: { label, len (quarter notes), pts = { { dq, v, shape, tension } } }.
+function Midi.group_clip(list, i0, i1, label)
+  local q0 = r.TimeMap2_timeToQN(R.proj, list[i0].t)
+  local pts = {}
+  for i = i0, i1 do
+    local e = list[i]
+    pts[#pts + 1] = { dq = r.TimeMap2_timeToQN(R.proj, e.t) - q0, v = e.v, shape = e.shape, tension = e.tension }
+  end
+  return { label = label, len = pts[#pts].dq, pts = pts }
+end
+-- The points of a copy from time t (in quarter notes: it follows the tempo), for Midi.add_ramp.
+function Midi.clip_points(clip, t)
+  local q0 = r.TimeMap2_timeToQN(R.proj, t)
+  local pts = {}
+  for i, p in ipairs(clip.pts) do
+    pts[i] = { t = r.TimeMap2_QNToTime(R.proj, q0 + p.dq), v = p.v, shape = p.shape, tension = p.tension }
+  end
+  return pts
+end
+-- Moves the values i0-i1 of a list so the first is at time t, in 1 undo step (the values at the new place are
+-- replaced). Removes them when t is nil.
+function Midi.move_values(d, cc, list, i0, i1, t, name)
+  local pts = t and Midi.clip_points(Midi.group_clip(list, i0, i1, ""), t)
+  r.Undo_BeginBlock()
+  for i = i0, i1 do Midi.delete_cc(d, cc, list[i]) end
+  R.pcs = {}
+  if pts then
+    for _, e in ipairs(Midi.ccs(d, cc)) do
+      if e.t >= pts[1].t - 0.0005 and e.t <= pts[#pts].t + 0.0005 then Midi.delete_cc(d, cc, e) end
+    end
+    R.pcs = {}
+    for i, p in ipairs(pts) do Midi.write_cc(d, cc, p.t, p.v, i < #pts and p.shape or 0, i < #pts and p.tension or 0) end
+  end
+  R.pcs = {}
+  r.UpdateArrange()
+  r.Undo_EndBlock("MIDI Pilot: " .. (name or "move values"), -1)
+end
+
 -- The value of a knob at time t: the last value at or before t (on a slope: the value on the way to the next
 -- value, straight between them), and that value event. nil when no value comes before t.
 function Midi.cc_at(d, cc, t)
@@ -2857,9 +3101,12 @@ Lanes writes pedal moves and other control changes in the song at the edit curso
 - A blue dot in the Control list: that control has values in this song.
 
 # Add
-- Add a value: the control jumps to that value at the edit cursor.
-- Add a ramp: the value moves from one value to another over a length (beats, bars, or to the end of the time selection).
-- Swell: a ramp up, a hold, and a ramp back down.]] },
+- Click a section title (the triangle) to close or open it. MIDI Pilot remembers the open sections on this computer.
+- Add value: the control jumps to that value at the edit cursor.
+- Add ramp: the value moves from one value to another over a length (beats, bars, or to the end of the time selection).
+- Swell: a ramp up, a hold, and a ramp back down.
+- In the Values list, an LFO, a swell or a ramp is 1 row. Click its name to see its values. Its position and nudge move all of it, the red X removes all of it, and the copy icon copies it: "Paste at edit cursor" then shows under the values (also for another control).
+- Add LFO: the value moves between a low and a high value, again and again (Sine, Triangle, Square, Saw up, Saw down), at a rate that follows the tempo. Peaks: the peaks can grow or shrink step by step.]] },
   { title = "Nudge and latency", text = [[
 # Nudge
 The 2 triangles of a row move a change a little earlier (left) or later (right). Set the amount in Settings > Playback > Nudge.
@@ -3083,15 +3330,46 @@ function UI.toast(text, warn) R.toast = { text = text, t0 = Util.now(), warn = w
 
 -- Section heading, as in Chart Cue: bold, blue, a full-width blue underline, a "?" at the right.
 -- note / note_col: a short text at the right end of the title line (a notice).
-function UI.heading(text, help, note, note_col)
+-- fold: a key of S.lanes_open: a triangle at the left, a click on the title opens / closes it (saved); extra: a
+-- dim text after the title. Returns true when the section is open (always true without fold).
+function UI.heading(text, help, note, note_col, fold, extra)
   UI.vgap(CFG.SP_TITLE_BEFORE)
   local sx, sy = ImGui.GetCursorScreenPos(ctx)
   local full = math.max(60, ImGui.GetContentRegionAvail(ctx) - 4)
+  local open = true
+  if fold then open = S.lanes_open[fold] == true; ImGui.SetCursorScreenPos(ctx, sx + 16, sy) end
   ImGui.PushFont(ctx, head_font)
   ImGui.AlignTextToFramePadding(ctx)
   ImGui.TextColored(ctx, COL.HEADING, text)
   ImGui.PopFont(ctx)
   local tx1, ty = ImGui.GetItemRectMax(ctx)
+  if extra then
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+    ImGui.SetCursorScreenPos(ctx, tx1 + CFG.CTRL_GAP, sy)
+    ImGui.AlignTextToFramePadding(ctx)
+    ImGui.TextColored(ctx, COL.TEXT_DIM, extra)
+    local ex1, ey = ImGui.GetItemRectMax(ctx)
+    tx1, ty = ex1, math.max(ty, ey)
+  end
+  if fold then -- the click area: the title line up to the device dropdown and the "?"
+    local reserve = help and CFG.HELP_ICON + 10 or 0
+    if R.dev_head then reserve = reserve + (ImGui.CalcTextSize(ctx, S.devices[R.cur_dev].name)) + ImGui.GetFrameHeight(ctx) + 26 end
+    ImGui.SetCursorScreenPos(ctx, sx, sy)
+    ImGui.InvisibleButton(ctx, "##fold_" .. fold, math.max(30, full - reserve), math.max(1, ty - sy))
+    local hov = ImGui.IsItemHovered(ctx)
+    if hov then
+      ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand())
+      ImGui.SetTooltip(ctx, open and "Click to close this section." or "Click to open this section.")
+    end
+    if ImGui.IsItemClicked(ctx, 0) then
+      open = not open; S.lanes_open[fold] = open or nil; Util.mark_sdirty()
+    end
+    local dl = ImGui.GetWindowDrawList(ctx)
+    local col = hov and COL.TEXT_BRIGHT or COL.HEADING
+    local cx, cy = sx + 6, sy + (ty - sy) / 2
+    if open then ImGui.DrawList_AddTriangleFilled(dl, cx - 5, cy - 3, cx + 5, cy - 3, cx, cy + 3, col)
+    else ImGui.DrawList_AddTriangleFilled(dl, cx - 3, cy - 5, cx - 3, cy + 5, cx + 3, cy, col) end
+  end
   if note then
     local x_end = sx + full - (help and CFG.HELP_ICON + 10 or 0)
     local avail = x_end - tx1 - 16
@@ -3131,6 +3409,7 @@ function UI.heading(text, help, note, note_col)
   ImGui.SetCursorScreenPos(ctx, sx, ty)
   ImGui.Dummy(ctx, 0, 3)
   UI.vgap(CFG.SP_TITLE_AFTER)
+  return open
 end
 
 -- The label column: returns the control column x and width, and wide (the label is left of its control).
@@ -3288,8 +3567,64 @@ function UI.draw_ask()
   end
 end
 
+-- A small drawn wave in the box x, y, w, h: an LFO shape (LFO_ICONS) or a slope (SLOPE_ICONS).
+function UI.wave(dl, x, y, w, h, kind, col)
+  local N = 24
+  local px, py
+  for i = 0, N do
+    local u = i / N
+    local v
+    if kind == "sine" then v = 0.5 - 0.5 * math.cos(u * 3 * math.pi)
+    elseif kind == "tri" then local p = (u * 1.5) % 1; v = p < 0.5 and p * 2 or 2 - p * 2
+    elseif kind == "square" then v = ((u * 1.5) % 1) < 0.5 and 0 or 1
+    elseif kind == "sawup" then v = (u * 1.5) % 1
+    elseif kind == "sawdown" then v = 1 - (u * 1.5) % 1
+    elseif kind == "jump" then v = u < 0.999 and 0 or 1
+    elseif kind == "straight" then v = u
+    elseif kind == "slow" then v = 0.5 - 0.5 * math.cos(u * math.pi)
+    elseif kind == "fast_start" then v = 1 - (1 - u) ^ 3
+    elseif kind == "fast_end" then v = u ^ 3
+    else v = u ^ 2 end
+    local qx, qy = x + u * w, y + h - v * h
+    if px then ImGui.DrawList_AddLine(dl, px, py, qx, qy, col, 1.5) end
+    px, py = qx, qy
+  end
+end
+-- The bend of a Curve (-1 .. 1): drag it; a double-click sets 0 (it wins until the mouse button is up). Returns
+-- changed, the value, and done: the edit ended with a new value (to write it).
+function UI.bend_slider(id, v)
+  local ch, nv = ImGui.SliderDouble(ctx, id, v, -1, 1, "%.2f", ImGui.SliderFlags_NoInput())
+  if ImGui.IsItemActivated(ctx) then R.bend_t0 = v end
+  if ImGui.IsItemHovered(ctx) and ImGui.IsMouseDoubleClicked(ctx, 0) then R.bend_reset = id end
+  if R.bend_reset == id then
+    ch, nv = true, 0
+    if not ImGui.IsMouseDown(ctx, 0) then R.bend_reset = nil end
+  end
+  local done = ImGui.IsItemDeactivated(ctx) and nv ~= R.bend_t0
+  return ch, nv, done
+end
+-- A dropdown with a small icon (UI.wave) before each name: labels (with room for the icon), icons, cur (0-based).
+-- Returns changed, the new index (0-based).
+function UI.icon_combo(id, cur, labels, icons, w)
+  ImGui.SetNextItemWidth(ctx, w)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  local bx, by = ImGui.GetCursorScreenPos(ctx)
+  local fh = ImGui.GetFrameHeight(ctx)
+  local res
+  if ImGui.BeginCombo(ctx, id, labels[cur + 1]) then
+    for i = 1, #labels do
+      if ImGui.Selectable(ctx, labels[i] .. id .. i, i - 1 == cur) and i - 1 ~= cur then res = i - 1 end
+      local ix, iy = ImGui.GetItemRectMin(ctx)
+      local _, iy1 = ImGui.GetItemRectMax(ctx)
+      UI.wave(ImGui.GetWindowDrawList(ctx), ix + 1, iy + 3, 16, iy1 - iy - 6, icons[i], COL.TEXT_MAIN)
+    end
+    ImGui.EndCombo(ctx)
+  end
+  UI.wave(dl, bx + 8, by + 5, 16, fh - 10, icons[cur + 1], ImGui.GetColor(ctx, ImGui.Col_Text()))
+  return res ~= nil, res
+end
 -- A square button with a drawn icon: "send" (a play triangle), "back" / "fwd" (2 triangles: nudge earlier / later),
--- "minus", "plus". Returns true when clicked.
+-- "copy" (2 sheets), "minus", "plus". Returns true when clicked.
 function UI.icon_button(id, kind, size)
   local hit = ImGui.Button(ctx, "##" .. id, size, size)
   local x0, y0 = ImGui.GetItemRectMin(ctx)
@@ -3313,6 +3648,9 @@ function UI.icon_button(id, kind, size)
   elseif kind == "pedal" then -- an expression pedal: a slanted plate on a base
     ImGui.DrawList_AddLine(dl, cx - s - 1, cy + s, cx + s + 1, cy + s, col, 2)
     ImGui.DrawList_AddQuadFilled(dl, cx - s, cy + s - 2, cx + s, cy - s - 1, cx + s + 1, cy - s + 2, cx - s + 2, cy + s - 1, col)
+  elseif kind == "copy" then -- 2 sheets
+    ImGui.DrawList_AddRect(dl, cx - s - 1, cy - s - 1, cx + s - 2, cy + s - 2, col, 1, 0, 1.5)
+    ImGui.DrawList_AddRectFilled(dl, cx - s + 2, cy - s + 2, cx + s + 1, cy + s + 1, col, 1)
   elseif kind == "edit" then -- a pencil
     ImGui.DrawList_AddLine(dl, cx - s, cy + s, cx + s, cy - s, col, 3)
     ImGui.DrawList_AddTriangleFilled(dl, cx - s - 2, cy + s + 2, cx - s + 1, cy + s - 3, cx - s + 3, cy + s - 1, col)
@@ -4520,6 +4858,29 @@ function UI.expr_text(d, rg, e, pd)
 end
 -- Lanes: the knobs of a device (a CC in the units of a knob of the unit), and the values of 1 knob in the song
 -- at the edit cursor (add, change, remove, send).
+local NO_ROWS = {} -- (a closed Values section: no songs to draw)
+-- The rows of a song's values (cached with the MIDI and the open groups): { n } a value, { grp } a group (1 row),
+-- { n, member } a value of an open group.
+function UI.lane_rows(g, cc)
+  R.gopen, R.gopen_v = R.gopen or {}, R.gopen_v or 0
+  if g.rows and g.rows_v == R.gopen_v then return g.rows end
+  g.fg = g.fg or Midi.find_groups(g.list)
+  local rows, gi, n = {}, 1, 1
+  while n <= #g.list do
+    local G = g.fg[gi]
+    if G and G.i0 == n then
+      G.key = G.key or string.format("kg%d:%.4f", cc, g.list[n].t)
+      rows[#rows + 1] = { grp = G }
+      if R.gopen[G.key] then for m = G.i0, G.i1 do rows[#rows + 1] = { n = m, member = true } end end
+      n, gi = G.i1 + 1, gi + 1
+    else
+      rows[#rows + 1] = { n = n }
+      n = n + 1
+    end
+  end
+  g.rows, g.rows_v = rows, R.gopen_v
+  return rows
+end
 function UI.draw_lanes_tab()
   if UI.no_device_hint() then return end
   local d = UI.device_picker()
@@ -4528,10 +4889,10 @@ function UI.draw_lanes_tab()
   local fh = ImGui.GetFrameHeight(ctx)
   if not MODELS[d.model].line6 then
     local cl = Knob.list(d)
-    UI.heading("Expression pedals", "Your Quad Cortex has 2 expression pedals (CC#1 and CC#2). A value is the pedal "
+    local popen = UI.heading("Expression pedals", "Your Quad Cortex has 2 expression pedals (CC#1 and CC#2). A value is the pedal "
       .. "position: 0% heel, 100% toe.\n\nWhat a pedal moves is set for each preset: Presets tab > the pedal icon.\n\n"
-      .. "The unit's other MIDI functions are in the Control list below. The names are saved on this computer.")
-    for pd = 1, 2 do
+      .. "The unit's other MIDI functions are in the Control list below. The names are saved on this computer.", nil, nil, "pedals")
+    for pd = 1, popen and 2 or 0 do
       local k = cl[pd]
       ImGui.PushID(ctx, "ped" .. pd)
       UI.row_start("CC#" .. pd)
@@ -4549,7 +4910,8 @@ function UI.draw_lanes_tab()
   UI.heading(string.format("Controls (%d)", #knobs), "Add 1 control for each CC that you assigned on the unit. "
     .. "Enter the range that you set on the unit (heel = Min, toe = Max) and its unit: MIDI Pilot then shows the values "
     .. "in that unit (650 Hz instead of CC 97).\n\nA CC has 128 steps, so MIDI Pilot writes the nearest step. "
-    .. "Saved on this computer, for this device.")
+    .. "Saved on this computer, for this device.", nil, nil, "pedals")
+  if S.lanes_open.pedals then
   local rm
   -- the columns: CC, name, min, max, unit (the labels above them)
   local x0 = ImGui.GetCursorPosX(ctx)
@@ -4613,6 +4975,7 @@ function UI.draw_lanes_tab()
   end
   UI.tip("Add a control on a free CC. Assign the same CC on the unit.")
   end
+  end
   if #cl == 0 then return end
   knobs = cl
 
@@ -4638,10 +5001,13 @@ function UI.draw_lanes_tab()
     end
     R.pcs[ukey] = used
   end
-  UI.heading(all and "Values in all songs" or (rg and ("Values in " .. (rg.name ~= "" and rg.name or "(unnamed region)")) or "Values"),
+  local vopen = UI.heading(all and "Values in all songs" or (rg and ("Values in " .. (rg.name ~= "" and rg.name or "(unnamed region)")) or "Values"),
     "The values of the selected control in the song at the edit cursor, or in all songs.\n\nPosition: bar.beat in "
     .. "the project. Time: from the song start.\nSlope: how the value moves to the next value. Jump: it changes at "
-    .. "the next value; the others move smoothly.")
+    .. "the next value; the others move smoothly.\n\nAn LFO, a swell or a ramp is 1 row: click its name to see its "
+    .. "values. Its position and nudge move all of it; the copy icon copies it (paste: under the values).\n\nThe Control row also chooses the control for the Add sections. "
+    .. "When this section is closed, they use the control that you chose last.", nil, nil, "values")
+  if vopen then
   local _, cw = UI.row_start("Control")
   ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   if ImGui.BeginCombo(ctx, "##lk", string.format("%s  (CC#%d)", k.name, k.cc), ImGui.ComboFlags_HeightLargest()) then
@@ -4665,8 +5031,9 @@ function UI.draw_lanes_tab()
   ImGui.SameLine(ctx, 0, 16)
   local ach, av = UI.toggle_line("All songs", all, "On: the values of this control in every song. Off: only in the song at the edit cursor.")
   if ach then S.lane_all = av; all = av; Util.mark_sdirty() end
+  end
   if not all and not rg then
-    UI.note("Put the edit cursor inside a song (region), or turn on 'All songs'.")
+    if vopen then UI.note("Put the edit cursor inside a song (region), or turn on 'All songs'.") end
     return
   end
   -- the songs to show, each with its values of this control
@@ -4683,14 +5050,14 @@ function UI.draw_lanes_tab()
     end
     R.pcs[gkey] = groups
   end
-  local change, remove, shape, nudge
+  local change, remove, shape, nudge, gmove, gremove
   local vx = ImGui.GetCursorPosX(ctx)
   -- the columns: position, time, nudge, value, slope (and its bend), then send and remove
   local gap = CFG.CTRL_GAP
   local NUD = vx + 150
   local VAL = NUD + 2 * fh + 2 * gap
   local SLO = VAL + 110 + gap
-  SLOPE_W = UI.cell_w(UI.longest(CC_SHAPE_ITEMS)) -- (a table cell: as wide as its longest option)
+  SLOPE_W = UI.cell_w(UI.longest(CC_SHAPE_ITEMS)) + 24 -- (a table cell: as wide as its longest option, and its icon)
   local SND = SLO + SLOPE_W + gap -- (send and remove right after the slope; a Curve's bend goes after them)
   local VC = { vx, vx + 78, NUD, VAL, SLO, SND, SND + fh + gap }
   local any = false
@@ -4703,7 +5070,7 @@ function UI.draw_lanes_tab()
       ImGui.TextColored(ctx, COL.TEXT_DIM, hname)
     end
   end
-  for gi, g in ipairs(groups) do
+  for gi, g in ipairs(vopen and groups or NO_ROWS) do
     local grg, list = g.rg, g.list
     local closed = false
     if all then -- the song name above its values, with an arrow: a click closes / opens the song
@@ -4733,14 +5100,15 @@ function UI.draw_lanes_tab()
     end
     if not closed and #list > 0 then col_labels() end
     -- a long list scrolls (Settings > Appearance > List sizes): the rows go in a child window; its columns start at its own left edge
-    local scroll = not closed and #list > S.lane_rows
+    local rows = UI.lane_rows(g, k.cc)
+    local scroll = not closed and #rows > S.lane_rows
     local VC, vx = VC, vx
     if scroll then
       local rh = ImGui.GetFrameHeightWithSpacing(ctx)
       ImGui.SetCursorPosX(ctx, vx)
       -- as wide as the rows (the slope, its bend and the red X), so its scrollbar is right after the X buttons;
       -- the scrollbar always shows, in a lighter colour than the page's
-      local bw = (VC[7] - vx) + fh + gap + 110 + 26 -- (the bend of a Curve after the red X; room for the pills)
+      local bw = (VC[7] - vx) + fh + gap + 110 + 44 -- (the bend of a Curve after the red X; the indent of a group; the pills)
       ImGui.PushStyleColor(ctx, ImGui.Col_ScrollbarBg(), COL.FIELD)
       ImGui.PushStyleColor(ctx, ImGui.Col_ScrollbarGrab(), COL.TOGGLE_OFF)
       local vis = ImGui.BeginChild(ctx, "##lscroll" .. gi, bw, S.lane_rows * rh + 4, 0,
@@ -4759,18 +5127,79 @@ function UI.draw_lanes_tab()
     if tcur >= grg.start - CFG.EDGE and tcur < grg.stop - CFG.EDGE then
       for n, e in ipairs(list) do if e.t <= tcur + CFG.EDGE then cur_n = n end end
     end
-    for n, e in ipairs(closed and {} or list) do
+    R.vci = R.vci or {} -- (the values of an open group: indented)
+    for i2 = 1, 7 do R.vci[i2] = VC[i2] + 18 end
+    local VCI = R.vci
+    for _, row in ipairs(closed and NO_ROWS or rows) do
+      local G = row.grp
+      if G then -- a group (an LFO, a swell or a ramp): 1 row; its triangle shows its values
+        local e = list[G.i0]
+        ImGui.PushID(ctx, "g" .. gi .. ":" .. G.i0)
+        ImGui.SetCursorPosX(ctx, VC[1])
+        local px, py = ImGui.GetCursorScreenPos(ctx)
+        local pw = VC[7] - VC[1] + fh
+        local word = G.kind == "lfo" and "LFO" or G.kind
+        local aword = G.kind == "lfo" and "an LFO" or ("a " .. G.kind)
+        UI.pill_begin(G.key, px, py, pw, cur_n and cur_n >= G.i0 and cur_n <= G.i1)
+        local tb = UI.edit_time("gb" .. G.key, 70, Util.fmt_beats(e.t), Util.parse_beats, BEATS_TIP, true)
+        ImGui.SameLine(ctx, VC[2])
+        local tt = UI.edit_time("gt" .. G.key, 64, Util.fmt_song_time(grg, e.t),
+          function(s) return Util.parse_song_time(grg, s) end, TIME_TIP)
+        local tn = tb or tt
+        if tb == false or tt == false then UI.toast("Type a time inside the song, before its end.", true)
+        elseif tn and math.abs(tn - e.t) > 0.0005 then gmove = { G = G, list = list, rg = grg, t = tn } end
+        ImGui.SameLine(ctx, VC[3])
+        local nd = UI.nudge_buttons("g", fh, "this " .. word)
+        if nd then gmove = { G = G, list = list, rg = grg, t = Midi.nudged(e.t, nd) } end
+        ImGui.SameLine(ctx, VC[4])
+        local open = R.gopen[G.key]
+        local lw = VC[6] - VC[4] - gap
+        local lab = Midi.group_label(G, k, list)
+        local x, y = ImGui.GetCursorScreenPos(ctx)
+        ImGui.InvisibleButton(ctx, "##gl", lw, fh)
+        local hov = ImGui.IsItemHovered(ctx)
+        if ImGui.IsItemClicked(ctx, 0) then R.gopen[G.key] = (not open) or nil; R.gopen_v = R.gopen_v + 1 end
+        local dl = ImGui.GetWindowDrawList(ctx)
+        local col = hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN
+        local cx, cy = x + 6, y + fh / 2
+        if open then ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 2, cx + 4, cy - 2, cx, cy + 3, col)
+        else ImGui.DrawList_AddTriangleFilled(dl, cx - 2, cy - 4, cx - 2, cy + 4, cx + 3, cy, col) end
+        if G.kind == "lfo" then -- "LFO", the shape's icon, then the rest of the name
+          local w1 = ImGui.CalcTextSize(ctx, "LFO")
+          ImGui.DrawList_AddText(dl, x + 16, UI.text_y(y), col, "LFO")
+          UI.wave(dl, x + 22 + w1, y + 5, 16, fh - 10, LFO_ICONS[G.shape + 1], col)
+          ImGui.DrawList_AddText(dl, x + 44 + w1, UI.text_y(y), col, UI.trunc(G.lab2, lw - 46 - w1))
+        else ImGui.DrawList_AddText(dl, x + 16, UI.text_y(y), col, UI.trunc(lab, lw - 18)) end
+        if hov then
+          ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand())
+          ImGui.SetTooltip(ctx, lab .. " (" .. (G.i1 - G.i0 + 1) .. " values).\nClick to " .. (open and "hide" or "show") .. " its values.")
+        end
+        ImGui.SameLine(ctx, VC[6])
+        if UI.icon_button("gc", "copy", fh) then
+          R.clip = Midi.group_clip(list, G.i0, G.i1, lab)
+          UI.toast("Copied: " .. lab .. ". 'Paste at edit cursor' is under the values.")
+        end
+        UI.tip("Copy this " .. word .. ". 'Paste at edit cursor' then shows under the values.")
+        ImGui.SameLine(ctx, VC[7])
+        if UI.remove_x_button("##gx", fh) then gremove = { G = G, list = list, word = aword } end
+        UI.tip("Remove this " .. word .. " (all its values).")
+        UI.pill_end(G.key, px, py, pw, e.t, "this " .. word, d, k.cc)
+        ImGui.PopID(ctx)
+      else
+      local n = row.n
+      local e = list[n]
+      local C = row.member and VCI or VC
       ImGui.PushID(ctx, "v" .. gi .. ":" .. n)
       -- the pill of the row (a click moves the edit cursor there)
-      ImGui.SetCursorPosX(ctx, VC[1])
+      ImGui.SetCursorPosX(ctx, C[1])
       local px, py = ImGui.GetCursorScreenPos(ctx)
-      local pw = VC[7] - VC[1] + fh
+      local pw = C[7] - C[1] + fh
       local pkey = "kv" .. k.cc .. ":" .. string.format("%.4f", e.t)
       UI.pill_begin(pkey, px, py, pw, n == cur_n)
       -- position and time (editable: a typed time moves the value)
       local key = string.format("k%d:%.4f", k.cc, e.t)
       local tb = UI.edit_time("kb" .. key, 70, Util.fmt_beats(e.t), Util.parse_beats, BEATS_TIP, true)
-      ImGui.SameLine(ctx, VC[2])
+      ImGui.SameLine(ctx, C[2])
       local tt = UI.edit_time("kt" .. key, 64, Util.fmt_song_time(grg, e.t),
         function(s) return Util.parse_song_time(grg, s) end, TIME_TIP)
       local tn = tb or tt
@@ -4780,7 +5209,7 @@ function UI.draw_lanes_tab()
         elseif math.abs(tn - e.t) > 0.0005 then nudge = { e = e, t = tn } end
       end
       -- nudge
-      ImGui.SameLine(ctx, VC[3])
+      ImGui.SameLine(ctx, C[3])
       local nd = UI.nudge_buttons("k", fh, "this value")
       if nd then
         local nt = Midi.nudged(e.t, nd)
@@ -4788,7 +5217,7 @@ function UI.draw_lanes_tab()
         else nudge = { e = e, t = nt } end
       end
       -- the value
-      ImGui.SameLine(ctx, VC[4])
+      ImGui.SameLine(ctx, C[4])
       local id = string.format("%d:%.4f", k.cc, e.t)
       R.kv_text = R.kv_text or {}
       local last = (n == #list)
@@ -4804,7 +5233,7 @@ function UI.draw_lanes_tab()
         UI.tip(k.name .. ": " .. lab .. " (CC value " .. e.v .. ").")
       elseif k.kind then -- a press or a tap: nothing to choose
         UI.row_text(Knob.label(k, e.v), COL.TEXT_MAIN)
-        ImGui.SameLine(ctx, VC[5])
+        ImGui.SameLine(ctx, C[5])
         ImGui.Dummy(ctx, SLOPE_W, fh)
       else
         ImGui.SetNextItemWidth(ctx, CFG.W_S)
@@ -4817,29 +5246,28 @@ function UI.draw_lanes_tab()
         else R.kv_text[id] = nil end
         UI.tip(string.format("CC value %d. Type a new value (%s) and press Enter.", e.v, k.unit ~= "" and k.unit or "a number"))
         -- the slope to the next value (not on the last value of a song: there is no next one)
-        ImGui.SameLine(ctx, VC[5])
+        ImGui.SameLine(ctx, C[5])
         ImGui.BeginDisabled(ctx, last)
-        ImGui.SetNextItemWidth(ctx, SLOPE_W)
-        local sch, si = ImGui.Combo(ctx, "##shape", e.shape, CC_SHAPE_ITEMS)
+        local sch, si = UI.icon_combo("##shape", Util.clamp(e.shape, 0, #SLOPE_LABELS - 1), SLOPE_LABELS, SLOPE_ICONS, SLOPE_W)
         if sch then shape = { e = e, s = si, ten = e.tension } end
         ImGui.EndDisabled(ctx)
         UI.tip(last and "The last value of the song: there is no next value."
           or "How the value moves to the next value. Jump: it changes at the next value.")
       end
-      ImGui.SameLine(ctx, VC[6])
+      ImGui.SameLine(ctx, C[6])
       if UI.icon_button("ks", "send", fh) and not Midi.send_cc(d, k.cc, e.v) then UI.toast(d.name .. ": the MIDI output is not available.", true) end
       UI.tip("Send this value to the unit now.")
-      ImGui.SameLine(ctx, VC[7])
+      ImGui.SameLine(ctx, C[7])
       if UI.remove_x_button("##kx", fh) then remove = e end
       UI.tip("Remove this value.")
       UI.pill_end(pkey, px, py, pw, e.t, "this value", d, k.cc)
       if not k.kind and e.shape == 5 and not last then
         ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
         ImGui.SetNextItemWidth(ctx, 110)
-        local tch, tv = ImGui.SliderDouble(ctx, "##ten", e.tension, -1, 1, "%.2f")
-        if ImGui.IsItemDeactivatedAfterEdit(ctx) or (tch and not ImGui.IsItemActive(ctx)) then shape = { e = e, s = 5, ten = tv }
-        elseif tch then e.tension = tv end
-        UI.tip("How much the curve bends: below 0 it starts fast, above 0 it starts slowly.")
+        local tch, tv, tdone = UI.bend_slider("##ten", e.tension)
+        if tch then e.tension = tv end
+        if tdone then shape = { e = e, s = 5, ten = tv } end
+        UI.tip("How much the curve bends: below 0 it starts fast, above 0 it starts slowly.\nDouble-click: back to 0.")
       end
       local pd = Knob.pedal(d, k)
       if pd then
@@ -4851,11 +5279,46 @@ function UI.draw_lanes_tab()
         end
       end
       ImGui.PopID(ctx)
+      end
     end
     if scroll then ImGui.EndChild(ctx) end
   end
-  if not any then UI.note(all and "No values of this control in any song yet." or "No values of this control in this song yet.") end
+  if vopen and not any then UI.note(all and "No values of this control in any song yet." or "No values of this control in this song yet.") end
+  if vopen and R.clip then -- a copied group, under the values: paste it at the edit cursor (on the chosen control)
+    local why
+    if not rg then why = "Put the edit cursor inside a song."
+    elseif r.TimeMap2_QNToTime(R.proj, r.TimeMap2_timeToQN(R.proj, tc) + R.clip.len) >= rg.stop - CFG.EDGE then
+      why = "It goes past the end of '" .. rg.name .. "'."
+    end
+    local PW = UI.std_w("Paste at edit cursor")
+    UI.vgap(6)
+    UI.row_text(UI.trunc("Copied: " .. R.clip.label,
+      math.max(60, ImGui.GetContentRegionAvail(ctx) - PW - fh - 3 * CFG.CTRL_GAP)), COL.TEXT_DIM)
+    UI.tip("Copied: " .. R.clip.label .. ".")
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+    ImGui.BeginDisabled(ctx, why ~= nil)
+    if UI.button("Paste at edit cursor", PW, nil, "primary") and not why then
+      local cp = Midi.clip_points(R.clip, tc)
+      Midi.add_ramp(d, k.cc, cp, "paste")
+      r.SetEditCurPos(cp[#cp].t, true, false) -- (the next paste follows it)
+      UI.toast("Pasted on " .. k.name .. " at " .. Util.fmt_beats(tc) .. ".")
+    end
+    ImGui.EndDisabled(ctx)
+    UI.tip(why or ("Pastes it from the edit cursor (" .. Util.fmt_beats(tc) .. ") on " .. k.name
+      .. ". The values of this control inside it are replaced. Ctrl+Z takes it back."))
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+    if UI.remove_x_button("##clipx", fh) then R.clip = nil end
+    UI.tip("Close this bar (forget the copy).")
+  end
   if nudge then Midi.set_cc(d, k.cc, nudge.t, nudge.e.v, nudge.e) end
+  if gmove then
+    local G, gl = gmove.G, gmove.list
+    local dq = r.TimeMap2_timeToQN(R.proj, gmove.t) - r.TimeMap2_timeToQN(R.proj, gl[G.i0].t)
+    local t_end = r.TimeMap2_QNToTime(R.proj, r.TimeMap2_timeToQN(R.proj, gl[G.i1].t) + dq)
+    if gmove.t < gmove.rg.start - 0.0005 or t_end >= gmove.rg.stop - CFG.EDGE then UI.toast("It cannot move out of the song.", true)
+    else Midi.move_values(d, k.cc, gl, G.i0, G.i1, gmove.t, "move values") end
+  end
+  if gremove then Midi.move_values(d, k.cc, gremove.list, gremove.G.i0, gremove.G.i1, nil, "remove " .. gremove.word) end
   if not rg then -- (All songs, the cursor outside the songs: nothing to add to)
     if change then Midi.set_cc(d, k.cc, change.e.t, change.v, change.e) end
     if remove then Midi.remove_cc(d, k.cc, remove) end
@@ -4863,22 +5326,10 @@ function UI.draw_lanes_tab()
     UI.note("Put the edit cursor inside a song to add a value.")
     return
   end
-  -- add at the edit cursor: 2 groups with a small title each, "Add a value" and "Add a ramp" (a swell: its rows
+  -- add at the edit cursor: the sections "Add value", "Add ramp" and "Add LFO" (a swell: its rows
   -- indented under the Swell toggle), in the label column form of the Settings tab
   local unit = k.unit ~= "" and k.unit or ""
   local function hint(v) return Knob.fmt(k, v) end
-  local function subtitle(s, extra)
-    UI.vgap(10)
-    local sx, sy = ImGui.GetCursorScreenPos(ctx)
-    local full = math.max(60, ImGui.GetContentRegionAvail(ctx) - 4)
-    ImGui.PushFont(ctx, bold)
-    UI.row_text(s, COL.HEADING)
-    ImGui.PopFont(ctx)
-    if extra then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP); UI.row_text(extra, COL.TEXT_DIM) end
-    local fh2 = ImGui.GetFrameHeight(ctx)
-    ImGui.DrawList_AddLine(ImGui.GetWindowDrawList(ctx), sx, sy + fh2 + 1, sx + full, sy + fh2 + 1, COL.LINE, 1)
-    UI.vgap(CFG.SP_ROW + 2)
-  end
   -- the field of a "Custom..." length, next to its dropdown
   local function custom_field(id, cur)
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
@@ -4887,6 +5338,15 @@ function UI.draw_lanes_tab()
     UI.tip("The length as bars.beats: 3 = 3 bars, 0.6 = 6 beats, 2.2 = 2 bars and 2 beats.")
     return nv
   end
+  local function arrow(AW) -- the arrow between 2 fields: a line and a head
+    local ax, ay = ImGui.GetCursorScreenPos(ctx)
+    local fh2 = ImGui.GetFrameHeight(ctx)
+    ImGui.Dummy(ctx, AW, fh2)
+    local dl = ImGui.GetWindowDrawList(ctx)
+    local cy = math.floor(ay + fh2 / 2) + 0.5
+    ImGui.DrawList_AddLine(dl, ax + 2, cy, ax + AW - 5, cy, COL.TEXT_DIM, 2)
+    ImGui.DrawList_AddTriangleFilled(dl, ax + AW - 7, cy - 5, ax + AW - 7, cy + 5, ax + AW, cy, COL.TEXT_DIM)
+  end
   local function hint_field(id, w, cur, hint_text, tip)
     ImGui.SetNextItemWidth(ctx, w)
     local _, nv = ImGui.InputTextWithHint(ctx, id, hint_text, cur)
@@ -4894,7 +5354,7 @@ function UI.draw_lanes_tab()
     return nv
   end
   if k.kind then -- a function of the unit: add its choice, a press or a tap at the edit cursor (no ramps)
-    subtitle("Add", "at the edit cursor (" .. Util.fmt_beats(tc) .. ")")
+    if UI.heading("Add", nil, nil, nil, "add_value", "at the edit cursor (" .. Util.fmt_beats(tc) .. ")") then
     local _, acw = UI.row_start(k.name)
     local AW2 = UI.std_w("Add at edit cursor")
     if k.kind == "choice" then
@@ -4930,12 +5390,13 @@ function UI.draw_lanes_tab()
         UI.tip("4 taps on the next 4 beats, so the unit takes the project's tempo.")
       end
     end
+    end
     if change then Midi.set_cc(d, k.cc, change.e.t, change.v, change.e) end
     if remove then Midi.remove_cc(d, k.cc, remove) end
     return
   end
   -- a value: the control jumps there
-  subtitle("Add a value", "at the edit cursor (" .. Util.fmt_beats(tc) .. ")")
+  if UI.heading("Add value", nil, nil, nil, "add_value", "at the edit cursor (" .. Util.fmt_beats(tc) .. ")") then
   R.kadd = R.kadd or ""
   UI.row_start("Value")
   local VCW = UI.fit_w(select(2, UI.form("Value")))
@@ -4959,11 +5420,12 @@ function UI.draw_lanes_tab()
     UI.row_text(outside and ("Outside " .. hint(k.min) .. " - " .. hint(k.max))
       or (math.abs(near - val) > 1e-6 and ("Nearest: " .. hint(near)) or ("CC value " .. c)), outside and COL.YELLOW or COL.TEXT_DIM)
   end
+  end
   -- a ramp (needs no value first): from, to, length, slope; a swell goes back
   local rp = R.ramp or { from = "", to = "", len = 5, shape = 0, ten = 0, back = false,
     v2 = "", hold = 0, blen = 5, bshape = 0, bten = 0 }
   R.ramp = rp
-  subtitle("Add a ramp", "from the edit cursor (" .. Util.fmt_beats(tc) .. ")")
+  if UI.heading("Add ramp", nil, nil, nil, "add_ramp", "from the edit cursor (" .. Util.fmt_beats(tc) .. ")") then
   local _, cw = UI.row_start("From / to / swell")
   local SWW = 36 + 8 + (ImGui.CalcTextSize(ctx, "Swell")) -- (the Swell toggle at the end of the row)
   local DW = UI.fit_w(cw) - SWW - 2 * CFG.CTRL_GAP -- (the 2 fields and the arrow: the rest of the column)
@@ -4971,15 +5433,7 @@ function UI.draw_lanes_tab()
   local FW = math.floor((DW - AW - 2 * CFG.CTRL_GAP) / 2)
   rp.from = hint_field("##rfrom", FW, rp.from, hint(k.min), "The value at the start" .. (unit ~= "" and (" (" .. unit .. ")") or "") .. ".")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  do -- the arrow: a line and a head
-    local ax, ay = ImGui.GetCursorScreenPos(ctx)
-    local fh2 = ImGui.GetFrameHeight(ctx)
-    ImGui.Dummy(ctx, AW, fh2)
-    local dl = ImGui.GetWindowDrawList(ctx)
-    local cy = math.floor(ay + fh2 / 2) + 0.5
-    ImGui.DrawList_AddLine(dl, ax + 2, cy, ax + AW - 5, cy, COL.TEXT_DIM, 2)
-    ImGui.DrawList_AddTriangleFilled(dl, ax + AW - 7, cy - 5, ax + AW - 7, cy + 5, ax + AW, cy, COL.TEXT_DIM)
-  end
+  arrow(AW)
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   rp.to = hint_field("##rto", FW, rp.to, hint(k.max), "The value at the end (a swell: the top). Then the value stays there.")
   ImGui.SameLine(ctx, 0, 2 * CFG.CTRL_GAP)
@@ -4992,15 +5446,15 @@ function UI.draw_lanes_tab()
   UI.tip("How long the ramp lasts. Custom...: type bars.beats.\n'To the time selection end': it ends where REAPER's time selection ends.")
   if RAMP_LENS[rp.len].custom then rp.lenc = custom_field("##rlenc", rp.lenc) end
   _, cw = UI.row_start("Slope")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw) - ((rp.shape == 4) and (CFG.W_S + CFG.CTRL_GAP) or 0))
-  local sch2, sh = ImGui.Combo(ctx, "##rshape", rp.shape, RAMP_SHAPE_ITEMS)
+  local sch2, sh = UI.icon_combo("##rshape", rp.shape, RAMP_LABELS, RAMP_ICONS,
+    UI.fit_w(cw) - ((rp.shape == 4) and (CFG.W_S + CFG.CTRL_GAP) or 0))
   if sch2 then rp.shape = sh end
   UI.tip("How the value moves.")
   if rp.shape == 4 then
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
     ImGui.SetNextItemWidth(ctx, CFG.W_S)
-    _, rp.ten = ImGui.SliderDouble(ctx, "##rten", rp.ten, -1, 1, "%.2f")
-    UI.tip("How much the curve bends: below 0 it starts fast, above 0 it starts slowly.")
+    _, rp.ten = UI.bend_slider("##rten", rp.ten)
+    UI.tip("How much the curve bends: below 0 it starts fast, above 0 it starts slowly.\nDouble-click: back to 0.")
   end
   local v0, v1 = Knob.parse_value(rp.from), Knob.parse_value(rp.to)
   local sw, bad
@@ -5022,15 +5476,15 @@ function UI.draw_lanes_tab()
     UI.tip("How long the way back down takes. Custom...: type bars.beats.")
     if RAMP_LENS[rp.blen].custom then rp.blenc = custom_field("##rblenc", rp.blenc) end
     _, cw = UI.row_start("      Slope")
-    ImGui.SetNextItemWidth(ctx, UI.fit_w(cw) - ((rp.bshape == 4) and (CFG.W_S + CFG.CTRL_GAP) or 0))
-    local bsch, bsh = ImGui.Combo(ctx, "##rbshape", rp.bshape, RAMP_SHAPE_ITEMS)
+    local bsch, bsh = UI.icon_combo("##rbshape", rp.bshape, RAMP_LABELS, RAMP_ICONS,
+      UI.fit_w(cw) - ((rp.bshape == 4) and (CFG.W_S + CFG.CTRL_GAP) or 0))
     if bsch then rp.bshape = bsh end
     UI.tip("How the value moves on the way back.")
     if rp.bshape == 4 then
       ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
       ImGui.SetNextItemWidth(ctx, CFG.W_S)
-      _, rp.bten = ImGui.SliderDouble(ctx, "##rbten", rp.bten, -1, 1, "%.2f")
-      UI.tip("How much the curve bends: below 0 it starts fast, above 0 it starts slowly.")
+      _, rp.bten = UI.bend_slider("##rbten", rp.bten)
+      UI.tip("How much the curve bends: below 0 it starts fast, above 0 it starts slowly.\nDouble-click: back to 0.")
     end
     local v2 = rp.v2:match("^%s*$") and v0 or Knob.parse_value(rp.v2)
     if v0 and v1 and v2 then
@@ -5060,6 +5514,7 @@ function UI.draw_lanes_tab()
   ImGui.BeginDisabled(ctx, not ok_add)
   if UI.button(blabel .. "##radd", UI.std_w(blabel), nil, "primary") and ok_add and pts and tend then
     Midi.add_ramp(d, k.cc, pts, rp.back and "swell" or "ramp")
+    r.SetEditCurPos(pts[#pts].t, true, false) -- (the edit cursor goes to its end)
     local function f(c) return hint(Knob.from_cc(k, c)) end
     UI.toast((rp.back and ("Swell " .. f(pts[1].v) .. " - " .. f(Knob.to_cc(k, v1)) .. " - " .. f(pts[#pts].v))
       or ("Ramp " .. f(pts[1].v) .. " to " .. f(pts[#pts].v))) .. ", " .. Util.fmt_beats(tc) .. " to " .. Util.fmt_beats(tend) .. ".")
@@ -5069,6 +5524,93 @@ function UI.draw_lanes_tab()
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   UI.row_text(UI.trunc(why, math.max(40, ImGui.GetContentRegionAvail(ctx) - 8)), why_col)
   UI.tip(why)
+  end
+  -- an LFO: low / high, shape and rate, start, length (the points are made only when it is added)
+  local lf = R.lfo or { lo = "", hi = "", shape = 0, rate = 5, start = 0, fin = 0, grow = 0, len = 4 }
+  R.lfo = lf
+  if UI.heading("Add LFO", "Moves the control between 2 values, again and again, from the edit cursor.\n\n"
+    .. "Shape: Sine (smooth), Triangle (straight), Square (jumps), Saw up / Saw down (a straight ramp, then a jump "
+    .. "back).\nRate: the time of 1 cycle (low, high and back to low). It follows the tempo.\nStart: the first value. "
+    .. "A Saw up starts at low, a Saw down at high.\nEnd: the value after the LFO (it jumps there at the end), or "
+    .. "where it stops.\nPeaks: Same, or Grow / Shrink step by step over the whole LFO (the Start value stays).\n\nSaw up: the first value is smaller than the second. Saw down: the first value is larger.\n\nMIDI Pilot writes 1 value at each top and bottom, with a slope "
+    .. "between them. The values of this control inside it are replaced. Ctrl+Z takes it back.",
+    nil, nil, "add_lfo", "from the edit cursor (" .. Util.fmt_beats(tc) .. ")") then
+  local _, cw = UI.row_start(lf.shape >= 3 and "From / to" or "Low / high")
+  local AW = 18
+  local FW = math.floor((UI.fit_w(cw) - AW - 2 * CFG.CTRL_GAP) / 2)
+  lf.lo = hint_field("##llo", FW, lf.lo, hint(k.min), "The low value" .. (unit ~= "" and (" (" .. unit .. ")") or "") .. ".")
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  arrow(AW)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  lf.hi = hint_field("##lhi", FW, lf.hi, hint(k.max), "The high value" .. (unit ~= "" and (" (" .. unit .. ")") or "") .. ".")
+  _, cw = UI.row_start("Shape / rate")
+  local HW = math.floor((UI.fit_w(cw) - CFG.CTRL_GAP) / 2)
+  local sch, sv = UI.icon_combo("##lshape", lf.shape, LFO_LABELS, LFO_ICONS, HW)
+  if sch then lf.shape = sv end
+  UI.tip("How the value moves: Sine (smooth), Triangle (straight), Square (jumps),\nSaw up / Saw down (a straight ramp, then a jump back).")
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  ImGui.SetNextItemWidth(ctx, HW)
+  local rch, rv = ImGui.Combo(ctx, "##lrate", lf.rate - 1, LFO_RATE_ITEMS)
+  if rch then lf.rate = rv + 1 end
+  UI.tip("The time of 1 cycle: low, high and back to low. It follows the tempo.")
+  _, cw = UI.row_start("Start / end")
+  local saw = lf.shape >= 3
+  ImGui.BeginDisabled(ctx, saw)
+  ImGui.SetNextItemWidth(ctx, HW)
+  local stch, stv = ImGui.Combo(ctx, "##lstart", saw and (lf.shape - 3) or lf.start, "At low\0At high\0")
+  if stch then lf.start = stv; lf.fin = stv end
+  ImGui.EndDisabled(ctx)
+  UI.tip(saw and "A Saw up starts at low, a Saw down at high." or "The first value: low (the first field) or high (the second field).")
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  ImGui.SetNextItemWidth(ctx, HW)
+  local fch, fv = ImGui.Combo(ctx, "##lend", lf.fin, "At low\0At high\0Where it stops\0")
+  if fch then lf.fin = fv end
+  UI.tip("The value after the LFO: it jumps there at the end. 'Where it stops': the value of the wave at the end.")
+  _, cw = UI.row_start("Peaks")
+  ImGui.SetNextItemWidth(ctx, HW)
+  local gch, gv = ImGui.Combo(ctx, "##lgrow", lf.grow, "Same\0Grow\0Shrink\0")
+  if gch then lf.grow = gv end
+  UI.tip("Same: every peak goes to the full value.\nGrow: the peaks get bigger, step by step, until the last one is full "
+    .. "(0-100 with 4 peaks: 0-25, 0-50, 0-75, 0-100).\nShrink: the other way.\nThe Start value stays the same.")
+  _, cw = UI.row_start("Length")
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw) - ((RAMP_LENS[lf.len].custom) and (CFG.W_S + CFG.CTRL_GAP) or 0))
+  local lch, lv = ImGui.Combo(ctx, "##llen", lf.len - 1, RAMP_LEN_ITEMS)
+  if lch then lf.len = lv + 1 end
+  UI.tip("How long the LFO lasts. Custom...: type bars.beats.\n'To the time selection end': it ends where REAPER's time selection ends.")
+  if RAMP_LENS[lf.len].custom then lf.lenc = custom_field("##llenc", lf.lenc) end
+  local lo, hi = Knob.parse_value(lf.lo), Knob.parse_value(lf.hi)
+  local lt1 = Midi.ramp_end(tc, lf.len, lf.lenc)
+  local lwhy, lcol = nil, COL.TEXT_DIM
+  if not lo then lwhy = "Type the low value."
+  elseif not hi then lwhy = "Type the high value."
+  elseif lf.shape == 3 and lo >= hi then lwhy, lcol = "Saw up: the first value must be smaller than the second.", COL.RED
+  elseif lf.shape == 4 and lo <= hi then lwhy, lcol = "Saw down: the first value must be larger than the second.", COL.RED
+  elseif not lt1 and RAMP_LENS[lf.len].custom then lwhy = "Type the length as bars.beats (for example 2.2)."
+  elseif not lt1 then lwhy = "Select the end with REAPER's time selection (after the edit cursor)."
+  elseif lt1 >= rg.stop - CFG.EDGE then lwhy, lcol = "It goes past the end of '" .. rg.name .. "': choose a shorter length.", COL.RED
+  else lwhy = Util.fmt_beats(tc) .. " to " .. Util.fmt_beats(lt1) end
+  local lok = lo and hi and lt1 and lt1 < rg.stop - CFG.EDGE and lcol ~= COL.RED
+  ImGui.SetCursorPosX(ctx, (UI.form("Length")))
+  ImGui.BeginDisabled(ctx, not lok)
+  if UI.button("Add LFO##ladd", UI.std_w("Add LFO"), nil, "primary") and lok then
+    local c1, c2 = Knob.to_cc(k, lo), Knob.to_cc(k, hi)
+    local lowv, highv = c1, c2 -- (End: a saw's low is its smaller value)
+    if saw then lowv, highv = math.min(c1, c2), math.max(c1, c2) end
+    local fin = (lf.fin == 0 and lowv) or (lf.fin == 1 and highv) or nil
+    local pts = Midi.lfo_points(tc, lt1, c1, c2, lf.shape, Midi.lfo_cycle(tc, lf.rate), lf.start == 1, fin, lf.grow)
+    if pts then
+      Midi.add_ramp(d, k.cc, pts, "LFO")
+      r.SetEditCurPos(pts[#pts].t, true, false) -- (the edit cursor goes to its end)
+      UI.toast("LFO " .. hint(Knob.from_cc(k, Knob.to_cc(k, lo))) .. " - " .. hint(Knob.from_cc(k, Knob.to_cc(k, hi)))
+        .. ", " .. Util.fmt_beats(tc) .. " to " .. Util.fmt_beats(lt1) .. ".")
+    end
+  end
+  ImGui.EndDisabled(ctx)
+  UI.tip("Adds it from the edit cursor. The values of this control inside it are replaced. Ctrl+Z takes it back.")
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  UI.row_text(UI.trunc(lwhy, math.max(40, ImGui.GetContentRegionAvail(ctx) - 8)), lcol)
+  UI.tip(lwhy)
+  end
   if change then
     Midi.set_cc(d, k.cc, change.e.t, change.v, change.e)
     local got = Knob.from_cc(k, change.v)

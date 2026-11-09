@@ -614,6 +614,83 @@ test("knobs: units, nearest CC value, typed values, saved and read; CC values wr
   -- no hold: 3 values
   local p3 = Midi.ramp_points(32, 40, 0, 127, 1, 0, { hold = 0, v2 = 0, len = 4, shape = 1, tension = 0 })
   eq(#p3, 3, "no hold: 3 values")
+  -- an LFO (120 bpm: 1 quarter note = 0.5 s): a top or a bottom every half cycle, the last point at the end
+  eq(Midi.lfo_cycle(32, 5), 1, "1/4 note"); eq(Midi.lfo_cycle(32, 3), 4, "1 bar in 4/4")
+  local lp = Midi.lfo_points(32, 36, 20, 100, 0, 1, false) -- sine, 1/4 note, 2 bars: 16 halves + the end
+  eq(#lp, 17, "sine: 16 tops and bottoms + the end"); eq(lp[1].v, 20, "starts at low"); eq(lp[2].v, 100); eq(lp[1].shape, 2, "slow start and end")
+  ok(math.abs(lp[2].t - 32.25) < 0.001, "half a cycle later"); eq(lp[17].v, 20, "ends at low"); eq(lp[17].shape, 0)
+  eq(Midi.lfo_points(32, 36, 20, 100, 1, 1, true)[1].v, 100, "triangle: starts at high")
+  eq(Midi.lfo_points(32, 36, 20, 100, 2, 1, false)[1].shape, 0, "square: jumps")
+  local sp = Midi.lfo_points(32, 34, 0, 127, 3, 2, true) -- saw up, 1/2 note, 1 bar: 2 cycles
+  eq(#sp, 4, "saw: start, top before the jump, start, end"); eq(sp[1].v, 0, "saw up: starts at low"); eq(sp[2].v, 127)
+  eq(sp[2].shape, 0, "the jump back"); eq(sp[3].v, 0); eq(sp[4].v, 127)
+  eq(Midi.lfo_points(32, 34, 127, 0, 4, 2, false)[1].v, 127, "saw down: from the first value (high)")
+  local fp = Midi.lfo_points(32, 34, 0, 127, 3, 2, true, 0) -- saw up, end at low: a jump back at the end
+  eq(#fp, 5, "end at low: 1 more value"); eq(fp[4].v, 127); eq(fp[5].v, 0, "ends at low"); ok(fp[4].t < fp[5].t, "the top just before")
+  eq(#Midi.lfo_points(32, 36, 20, 100, 0, 1, false, 20), 17, "already at the end value: nothing more")
+  local function vals(p) local s = {} for i, x in ipairs(p) do s[i] = x.v end return table.concat(s, ",") end
+  eq(vals(Midi.lfo_points(32, 33, 0, 100, 0, 1, false, nil, 1)), "0,50,0,100,0", "peaks grow")
+  eq(vals(Midi.lfo_points(32, 33, 0, 100, 0, 1, false, nil, 2)), "0,100,0,50,0", "peaks shrink")
+  eq(vals(Midi.lfo_points(32, 34, 0, 100, 3, 2, true, nil, 1)), "0,50,0,100", "saw: peaks grow")
+  local mid = Midi.lfo_points(32, 32.625, 0, 100, 1, 1, false) -- triangle, 1.25 quarter notes: ends halfway up
+  eq(mid[#mid].v, 50, "the end: the value there")
+  eq(Midi.lfo_points(32, 32, 0, 100, 0, 1, false), nil, "no room")
+  Midi.add_ramp(d, 1, lp, "LFO")
+  local lv = {}
+  for _, e in ipairs(Midi.ccs(d, 1)) do if e.t >= 32 - 0.001 and e.t <= 36 + 0.001 then lv[#lv + 1] = e end end
+  eq(#lv, 17, "written: the values inside replaced")
+  -- groups: found by their pattern; a name; move; copy and paste; remove
+  local fg = Midi.find_groups(lv)
+  eq(#fg, 1, "the LFO: 1 group"); eq(fg[1].kind, "lfo"); eq(fg[1].i0, 1); eq(fg[1].i1, 17); eq(fg[1].shape, 0, "sine")
+  local lab = Midi.group_label(fg[1], k, lv)
+  ok(lab:find("LFO Sine 1/4 note", 1, true) and lab:find("2 bars", 1, true), "its name: " .. lab)
+  local function seg(t0, t1)
+    local s = {}
+    for _, e in ipairs(Midi.ccs(d, 1)) do if e.t >= t0 - 0.001 and e.t <= t1 + 0.001 then s[#s + 1] = e end end
+    return s
+  end
+  local function fake(pts) -- points as values (for the patterns without MIDI)
+    local s = {}
+    for i, p in ipairs(pts) do s[i] = { t = p.t, v = p.v, shape = i < #pts and p.shape or 0, tension = 0 } end
+    return s
+  end
+  local g2 = Midi.find_groups(fake(Midi.lfo_points(32, 34, 0, 127, 3, 2, true, 0)))
+  eq(#g2, 1, "saw up with End at low: 1 group"); eq(g2[1].shape, 3); eq(g2[1].i1, 5)
+  local gg = Midi.find_groups(fake(Midi.lfo_points(32, 36, 0, 100, 0, 1, false, nil, 1)))
+  eq(#gg, 1, "growing peaks: 1 group"); eq(gg[1].b, 100, "the largest peak"); eq(gg[1].grow, 1)
+  ok(Midi.group_label(gg[1], k, fake(Midi.lfo_points(32, 36, 0, 100, 0, 1, false, nil, 1))):find("peaks grow", 1, true), "in the name")
+  local gs = Midi.find_groups(fake(Midi.lfo_points(32, 36, 0, 100, 3, 1, true, nil, 2)))
+  eq(#gs, 1, "saw, shrinking peaks: 1 group"); eq(gs[1].grow, 2); eq(gs[1].b, 100)
+  -- 2 LFOs, 1 right after the other (the 2nd starts on the last value of the 1st, as Add LFO writes them)
+  local function joined(p1, p2)
+    local s = fake(p1)
+    s[#s] = nil -- (replaced by the start of the 2nd)
+    for _, x in ipairs(fake(p2)) do s[#s + 1] = x end
+    return s
+  end
+  local two = Midi.find_groups(joined(Midi.lfo_points(32, 34, 0, 100, 0, 1, false), Midi.lfo_points(34, 36, 0, 100, 0, 1, false, nil, 1)))
+  eq(#two, 2, "sine, then sine with growing peaks: 2 groups"); eq(two[1].i1 + 1, two[2].i0, "next to each other")
+  eq(two[2].i1 - two[2].i0 + 1, 9, "the 2nd: all its 9 values"); eq(two[2].grow, 1)
+  local two2 = Midi.find_groups(joined(Midi.lfo_points(32, 34, 0, 100, 3, 1, true), Midi.lfo_points(34, 36, 0, 100, 3, 1, true, nil, 2)))
+  eq(#two2, 2, "saw, then saw with shrinking peaks: 2 groups"); eq(two2[1].i1 + 1, two2[2].i0)
+  eq(two2[2].i1, #joined(Midi.lfo_points(32, 34, 0, 100, 3, 1, true), Midi.lfo_points(34, 36, 0, 100, 3, 1, true, nil, 2)), "the 2nd: to the end")
+  local g3 = Midi.find_groups(fake(Midi.lfo_points(32, 32.625, 0, 100, 1, 1, false)))
+  eq(#g3, 1, "an LFO that stops inside a half"); eq(g3[1].i1, 4)
+  local sq = Midi.find_groups(fake(Midi.lfo_points(32, 36, 20, 100, 2, 1, false, 100)))
+  eq(#sq, 1, "square with End at high"); eq(sq[1].shape, 2); eq(sq[1].i1, 17, "with its end")
+  local s3 = Midi.find_groups(fake((Midi.ramp_points(32, 40, 0, 127, 1, 0, { hold = 3, v2 = 20, len = 4, shape = 4, tension = 0 }))))
+  eq(#s3, 1, "a swell"); eq(s3[1].kind, "swell"); eq(s3[1].c, 20)
+  local r1 = Midi.find_groups(fake((Midi.ramp_points(32, 40, 0, 127, 2, 0))))
+  eq(#r1, 1, "a ramp"); eq(r1[1].kind, "ramp")
+  eq(#Midi.find_groups({ { t = 1, v = 5, shape = 0 }, { t = 2, v = 9, shape = 0 }, { t = 3.5, v = 5, shape = 0 } }), 0,
+    "values without slopes at unequal times: no group")
+  -- move the LFO 1 bar later (40 = 2 s later at 120 bpm: 32 -> 34), then copy it to 40 and remove it
+  Midi.move_values(d, 1, lv, 1, 17, 34)
+  eq(#seg(32, 33.99), 0, "moved away"); local mv = seg(34, 38); eq(#mv, 17, "all 17 at the new place")
+  local clip = Midi.group_clip(mv, 1, 17, "x"); ok(math.abs(clip.len - 8) < 0.001, "8 quarter notes long")
+  Midi.add_ramp(d, 1, Midi.clip_points(clip, 40), "paste"); eq(#seg(40, 44), 17, "pasted")
+  local pv = seg(40, 44); Midi.move_values(d, 1, pv, 1, #pv, nil)
+  eq(#seg(40, 44), 0, "removed"); eq(#seg(34, 38), 17, "the copy stays")
   eq(Midi.song_at(25).name, "Song B"); eq(Midi.song_at(15), nil)
   eq(Midi.song_at(19.9995).name, "Song B", "a moment before the start (a rounded start scene): the song")
   r.DeleteTrack(Dev.track(d))
