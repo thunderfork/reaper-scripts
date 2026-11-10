@@ -1,5 +1,5 @@
 -- @description Segue: Setlist player
--- @version 1.1
+-- @version 1.2
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -9,8 +9,9 @@
 -- @provides
 --   [main] Segue - Next song.lua
 -- @changelog
---   A Light theme (gear menu > Light theme); Dark stays the default.
---   Darker panels for more contrast; the window title bar follows the theme.
+--   Gear menu in the order of the other scripts: Look, Window (Reset window position) and Backup (Back up, Restore, Reset all settings).
+--   A right-click menu on the panel (Settings, Help, dock, close).
+--   Help in topics, in a friendlier, easier style.
 
 -- MIT License
 --
@@ -38,7 +39,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Segue"          -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.1"            -- keep equal to @version in the header
+CFG.VERSION = "1.2"            -- keep equal to @version in the header
 CFG.EXT = "Segue"              -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.SL_EARLY = 0.02            -- the least time before the region end that the end is handled (Setlist.lead)
@@ -80,6 +81,7 @@ CFG.PAUSE_SEC = 10             -- a new pause
 CFG.UNDO_MAX = 50              -- undo steps of the setlist rows
 CFG.CONFLICT_SEC = 0.5         -- how often Segue checks whether Chart Cue also plays in setlist order
 CFG.MORE_W = 110               -- the "More..." dropdown
+CFG.SETTINGS_BTN_W = 200       -- the buttons in the gear menu
 CFG.PICK_W = 220               -- the setlist dropdown (at most)
 CFG.TIP_DELAY = 0.5            -- seconds on an item before its tooltip shows (as in Chart Cue)
 CFG.TIP_WRAP_EM = 32           -- tooltip lines wrap at this many font sizes
@@ -144,6 +146,8 @@ local S = {
   dock = 0,           -- the REAPER docker of the window (0 = floating; a negative number = a REAPER docker)
 }
 local S_BOOLS = { "show_now", "show_next", "show_times", "settings_open", "hide_playing", "light" }
+local S_DEFAULTS = {} -- (for "Reset all settings...")
+for k, v in pairs(S) do S_DEFAULTS[k] = v end
 
 ---------------------------------------------------------------------------
 -- REAIMGUI (pinned to 0.9.3 with the official compatibility shim)
@@ -657,32 +661,60 @@ for k, s in pairs(CFG.NOW_FONT_SIZES) do
   ImGui.Attach(ctx, NOW_FONTS[k])
 end
 
-local HELP_TEXT = [[
-Segue plays the songs of your project in the order of your show. Each song is a region. The timeline does not change.
+local HELP_INTRO = "Segue plays your songs in the order of your show. Each song is a REAPER region. "
+  .. "Your timeline stays exactly as it is: Segue only changes the order in which the songs play."
+-- The Help topics (the "?" button): 1 open at a time.
+local HELP_TOPICS = {
+  { title = "Getting started", text = [[
+1. Make a region for each song (if you have not done it yet).
+2. Click "Make a setlist". You get all your songs in timeline order.
+3. Put them in the order of your show: drag a row, or use the arrows.
+4. Turn on "Play in setlist order" and press Play.
 
-Make a setlist: click "Make a setlist". It has all regions in timeline order. Drag a row, or use the arrows, to change the order. "Add song..." adds a region at the end (a region can be in the list more than once). "Add pause" adds a pause.
+Need a song twice? "Add song..." adds it again at the end. Need a break? "Add pause" adds one.
 
-At the end of each song: Stop (REAPER stops and the edit cursor goes to the next song; press Play to go on) or Continue (the next song plays at once). A pause stops REAPER, counts down, then plays the next song. Untick a row to skip it.
+With "Play in setlist order" off, REAPER plays the timeline as usual and Segue just watches.]] },
+  { title = "What happens at the end of a song", text = [[
+Each song has an ending:
+- Stop: REAPER stops and waits at the start of the next song. Press Play (or your foot pedal) when you are ready.
+- Continue: the next song starts right away.
 
-The exact stop: during a song that ends with a stop (Stop, a pause after it, or the last song), the loop points and the time selection show that song, and REAPER's option "Stop playback at end of loop if repeat is disabled" is on. REAPER then stops at the exact end of the song, without a part of the next song. After the stop (also when you stop or move away yourself), your loop points, time selection and that option are put back.
+A pause stops REAPER, counts down, and then starts the next song by itself.
 
-Outside the songs of the setlist (a click on the timeline between regions, or in a region that is not in the setlist), the last song stays current: previous song goes back to its start, next song goes to the song after it.
+Do not want to play a song tonight? Untick it. It stays in the list, but Segue skips it.
 
-Play in setlist order: on, Segue controls the end of each song. Off, REAPER plays the timeline as usual.
+Clean stops: when a song ends with a stop, REAPER stops at the exact end of it. You never hear the first notes of the next song. (Segue uses REAPER's loop points and time selection for this, and turns on REAPER's "Stop playback at end of loop" option. When the song is done, or when you stop or move away, you get your own loop points, time selection and option back.)]] },
+  { title = "During the show", text = [[
+The play buttons: previous song, play / pause, stop (back to the start of the song) and next song.
 
-Lock setlist: nothing in the list can change, and a click on a song does not go to it. The play buttons still work. During playback the order is also locked.
+Hands busy? Give the "Segue - Next song" action a key or a foot pedal in REAPER's Action List. After a stop or during a pause, it starts the next song. During a song, it jumps to the next one.
 
-Chart Cue open with its own "Play in setlist order" on: Chart Cue controls the songs, and Segue is locked (only Play and Stop work). Segue shows a notice: "Use Segue" gives the control to Segue (and "Use Chart Cue", when both are on, turns Segue's off). Not during playback.
+The "Hide panel when playing" button (right after the play buttons) hides the list while you play, so you only see the big now playing area.
 
-Hide panel when playing (the button after the play buttons): during playback only the now playing area shows.
+Clicked somewhere on the timeline that is not in the setlist? No problem: Segue remembers the last song. "Previous" goes back to its start, "Next" goes to the song after it.]] },
+  { title = "Lock, undo and more setlists", text = [[
+Lock setlist: nothing in the list can change, and clicking a song does not jump to it. Good for the show, so a stray click cannot mess things up. The play buttons still work. While REAPER plays, the order is always locked.
 
-Undo: the arrow button, or Ctrl+Z. More than 1 setlist: the dropdown and "More..." (new, duplicate, rename, reset, delete).
+Made a mistake? Click the undo arrow or press Ctrl+Z.
 
-The "Segue - Next song" action: give it a key or a foot pedal in the Action List. After a Stop or during a pause it plays the next song; during a song it goes to the next song.
+Need more than 1 setlist (for example "Friday" and "Festival short")? Pick one in the dropdown. "More..." makes a new one, or copies, renames, resets or deletes the current one.]] },
+  { title = "Using Segue with Chart Cue", text = [[
+Chart Cue has a setlist too. If Chart Cue is open and its own "Play in setlist order" is on, Chart Cue is in charge of the songs. Segue then locks itself (only Play and Stop work), so the 2 scripts never fight.
 
-The grip between the panel and the "now playing" area: drag it; double-click resets it. The gear button has the settings (what the "now playing" area shows, docking, Light theme).
+Segue shows a notice when this happens. Click "Use Segue" to put Segue in charge instead. If both are on, "Use Chart Cue" turns Segue's off. You can only switch while REAPER is stopped.]] },
+  { title = "Now playing area and window", text = [[
+Below the list is the now playing area: the current song in large text, the time left, the next song and the time left in the set.
 
-Saved in the project: the setlists, the current setlist, Play in setlist order and the lock. Saved on this computer: the settings and the window.]]
+Drag the grip between the list and that area to change their sizes. Double-click the grip to reset it.
+
+The gear button has the settings: what the now playing area shows, Light theme, docking, Reset window position, and Back up / Restore / Reset all settings.
+
+Right-click an empty part of the list for a quick menu: Settings, Help, dock and close.]] },
+  { title = "Where your stuff is saved", text = [[
+In the project: your setlists, which setlist is current, "Play in setlist order" and the lock. Save the project to keep them.
+
+On this computer: the settings and the window. "Back up..." in the gear menu saves them to a file in REAPER's Data\Segue folder.]] },
+}
 
 local SL_ENDINGS = { "stop", "continue" }
 local SL_ENDING_ITEMS = "Stop\0Continue\0"
@@ -1011,31 +1043,103 @@ function UI.draw_settings()
   ch, S.show_times = UI.toggle_line("Show the set length and the time left", S.show_times)
   if ch then R.sdirty = true end
   ImGui.EndDisabled(ctx)
-  UI.vgap(8)
-  ImGui.PushFont(ctx, head_font)
-  ImGui.TextColored(ctx, COL.HEADING, "Window")
-  ImGui.PopFont(ctx)
+  local function head(t)
+    UI.vgap(8)
+    ImGui.PushFont(ctx, head_font)
+    ImGui.TextColored(ctx, COL.HEADING, t)
+    ImGui.PopFont(ctx)
+  end
+  head("Look")
+  ch, S.light = UI.toggle_line("Light theme", S.light,
+    "On: light panels and fields, dark text (for daylight or a light REAPER theme). Off: Dark, for dark stages (the default).")
+  if ch then apply_theme(S.light); R.sdirty = true end
+  head("Window")
   local docked = R.docked == true
   if UI.toggle_line("Dock in REAPER's docker", docked, "On: Segue is in a REAPER docker. Off: a floating window.") then
     R.dock_req = docked and 0 or (S.dock ~= 0 and S.dock or -1)
   end
-  ch, S.light = UI.toggle_line("Light theme", S.light,
-    "On: light panels and fields, dark text (for daylight or a light REAPER theme). Off: Dark, for dark stages (the default).")
-  if ch then apply_theme(S.light); R.sdirty = true end
+  local bw = CFG.SETTINGS_BTN_W
+  if UI.button("Reset window position", bw) then R.reset_win = true; ImGui.CloseCurrentPopup(ctx) end
+  UI.tip("Moves the window back to its default size and place, and undocks it.")
+  head("Backup")
+  if UI.button("Back up...", bw) then
+    local path, err = Util.backup_settings()
+    UI.ask(path and ("Backup saved:\n" .. path) or err, nil)
+    ImGui.CloseCurrentPopup(ctx)
+  end
+  UI.tip("Saves a copy of the settings of this computer in " .. Util.backup_dir())
+  if UI.button("Restore...", bw) then
+    ImGui.CloseCurrentPopup(ctx)
+    local okf, path = r.GetUserFileNameForRead(Util.backup_dir() .. "/", "Restore Segue settings", ".txt")
+    if okf and path ~= "" then
+      UI.ask("Replace the Segue settings of this computer with this backup?\n" .. path, "Replace", function()
+        local okr, err = Util.restore_settings(path)
+        if not okr then UI.ask(err, nil) end
+      end)
+    end
+  end
+  UI.tip("Loads a backup. It asks before it replaces anything.")
+  ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.RED)
+  local reset = UI.button("Reset all settings...", bw)
+  ImGui.PopStyleColor(ctx)
+  UI.tip("Sets the settings of this computer back to the defaults. Your setlists are not changed.")
+  if reset then
+    ImGui.CloseCurrentPopup(ctx)
+    UI.ask("Set all Segue settings of this computer back to the defaults? Your setlists (in the projects) are not "
+      .. "changed.", "Yes, reset", Util.reset_settings)
+  end
   UI.vgap(8)
   ImGui.TextColored(ctx, COL.TEXT_DIM, "Segue " .. CFG.VERSION .. "  -  MIT license")
+  ImGui.EndPopup(ctx)
+end
+
+-- The right-click menu on an empty part of the panel.
+function UI.draw_panel_menu()
+  if R.pmenu then ImGui.OpenPopup(ctx, "##panelmenu"); R.pmenu = false end
+  if not ImGui.BeginPopup(ctx, "##panelmenu") then return end
+  if ImGui.MenuItem(ctx, "Settings...") then R.settings_req = true end
+  if ImGui.MenuItem(ctx, "Help") then R.help_open = true end
+  ImGui.Separator(ctx)
+  local docked = R.docked == true
+  if ImGui.MenuItem(ctx, "Dock Segue in Docker", nil, docked) then
+    R.dock_req = docked and 0 or (S.dock ~= 0 and S.dock or -1)
+  end
+  if ImGui.MenuItem(ctx, "Close Segue") then R.close = true end
   ImGui.EndPopup(ctx)
 end
 
 -- The Help window (a popup in the window).
 function UI.draw_help()
   if R.help_open then ImGui.OpenPopup(ctx, "Segue Help##help"); R.help_open = false end
-  local vw = ImGui.GetWindowSize(ctx)
-  ImGui.SetNextWindowSize(ctx, math.min(520, math.max(260, vw - 40)), 0, ImGui.Cond_Appearing())
+  local vw, vh = ImGui.GetWindowSize(ctx)
+  ImGui.SetNextWindowSize(ctx, math.min(520, math.max(260, vw - 40)), math.min(560, math.max(240, vh - 40)),
+    ImGui.Cond_Appearing())
   if ImGui.BeginPopupModal(ctx, "Segue Help##help", true) then
-    ImGui.PushTextWrapPos(ctx, 0)
-    ImGui.Text(ctx, HELP_TEXT)
-    ImGui.PopTextWrapPos(ctx)
+    local _, ah = ImGui.GetContentRegionAvail(ctx)
+    if ImGui.BeginChild(ctx, "##helpbody", 0, ah - ImGui.GetFrameHeight(ctx) - 8) then
+      ImGui.PushTextWrapPos(ctx, 0)
+      ImGui.Text(ctx, HELP_INTRO)
+      UI.vgap(10)
+      ImGui.TextColored(ctx, COL.TEXT_DIM, "Topics - click a topic to open it")
+      for i, tp in ipairs(HELP_TOPICS) do
+        ImGui.SetNextItemOpen(ctx, R.help_cur == i)
+        local open = ImGui.CollapsingHeader(ctx, tp.title .. "##help" .. i)
+        if open ~= (R.help_cur == i) then R.help_cur = open and i or nil end
+        if open then
+          ImGui.Indent(ctx, 10)
+          ImGui.Text(ctx, tp.text)
+          ImGui.Unindent(ctx, 10)
+          UI.vgap(8)
+        end
+      end
+      UI.vgap(10)
+      ImGui.PushFont(ctx, head_font)
+      ImGui.TextColored(ctx, COL.HEADING, "About")
+      ImGui.PopFont(ctx)
+      ImGui.TextColored(ctx, COL.TEXT_DIM, "Segue " .. CFG.VERSION .. "  -  MIT license")
+      ImGui.PopTextWrapPos(ctx)
+      ImGui.EndChild(ctx)
+    end
     UI.vgap(8)
     if UI.button("Close", 90) then ImGui.CloseCurrentPopup(ctx) end
     ImGui.EndPopup(ctx)
@@ -1121,7 +1225,7 @@ function UI.draw_toolbar(l)
   end
   local hit, cx, cy, hov = icon("##gear", x0 + aw - 2 * IW, "Settings")
   UI.draw_gear_icon(dl, cx, cy, hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN)
-  if hit then ImGui.OpenPopup(ctx, "##settings") end
+  if hit or R.settings_req then ImGui.OpenPopup(ctx, "##settings"); R.settings_req = nil end
   UI.draw_settings()
   hit, cx, cy, hov = icon("##helpbtn", x0 + aw - IW, "Help")
   ImGui.PushFont(ctx, head_font)
@@ -1134,6 +1238,7 @@ function UI.draw_toolbar(l)
 end
 
 -- A question with 2 buttons (a popup in the window). UI.ask opens it; UI.draw_ask draws it every frame.
+-- (yes = nil: a message with only "OK")
 function UI.ask(text, yes, fn) R.ask = { text = text, yes = yes, fn = fn, open = true } end
 function UI.draw_ask()
   local a = R.ask
@@ -1148,11 +1253,14 @@ function UI.draw_ask()
     ImGui.Text(ctx, a.text)
     ImGui.PopTextWrapPos(ctx)
     UI.vgap(8)
-    ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.RED)
-    if UI.button(a.yes, 120) then a.fn(); R.ask = nil; ImGui.CloseCurrentPopup(ctx) end
-    ImGui.PopStyleColor(ctx)
-    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-    if UI.button("Cancel", 90) then R.ask = nil; ImGui.CloseCurrentPopup(ctx) end
+    if a.yes then
+      ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.RED)
+      local yes = UI.button(a.yes, 120)
+      ImGui.PopStyleColor(ctx)
+      if yes then R.ask = nil; ImGui.CloseCurrentPopup(ctx); a.fn() end
+      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+      if UI.button("Cancel", 90) then R.ask = nil; ImGui.CloseCurrentPopup(ctx) end
+    elseif UI.button("OK", 90) then R.ask = nil; ImGui.CloseCurrentPopup(ctx) end
     ImGui.EndPopup(ctx)
   else
     R.ask = nil
@@ -1722,8 +1830,11 @@ function UI.draw_main()
     UI.draw_panel_content(l, playing)
     ImGui.Unindent(ctx, 10)
     ImGui.Dummy(ctx, 0, CFG.SP_PANEL)
+    if ImGui.IsMouseClicked(ctx, 1) and ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_ChildWindows())
+      and not ImGui.IsAnyItemHovered(ctx) then R.pmenu = true end
     ImGui.EndChild(ctx)
   end
+  UI.draw_panel_menu()
   if now_h > 0 then
     UI.vgap(CFG.GRIP_GAP)
     UI.draw_grip(ah - split_h)
@@ -1806,6 +1917,52 @@ local function save_settings()
   R.sdirty = false
 end
 
+-- Backup / Restore / Reset all settings (the gear menu)
+function Util.backup_dir() return r.GetResourcePath() .. "/Data/Segue" end
+local function settings_lines()
+  local lines = { "split=" .. string.format("%.3f", S.split), "dock=" .. tostring(S.dock) }
+  for _, k in ipairs(S_BOOLS) do lines[#lines + 1] = k .. "=" .. (S[k] and "1" or "0") end
+  return lines
+end
+function Util.backup_settings()
+  local dir = Util.backup_dir()
+  r.RecursiveCreateDirectory(dir, 0)
+  local path = dir .. "/Segue backup " .. os.date("%Y-%m-%d %H-%M") .. ".txt"
+  local f = io.open(path, "w")
+  if not f then return nil, "The backup file cannot be written: " .. path end
+  f:write("Segue backup\n# Segue " .. CFG.VERSION .. ", " .. os.date("%Y-%m-%d %H:%M") .. "\n",
+    table.concat(settings_lines(), "\n"), "\n")
+  f:close()
+  return path
+end
+local function apply_settings()
+  apply_theme(S.light)
+  R.dock_req = S.dock
+  R.sdirty = true
+end
+function Util.restore_settings(path)
+  local f = io.open(path, "r")
+  if not f then return nil, "The file cannot be read." end
+  if f:read("l") ~= "Segue backup" then f:close(); return nil, "This is not a Segue backup file." end
+  for k, v in pairs(S_DEFAULTS) do S[k] = v end -- (a setting that is not in the backup: its default)
+  for line in f:lines() do
+    local k, v = line:match("^([%w_]+)=(.*)$")
+    if k == "split" then S.split = Util.clamp(tonumber(v) or CFG.SPLIT_DEFAULT, CFG.SPLIT_MIN, CFG.SPLIT_MAX)
+    elseif k == "dock" then S.dock = math.floor(tonumber(v) or 0)
+    elseif k and type(S_DEFAULTS[k]) == "boolean" then S[k] = (v == "1") end
+  end
+  f:close()
+  apply_settings()
+  return true
+end
+function Util.reset_settings()
+  for k, v in pairs(S_DEFAULTS) do S[k] = v end
+  S.split = CFG.SPLIT_DEFAULT
+  S.dock = R.docked and S.dock or 0 -- (the window stays where it is)
+  apply_theme(S.light)
+  R.sdirty = true
+end
+
 local function loop()
   R.frames = R.frames + 1
   Project.update()
@@ -1814,6 +1971,12 @@ local function loop()
   ImGui.SetNextWindowSize(ctx, CFG.DEFAULT_W, CFG.DEFAULT_H, ImGui.Cond_FirstUseEver())
   if R.dock_req then ImGui.SetNextWindowDockID(ctx, R.dock_req); R.dock_req = nil end
   UI.pre_begin()
+  if R.reset_win then -- "Reset window position"
+    R.reset_win = nil
+    ImGui.SetNextWindowSize(ctx, CFG.DEFAULT_W, CFG.DEFAULT_H, ImGui.Cond_Always())
+    ImGui.SetNextWindowPos(ctx, 100, 100, ImGui.Cond_Always())
+    if R.docked then ImGui.SetNextWindowDockID(ctx, 0) end
+  end
   ImGui.PushFont(ctx, font)
   UI.push_style()
   -- docked: ImGui's small corner triangle (show the dock tab bar) uses the button colours: blue, as in Chart Cue
@@ -1840,6 +2003,7 @@ local function loop()
   ImGui.PopFont(ctx)
   if R.pdirty and not ImGui.IsAnyItemActive(ctx) then Project.save() end
   if R.sdirty and not ImGui.IsMouseDown(ctx, 0) then save_settings() end
+  if R.close then open = false end
   if open then r.defer(loop) end
 end
 

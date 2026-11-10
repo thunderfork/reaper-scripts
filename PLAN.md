@@ -29,9 +29,16 @@
   Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
   (tags segue-vX.Y, midipilot-vX.Y).
 
-## Session handoff (10 November 2026)
-- State: MIDI Pilot 1.2 is released (committed and pushed); everything in it was tested by the user in REAPER.
-- Next decision: none pending.
+## Session handoff (10 November 2026, 2nd)
+- State: Chart Cue 1.6, Segue 1.2 and MIDI Pilot 1.3 released: uniform Settings order (Look, Tabs, Toolbar; Window,
+  Backup, Troubleshooting; About last), Back up / Restore / Reset all settings in all 3, right-click panel menus in
+  Segue and MIDI Pilot, friendlier Help in all 3 (Segue Help in topics). User tests 36-44 passed in REAPER.
+- Not run: the Chart Cue UI test (the user said "not now").
+- Next: a 4th script, mostly unrelated, in its own folder (plan: split the root CLAUDE.md into "All scripts" and
+  "ReaImGui scripts"; add the script to the tools); start it in a new session with the new-feature skill.
+
+## Released on 10 November 2026 (2nd): Chart Cue 1.6, Segue 1.2, MIDI Pilot 1.3
+- Uniform Settings / gear-menu order, Window and Backup sections, right-click panel menus, friendlier Help.
 
 ## Session handoff (9 November 2026)
 - State: everything is committed and pushed; MIDI Pilot 1.1 is released. All MIDI Pilot changes were tested by the

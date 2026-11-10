@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 1.5.3
+-- @version 1.6
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,8 +13,9 @@
 --   [main] Chart Cue - Toggle performance mode.lua
 --   [main] Chart Cue - Next song.lua
 -- @changelog
---   A Light / Dark theme (Settings > Appearance > Theme); Dark stays the default.
---   Darker panels for more contrast; the window title bar follows the theme.
+--   Settings in the same order as Segue and MIDI Pilot: Appearance starts with Look (Theme, Comfortable layout).
+--   Settings > General: Window (Dock in docker, Reset window position) and Backup (Back up..., Restore..., Reset all settings...).
+--   A friendlier, easier Help.
 
 -- MIT License
 --
@@ -99,7 +100,7 @@ CFG.WIN_MIN_W, CFG.WIN_MIN_H = 300, 200 -- smallest window size when resizing
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.5.3"      -- keep equal to @version in the header
+CFG.VERSION = "1.6"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.FEEDBACK_URL = "https://github.com/thunderfork/reaper-scripts/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
@@ -148,7 +149,7 @@ CFG.NOW_FONT_SIZES = { pill = 13, small = 12, stat = 22, hero = 34, hero_s = 26,
 CFG.NOW_FONT_BOLD = { pill = true, stat = true, hero = true, hero_s = true, time = true, row_b = true, row_sb = true }
 CFG.NOW_TEXT_MID = 0.73 -- the middle of the capitals and digits, below the text top (x the font size; measured)
 -- Spacing (pixels): { comfortable, compact }. Compact is the default; "Comfortable layout" in
--- Settings > Appearance > Layout uses the first value. Only empty space changes; controls keep their size.
+-- Settings > Appearance > Look uses the first value. Only empty space changes; controls keep their size.
 CFG.SP = {
   ROW = { 7, 4 },             -- between rows (ImGui item spacing)
   EDGE = { 8, 4 },            -- window edge, top and bottom (= gap below the toolbar)
@@ -6928,6 +6929,18 @@ end
 -- Appearance: how the Chart Cue window looks (tabs, toolbar, spacing) and the page quality.
 function UI.draw_appearance_tab(ctx)
   local ch
+  UI.heading(ctx, "Look", "Theme: Dark (the default, for dark stages) or Light (light panels and fields, dark text; for "
+    .. "daylight or a light REAPER theme). The PDF page does not change.\n\n"
+    .. "Comfortable layout: more empty space between rows and sections. Buttons, fields and tabs keep their size.", "computer")
+  UI.field(ctx, "Theme")
+  local thi
+  ch, thi = ImGui.Combo(ctx, "##theme", S.theme == "light" and 1 or 0, "Dark\0Light\0")
+  if ch then S.theme = (thi == 1) and "light" or "dark"; apply_theme(S.theme); R.tb_cache = nil; Util.mark_dirty() end
+  UI.tip(ctx, "Dark: for dark stages (the default). Light: light panels and fields, dark text.")
+  ch, S.comfortable = UI.checkbox(ctx, "Comfortable layout", S.comfortable)
+  if ch then Util.mark_dirty() end
+  UI.tip(ctx, "More empty space between rows and sections. Buttons, fields and tabs keep their size.")
+  UI.group_sep(ctx)
   UI.heading(ctx, "Tabs", "The tabs to show above the panel. Settings and Help always show.\n\n"
     .. "A hidden tab keeps its data: the library, regions, cues and setlists still work.", "computer")
   for i, id in ipairs(TAB_IDS) do
@@ -6953,19 +6966,6 @@ function UI.draw_appearance_tab(ctx)
     if ch then UI.set_tb_shown(it[1], on) end
   end
 
-
-  UI.group_sep(ctx)
-  UI.heading(ctx, "Layout", "Theme: Dark (the default, for dark stages) or Light (light panels and fields, dark text; for "
-    .. "daylight or a light REAPER theme). The PDF page does not change.\n\n"
-    .. "Comfortable layout: more empty space between rows and sections. Buttons, fields and tabs keep their size.", "computer")
-  UI.field(ctx, "Theme")
-  local thi
-  ch, thi = ImGui.Combo(ctx, "##theme", S.theme == "light" and 1 or 0, "Dark\0Light\0")
-  if ch then S.theme = (thi == 1) and "light" or "dark"; apply_theme(S.theme); R.tb_cache = nil; Util.mark_dirty() end
-  UI.tip(ctx, "Dark: for dark stages (the default). Light: light panels and fields, dark text.")
-  ch, S.comfortable = UI.checkbox(ctx, "Comfortable layout", S.comfortable)
-  if ch then Util.mark_dirty() end
-  UI.tip(ctx, "More empty space between rows and sections. Buttons, fields and tabs keep their size.")
   UI.group_sep(ctx)
   UI.heading(ctx, "Page quality", "Page sharpness (DPI) sets how sharp the page images are. Higher = sharper, but slower and more disk space.\n\n"
     .. "'Match DPI to current view' sets the DPI for the current zoom.\n\n"
@@ -7082,32 +7082,86 @@ function UI.draw_appearance_tab(ctx)
 
 end
 
--- Troubleshooting for all of Chart Cue (end of Settings > General).
+-- Settings > General > Backup: a copy of settings.ini (the settings of this computer) in the data folder, and back.
+function Util.backup_settings()
+  Util.save_settings(); R.dirty = false
+  local path = CFG.BASE_DIR .. SEP .. "Chart Cue backup " .. os.date("%Y-%m-%d %H-%M") .. ".ini"
+  if Util.copy_file(CFG.SETTINGS_FILE, path) then return path end
+  return nil
+end
+function Util.restore_settings(path)
+  local f = io.open(path, "r")
+  if not f then return false, "The file cannot be read." end
+  local known = false
+  for line in f:lines() do
+    local k = line:match("^([%w_]+)=")
+    if k and S[k] ~= nil then known = true; break end
+  end
+  f:close()
+  if not known then return false, "This is not a Chart Cue settings file." end
+  if not Util.copy_file(path, CFG.SETTINGS_FILE) then return false, "settings.ini cannot be written." end
+  for k, v in pairs(CFG.S_DEFAULTS) do S[k] = v end -- (a setting that is not in the backup: its default)
+  Util.load_settings()
+  apply_theme(S.theme)
+  R.dpi_edit = S.dpi; R.tb_cache = nil
+  return true
+end
+
+-- Window, Backup and Troubleshooting for all of Chart Cue (end of Settings > General).
 function UI.draw_general_troubleshooting(ctx)
   local ch
   UI.group_sep(ctx)
-  UI.heading(ctx, "Troubleshooting", "Write diagnostic log: writes technical events (visibility, docking, recovered errors) "
-    .. "to the REAPER console. Use it only to report a problem.\n\n"
-    .. "Reset window position: moves the window back to its default size and place, for example when it is off-screen.\n\n"
-    .. "Reset all settings: sets the settings of this computer back to the defaults. "
-    .. "Your projects (library, regions, cues) are not changed.", "computer")
-  ch, S.log_diag = UI.checkbox(ctx, "Write diagnostic log", S.log_diag)
-  if ch then Util.mark_dirty() end
-  UI.tip(ctx, "Writes technical events to the REAPER console.")
-  if UI.full_button(ctx, "Rescan project") then Project.rescan("general") end
-  UI.tip(ctx, "Reads the regions and the markers again. They are read automatically after each project change;\n"
-    .. "use this only if something looks wrong.")
+  UI.heading(ctx, "Window", "Dock in docker: Chart Cue in a REAPER docker, or a floating window (also in the right-click "
+    .. "menu).\n\nReset window position: moves the window back to its default size and place, for example when it is "
+    .. "off-screen.", "computer")
+  local docked = R.last_docked == true
+  ch, docked = UI.checkbox(ctx, "Dock in docker", docked)
+  if ch then R.dock_req = R.last_docked and 0 or (R.last_dock_id or -1) end
+  UI.tip(ctx, "On: Chart Cue is in a REAPER docker (the last one used). Off: a floating window.")
   if UI.full_button(ctx, "Reset window position") then
     R.reset_layout = true
     Msg.notify("Window position reset.", false, "general")
   end
   UI.tip(ctx, "Moves the window back to its default size and place, and undocks it.")
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Backup", "Back up...: a copy of the settings of this computer (settings.ini) in Chart Cue's data "
+    .. "folder; its name has the date and time.\nRestore...: choose a backup; it replaces the settings of this computer.\n"
+    .. "Reset all settings: sets the settings of this computer back to the defaults.\n\n"
+    .. "Your projects (library, regions, cues) are not changed.", "computer")
+  UI.path_row(ctx, "Backup folder", CFG.BASE_DIR, "", "")
+  if UI.full_button(ctx, "Back up...") then
+    local path = Util.backup_settings()
+    if path then Msg.notify("Backup saved: " .. path, false, "general")
+    else Msg.notify("The backup file cannot be written.", true, "general") end
+  end
+  UI.tip(ctx, "Saves a copy of the settings of this computer.")
+  if UI.full_button(ctx, "Restore...") then
+    local okf, path = r.GetUserFileNameForRead(CFG.BASE_DIR .. SEP, "Restore Chart Cue settings", ".ini")
+    if okf and path ~= "" then
+      UI.ask("restore", "Replace the Chart Cue settings of this computer with this backup?\n" .. path, "Replace", function()
+        local okr, err = Util.restore_settings(path)
+        Msg.notify(okr and "The settings of the backup are back." or err, not okr, "general")
+      end)
+    end
+  end
+  UI.tip(ctx, "Loads a backup. It asks before it replaces anything.")
+  UI.draw_ask(ctx, "restore")
   if UI.danger_button(ctx, "Reset all settings...") then
     UI.ask("reset_all", "Reset all Chart Cue settings on this computer to the defaults? This resets the PDF engine, "
       .. "page sharpness, cache limit, window, tabs, toolbar, notes look, page area, MIDI, autoscroll and setlist settings. Your projects (library, regions, cues) are not changed.",
       "Yes, reset", UI.reset_all_settings)
   end
   UI.draw_ask(ctx, "reset_all")
+  UI.group_sep(ctx)
+  UI.heading(ctx, "Troubleshooting", "Write diagnostic log: writes technical events (visibility, docking, recovered errors) "
+    .. "to the REAPER console. Use it only to report a problem.\n\n"
+    .. "Rescan project: reads the regions and the markers again.", "computer")
+  ch, S.log_diag = UI.checkbox(ctx, "Write diagnostic log", S.log_diag)
+  if ch then Util.mark_dirty() end
+  UI.tip(ctx, "Writes technical events to the REAPER console.")
+  if UI.full_button(ctx, "Rescan project") then Project.rescan("general") end
+  UI.tip(ctx, "Reads the regions and the markers again. They are read automatically after each project change;\n"
+    .. "use this only if something looks wrong.")
   UI.section_msg(ctx, "general")
 end
 
@@ -7170,165 +7224,165 @@ end
 ---------------------------------------------------------------------------
 local HELP_TOPICS = {
   { title = "Getting started", text = [==[
-Chart Cue shows your sheet music or chord charts (PDF files) inside REAPER. It can also move the page for you while the song plays.
+Chart Cue shows your sheet music or chord charts (PDF files) right inside REAPER, and it can turn and scroll the pages for you while the song plays.
 
-1. Click the Library tab, then click "Add PDF" and pick a PDF file.
-2. Click the PDF in the list. The first page appears.
-3. Use the arrow buttons at the top to go to the previous or next page. Use the minus and plus buttons to make the page smaller or bigger.
-4. Optional: in REAPER, make a region with the same name as the PDF. For example, a region named "Song One" for the file "Song One.pdf". Chart Cue then opens that PDF by itself when the song plays.
-5. Optional: choose an autoscroll mode in the toolbar ("Scroll: Off"), so the page moves by itself while REAPER plays.
+1. Click the Library tab, click "Add PDF" and pick a PDF file.
+2. Click the PDF in the list. Its first page shows up.
+3. Use the arrow buttons at the top to go to the previous or next page, and the minus and plus buttons to make the page smaller or bigger.
+4. Optional: in REAPER, make a region with the same name as the PDF. For example, a region "Song One" for the file "Song One.pdf". Chart Cue then opens that PDF by itself when the song plays.
+5. Optional: pick an autoscroll mode in the toolbar ("Scroll: Off"), so the page moves by itself while REAPER plays.
 
-Click a tab to open it. Click the same tab again to hide it and get more space for the music. The Setlist tab puts the songs in the order of your show. The Settings tab (the gear icon) has 5 sections: Viewer, Playback, Control, Appearance and General. Click a section name to open or close it. Only one section is open at a time. The first section of the Library, Regions, Cues and Setlist tabs can also be closed with the arrow before its name. Settings > Appearance > Tabs hides the tabs that you do not use.]==],
+Click a tab to open it. Click the same tab again to hide it and give the music more room. The Setlist tab puts your songs in the order of your show. The Settings tab (the gear) has 5 sections: Viewer, Playback, Control, Appearance and General. Click a section name to open or close it; only 1 is open at a time. In the Library, Regions, Cues and Setlist tabs, the arrow before the first heading folds that section away. Do not use some tabs? Hide them in Settings > Appearance > Tabs.]==],
     more = [==[
-- You can dock the Chart Cue window like any other REAPER window. Chart Cue remembers where it was.
-- The first time a PDF opens, Chart Cue prepares the pages in the background ("Loading PDF" and "Preparing page"). After that, the PDF opens at once.
-- The status bar at the bottom shows the scroll position, the current region and, in the Cue list and Markers modes, the next page turn ("Next: page 3 at 17.1.00"). Its second line shows the most important message, for example an error or a hint. When there is no message, it shows the keyboard shortcuts. Move the mouse over them to see the full list.
-- Most settings have a round "?" icon. Move the mouse over it for a short explanation.]==] },
+- Dock the Chart Cue window like any other REAPER window. Chart Cue remembers where it was.
+- The first time a PDF opens, Chart Cue gets the pages ready in the background ("Loading PDF" and "Preparing page"). After that, the PDF opens at once.
+- The status bar at the bottom shows the scroll position, the current region and, in the Cue list and Markers modes, the next page turn ("Next: page 3 at 17.1.00"). Its second line shows the most important message, for example an error or a hint. With no message, it shows the keyboard shortcuts; hover over them for the full list.
+- Most settings have a round "?" icon. Hover over it for a short explanation.]==] },
 
   { title = "Library: your PDFs", text = [==[
 The Library is the list of PDFs in this project.
 
-Images also work: a PNG or JPG file (for example a photo of a chart from your phone) is used like a PDF with 1 page, with its own cues and notes. Add an image with "Add PDF..."; "Add from folder" and Sync take only PDFs, so the photos and other images in a folder are not added. Phone photos are turned the right way up. iPhone photos in HEIC format do not open: set the camera to "Most Compatible" (Settings > Camera > Formats), or send the photo as JPG.
+Images work too. A PNG or JPG (for example a photo of a chart from your phone) acts like a 1-page PDF, with its own cues and notes. Add it with "Add PDF..."; "Add from folder" and Sync only take PDFs, so the photos in a folder stay out. Phone photos are turned the right way up. iPhone photos in HEIC format do not open: set the camera to "Most Compatible" (Settings > Camera > Formats on the phone), or send the photo as JPG.
 
-- "Add PDF" adds one file. "Add from folder" adds all PDFs in a folder, and the project remembers that folder: it is selected in "Sync folder" below. The sync button next to that dropdown checks the selected folder again (or all of them, with "All folders"), adds new PDFs and replaces the copies of changed PDFs (for example a new version of a chart). PDFs that are no longer in the folder stay in the library. The red X removes the selected folder from the list (with "All folders": all of them, after a question); the PDFs and the files do not change.
-- Unused PDFs (no region uses them, as PDF 1 or PDF 2, and not on screen) have a grey name; "Sort: Unused first" shows them at the top. "Remove unused PDFs..." takes them off the library (it asks first): their copies in this project's PDFs folder are deleted too, but original files outside the project are never deleted.
-- When "Copy into project" is on, Chart Cue copies each PDF into a folder named "PDFs" next to your project file. Your original file is not changed. The project then also works on another computer.
-- Click a PDF in the list to show it. "Show in Explorer" opens its folder. The red X takes it off the list (it asks first); the file itself is not deleted.
-- The blue row is the PDF that is on the screen now.
-- A red name means that the file cannot be found. Click "Relocate..." and pick the file again.
-- Right-click a PDF for: Open, Show as PDF 2, Replace PDF..., Show in Explorer and Remove from library.... "Show as PDF 2" shows that PDF next to the one on screen (for example lyrics and a bass part): the page area splits in 2 (Settings > Viewer > Page layout > Split view). Click a part to make it the active part (blue frame): the keys, the toolbar, the mouse wheel, MIDI and the actions act on it. Drag the line between the 2 parts to change their sizes; double-click it for the same size. Right-click > Close PDF 2 returns to 1 PDF. A PDF 2 shown this way is not saved, and markers move only PDF 1. "Replace PDF..." swaps the file (for example a new version of the chart) and keeps the region choices, the zoom and the cues. If the new file has fewer pages, a message tells you how many cues use a missing page.
-- Use the search box and the sort menu above the list to find a PDF quickly.]==],
+- "Add PDF" adds 1 file. "Add from folder" adds all PDFs in a folder, and the project remembers that folder in "Sync folder" below. The sync button next to it checks that folder again (or all of them, with "All folders"): it adds new PDFs and updates the copies of changed ones (for example a new version of a chart). PDFs that left the folder stay in the library. The red X removes the selected folder from the list (with "All folders": all of them, after a question); your PDFs and files stay as they are.
+- Unused PDFs (no region uses them as PDF 1 or PDF 2, and not on screen) have a grey name; "Sort: Unused first" puts them on top. "Remove unused PDFs..." takes them off the library after a question. Their copies in this project's PDFs folder are deleted too, but your original files outside the project are never touched.
+- With "Copy into project" on, Chart Cue copies each PDF into a "PDFs" folder next to your project file. Your original stays as it is, and the project also works on another computer.
+- Click a PDF to show it. "Show in Explorer" opens its folder. The red X takes it off the list (it asks first); the file itself is not deleted.
+- The blue row is the PDF on screen now.
+- A red name means the file cannot be found. Click "Relocate..." and pick it again.
+- Right-click a PDF for: Open, Show as PDF 2, Replace PDF..., Show in Explorer and Remove from library.... "Show as PDF 2" shows that PDF next to the one on screen (for example lyrics and a bass part): the page area splits in 2 (Settings > Viewer > Page layout > Split view). Click a part to make it active (blue frame); the keys, the toolbar, the mouse wheel, MIDI and the actions then work on it. Drag the line between the parts to change their sizes; double-click it for equal sizes. Right-click > Close PDF 2 goes back to 1 PDF. A PDF 2 shown this way is not saved, and markers only move PDF 1. "Replace PDF..." swaps the file (for example a new version of the chart) and keeps the region choices, the zoom and the cues. If the new file has fewer pages, a message tells you how many cues point to a missing page.
+- Use the search box and the sort menu above the list to find a PDF fast.]==],
     more = [==[
-- "Include subfolders" makes "Add from folder" also look in all folders inside the chosen folder. Each sync folder keeps the setting it was added with ("(+ subfolders)" in the dropdown); add the folder again to change it.
-- Copies run in the background, so REAPER and playback do not stop. The status bar shows how many are left.
-- If a file with the same name is already in the PDFs folder: an identical file is used as it is. A different file opens a question: Yes = replace it, No = keep the existing copy, Cancel = skip this PDF.
-- "Copy all PDFs into the project" copies the PDFs that are still outside the project folder. Use it one time for older projects.
-- In a project that is not saved yet, there is no project folder. Chart Cue then uses the original files. Save the project and use "Copy all PDFs into the project".
-- PDFs inside the project folder are stored with a short path (for example PDFs/Song One.pdf). If you move the whole project folder, Chart Cue still finds them.
-- After "Relocate...", Chart Cue also looks in the same folder for the other missing PDFs, by file name.
-- The page count shows after a PDF was opened one time.
+- "Include subfolders" makes "Add from folder" also look in all folders inside the chosen one. Each sync folder keeps the setting it was added with ("(+ subfolders)" in the dropdown); add the folder again to change it.
+- Copies run in the background, so REAPER and playback keep going. The status bar shows how many are left.
+- Already a file with the same name in the PDFs folder? An identical file is just used. A different file opens a question: Yes = replace it, No = keep the copy that is there, Cancel = skip this PDF.
+- "Copy all PDFs into the project" copies the PDFs that are still outside the project folder. Handy 1 time for older projects.
+- A project that is not saved yet has no project folder, so Chart Cue uses the original files. Save the project, then use "Copy all PDFs into the project".
+- PDFs inside the project folder are stored with a short path (for example PDFs/Song One.pdf). Move the whole project folder, and Chart Cue still finds them.
+- After "Relocate...", Chart Cue also looks in that folder for the other missing PDFs, by file name.
+- The page count shows after a PDF was opened 1 time.
 - Turn off "Copy into project" to use the original files directly (link mode). The project is then not portable.]==] },
 
   { title = "Regions: one PDF per song", text = [==[
-If your project contains several songs, each song can have its own PDF. Mark each song with a REAPER region.
+Got several songs in 1 project? Each song can have its own PDF. Just mark each song with a REAPER region.
 
-- If the region has the same name as a PDF, Chart Cue connects them by itself. Capital letters, ".pdf", hyphens and underscores do not matter.
-- You can also choose the PDF for a region in the menu on the right of the region.
-- The symbol shows the state: green filled circle = has a PDF, yellow ring = needs a PDF, grey dash = ignored.
+- Give the region the same name as a PDF, and Chart Cue connects them by itself. Capital letters, ".pdf", hyphens and underscores do not matter.
+- Or pick the PDF for a region in the menu on the right of the region.
+- The symbol shows the state: a green filled circle = has a PDF, a yellow ring = needs a PDF, a grey dash = ignored.
 - The blue row is the region where the play cursor is now.
-- Click a region row to move the edit cursor to the start of that region. Right-click it for: Go to region start, Choose PDF file..., Auto-match by name and Ignore this region.
-- When the play cursor enters a region without a PDF, the page area shows buttons: add a PDF, choose a PDF from the list, or ignore the region.
-- "Keep last page" (Regions tab, on by default): when a song has no PDF, during playback the last page stays on screen with a yellow note at the top. The buttons show when playback stops.
-- "Switch PDF at regions" turns this whole function on or off.
-- 2 PDFs for one song (for example lyrics and a bass part): click [+] after the region's PDF to add a "PDF 2" row, and choose the 2nd PDF there; the x removes it. When exactly 2 PDFs match a song, both are used automatically (PDF 1 = first by name; "Pair 2 matching PDFs" in Region settings turns this off); not when one of them has exactly the song's name: that one is the main chart, and [+] adds the other with one click. If you choose one of the 2 as PDF 1, the other one becomes PDF 2. Right-click the region for "Swap PDF 1 and PDF 2" and "Remove PDF 2". During the song both are shown together (Settings > Viewer > Page layout > Split view); while REAPER is stopped, each part shows a "PDF 1" or "PDF 2" tag.]==],
+- Click a region row to move the edit cursor to its start. Right-click it for: Go to region start, Choose PDF file..., Auto-match by name and Ignore this region.
+- When the play cursor enters a region without a PDF, the page area shows buttons: add a PDF, pick a PDF from the list, or ignore the region.
+- "Keep last page" (Regions tab, on by default): when a song has no PDF, the last page stays on screen during playback, with a yellow note at the top. The buttons show when playback stops.
+- "Switch PDF at regions" turns this whole feature on or off.
+- 2 PDFs for 1 song (for example lyrics and a bass part)? Click [+] after the region's PDF to add a "PDF 2" row, and pick the 2nd PDF there; the x removes it. When exactly 2 PDFs match a song, both are used by themselves (PDF 1 = first by name; "Pair 2 matching PDFs" in Region settings turns this off). The exception: when 1 of them has exactly the song's name, that one is the main chart, and [+] adds the other with 1 click. Pick 1 of the 2 as PDF 1, and the other becomes PDF 2. Right-click the region for "Swap PDF 1 and PDF 2" and "Remove PDF 2". During the song, both show together (Settings > Viewer > Page layout > Split view); while REAPER is stopped, each part has a "PDF 1" or "PDF 2" tag.]==],
     more = [==[
 - Joined words are split: "songA" matches "Song A - Bass.pdf".
-- Matching example: region "Song One" matches "song one.pdf", "Song_One.pdf", "song-one.PDF", "SongOne.pdf", "01 Song One.pdf", "Song One (Bb).pdf", "Song One v2.pdf" and "Song One - Bass.pdf".
-- Chart Cue ignores a track number at the start, text in brackets, versions (v2) and part words (bass, guitar, gtr, keys, piano, drums, vocals, vox, chart, chords, lyrics, score, part, Bb, Eb, concert, final, copy). If 2 or more PDFs match one song (for example a bass and a guitar part), choose one in the region's menu; Chart Cue remembers it.
-- If several PDFs match the same region, the dot is yellow and the menu shows "(several PDFs match)". Choose the correct one.
-- The menu choices: "(auto-match by name)" uses the name rule, "(ignore this region)" shows no PDF there, or a PDF name assigns that PDF.
+- For example, region "Song One" matches "song one.pdf", "Song_One.pdf", "song-one.PDF", "SongOne.pdf", "01 Song One.pdf", "Song One (Bb).pdf", "Song One v2.pdf" and "Song One - Bass.pdf".
+- Chart Cue ignores a track number at the start, text in brackets, versions (v2) and part words (bass, guitar, gtr, keys, piano, drums, vocals, vox, chart, chords, lyrics, score, part, Bb, Eb, concert, final, copy). If 2 or more PDFs match 1 song (for example a bass and a guitar part), pick one in the region's menu; Chart Cue remembers it.
+- If several PDFs match the same region, the dot is yellow and the menu says "(several PDFs match)". Pick the right one.
+- The menu choices: "(auto-match by name)" uses the name rule, "(ignore this region)" shows no PDF there, and a PDF name assigns that PDF.
 - Above the list: a search field (region name) and the "Show" menu: all, needs PDF, assigned, ignored.
-- While REAPER is stopped, Chart Cue uses the edit cursor instead of the play cursor.
-- If regions overlap, the region that starts last is used.
-- Regions and markers are read again automatically after each change in the project. "Rescan project" (Settings > General > Troubleshooting) does it by hand.]==] },
+- While REAPER is stopped, Chart Cue follows the edit cursor instead of the play cursor.
+- If regions overlap, the region that starts last wins.
+- Regions and markers are read again after every change in the project. "Rescan project" (Settings > General > Troubleshooting) does it by hand.]==] },
 
   { title = "Autoscroll: the page moves by itself", text = [==[
-Autoscroll moves the page while REAPER plays. Choose the mode in the toolbar ("Scroll: ..."). Settings > Playback has the options of each mode. Each project saves its own mode. During playback the mode is locked, so the page cannot jump; stop playback to change it.
+Autoscroll moves the page for you while REAPER plays. Pick the mode in the toolbar ("Scroll: ..."); Settings > Playback has the options of each mode. Each project keeps its own mode. During playback the mode is locked, so the page cannot jump around; stop playback to change it.
 
-- Off: the page moves only when you scroll it.
+- Off: the page only moves when you scroll it.
 - Markers: you put markers in your REAPER project that tell Chart Cue what to show.
-- Cue list: the same as markers, but Chart Cue keeps the list itself. No markers are added to your project. Use this if another program (for example a setlist program) must not see extra markers.
+- Cue list: just like markers, but Chart Cue keeps the list itself, and no markers are added to your project. Great when another program (for example a setlist program) must not see extra markers.
 
 Marker names for the "Markers" mode:
 - PDFPAGE 2 means: from here, show page 2.
-- PDFSCROLL 50 means: here, show the middle of the page. 0 is the top, 100 is the bottom. Between two PDFSCROLL markers, the page moves smoothly, or jumps (Settings > Playback > Autoscroll > Scroll).
+- PDFSCROLL 50 means: here, show the middle of the page. 0 is the top, 100 is the bottom. Between 2 PDFSCROLL markers, the page glides smoothly, or jumps (Settings > Playback > Autoscroll > Scroll).
 
 How to make a cue list (Cues tab):
-1. Choose "Cue list" as the autoscroll mode, or click "Use Cue list mode" in the Cues tab.
-2. Turn on "Record" (or press R), then play the song.
-3. At each page turn, click "Add page turn" or press the C key. Chart Cue chooses the next page by itself.
-4. Where the page must move down, scroll it by hand and click "Add scroll point" or press the S key.
-5. To change a cue, type a new position, page or scroll value in the list. To delete it, click the red X at the end of its row. A red border means the value is not accepted: move the mouse over it to see why, then correct it or press Esc.
-6. To take back the last cue change, click the Undo arrow at the right end of the column titles (or press Ctrl+Z in the Chart Cue window); the Redo arrow (Ctrl+Shift+Z) brings it back.
+1. Pick "Cue list" as the autoscroll mode, or click "Use Cue list mode" in the Cues tab.
+2. Turn on "Record" (or press R) and play the song.
+3. At each page turn, click "Add page turn" or press C. Chart Cue picks the next page by itself.
+4. Where the page must move down, scroll it by hand and click "Add scroll point" or press S.
+5. To change a cue, type a new position, page or scroll value in the list. To delete it, click the red X at the end of its row. A red border means the value is not accepted: hover over it to see why, then fix it or press Esc.
+6. Made a mistake? Click the Undo arrow at the right end of the column titles (or press Ctrl+Z in the Chart Cue window). The Redo arrow (Ctrl+Shift+Z) brings it back.
 
-Songs with 2 PDFs (Regions tab): each PDF has its own cues. Click a part on the page to make it active (blue frame): Record (C, S), the add buttons and the MIDI cue buttons add cues to that PDF. In the Cues tab, the "PDF" dropdown chooses which list you see and edit. Markers move only PDF 1; "Copy markers into cues" and "Remove all cues..." work on PDF 1.
+Songs with 2 PDFs (Regions tab): each PDF has its own cues. Click a part on the page to make it active (blue frame); Record (C, S), the add buttons and the MIDI cue buttons then add cues to that PDF. In the Cues tab, the "PDF" dropdown picks which list you see and edit. Markers only move PDF 1; "Copy markers into cues" and "Remove all cues..." work on PDF 1.
 
-If you scroll by hand during playback, autoscroll waits a moment and then continues.]==],
+Scroll by hand during playback, and autoscroll waits a moment, then carries on.]==],
     more = [==[
-- Example for a 2-page song: PDFPAGE 1 at the start, PDFSCROLL 0 at bar 1, PDFSCROLL 100 at bar 16, PDFPAGE 2 at bar 17, PDFSCROLL 0 at bar 17, PDFSCROLL 100 at bar 32.
-- Marker names are not case-sensitive ("pdfpage 2" works). Markers with a wrong number are ignored and listed as a warning.
+- An example for a 2-page song: PDFPAGE 1 at the start, PDFSCROLL 0 at bar 1, PDFSCROLL 100 at bar 16, PDFPAGE 2 at bar 17, PDFSCROLL 0 at bar 17, PDFSCROLL 100 at bar 32.
+- Marker names do not care about capitals ("pdfpage 2" works). Markers with a wrong number are ignored and listed as a warning.
 - A PDFPAGE marker always starts the page at the top. If a PDFSCROLL marker is at exactly the same time, the PDFSCROLL marker wins.
-- "Turn pages" (Settings > Playback > Autoscroll): "One beat early" shows the next page one beat before its PDFPAGE marker or page-turn cue, so you can read ahead. It is saved in the project.
-- The smooth movement never continues past a PDFPAGE marker.
-- With regions, the markers inside a region control the PDF of that region. They work from the region start to the region end.
-- Manual scrolling (wheel, drag, MIDI) pauses autoscroll for 1.5 seconds.
-- Cue list: each song (region) has its own cues, counted from the region start. If you move a region, its cues move with it. Without regions, the cues count from the project start ("whole project").
-- Cue list: "Count time in" is chosen per project. Beats: a cue stays on its bar and beat when the tempo changes. Seconds: a cue stays at the same time. Switching keeps every cue at its current place.
-- Cue list: a cue has a page, a scroll position, or both. Between two scroll points the page moves smoothly, or jumps (Settings > Playback > Autoscroll > Scroll). A new cue at the same place replaces the old one.
+- "Turn pages" (Settings > Playback > Autoscroll): "One beat early" shows the next page 1 beat before its PDFPAGE marker or page-turn cue, so you can read ahead. It is saved in the project.
+- The smooth movement never goes past a PDFPAGE marker.
+- With regions, the markers inside a region control the PDF of that region, from the region start to the region end.
+- Scrolling by hand (wheel, drag, MIDI) pauses autoscroll for 1.5 seconds.
+- Cue list: each song (region) has its own cues, counted from the region start. Move a region, and its cues move with it. Without regions, the cues count from the project start ("whole project").
+- Cue list: "Count time in" is set per project. Beats: a cue stays on its bar and beat when the tempo changes. Seconds: a cue stays at the same time. Switching keeps every cue where it is.
+- Cue list: a cue has a page, a scroll position, or both. Between 2 scroll points the page glides smoothly, or jumps (Settings > Playback > Autoscroll > Scroll). A new cue at the same spot replaces the old one.
 - Cue list: the first row ("Start") shows that each song starts on page 1 at the top. Change it, and it becomes a cue.
-- Cue list: click a row to move the edit cursor to its cue. The page icon gives the cue the page and scroll position shown now. The + adds a scroll point halfway to the next cue. Right-click a row for: Go to cue, Use current view, Add scroll point below and Remove cue.
-- "Add page turn" uses the page after the cue before it (the first page turn gives page 2), at the top of the page. If you add a page turn between existing cues, the following page numbers go up by one.
+- Cue list: click a row to move the edit cursor to its cue. The page icon gives the cue the page and scroll position on screen now. The + adds a scroll point halfway to the next cue. Right-click a row for: Go to cue, Use current view, Add scroll point below and Remove cue.
+- "Add page turn" uses the page after the cue before it (the first page turn gives page 2), at the top of the page. Add a page turn between existing cues, and the page numbers after it go up by 1.
 - "Add scroll point" uses the page of the cue before it and the current scroll position.
 - A page number higher than the last page of the song's PDF is not accepted.
 - "(current song)" in the Song menu is the song at the play cursor during playback, or at the edit cursor when REAPER is stopped.
 - "(all songs)" in the Song menu shows the cues of every song, with the song name above each list. "Remove all cues..." asks before it deletes, and Undo brings the cues back.
 - "(whole project, no region)" is only for projects without regions. Its times count from the project start.
 - "More actions" > "Copy markers into cues" copies the PDF markers (PDFPAGE / PDFSCROLL) of the song into its cue list. The markers stay.
-- In the Markers mode, the Cues tab is called Markers, its first section Marker settings, and it shows the Marker list (in the layout of the cue list). Record (R) works as for cues: while it is on, C, S, the MIDI cue buttons and the 2 buttons add PDF markers. "Add page turn marker" (C) adds PDFPAGE with the next page, and "Add scroll marker" (S) adds PDFSCROLL with the scroll position shown now, at the play cursor (the edit cursor when stopped). In the list: the PDF markers of the song. Type a new position, page or scroll value to change a marker; the X removes it (Edit > Undo in REAPER brings it back).
+- In the Markers mode, the Cues tab is called Markers, its first section Marker settings, and it shows the Marker list (laid out like the cue list). Record (R) works as for cues: while it is on, C, S, the MIDI cue buttons and the 2 buttons add PDF markers. "Add page turn marker" (C) adds PDFPAGE with the next page, and "Add scroll marker" (S) adds PDFSCROLL with the scroll position on screen now, at the play cursor (the edit cursor when stopped). The list shows the PDF markers of the song. Type a new position, page or scroll value to change a marker; the X removes it (Edit > Undo in REAPER brings it back).
 - "More actions" > "Copy cues into markers..." makes PDF markers from the cues of the song (the PDF markers already there are replaced). "Colour PDF markers" gives them the blue of the page-turn flash; new markers from Chart Cue get it by themselves ("Colour PDF markers" in Settings > Playback > Autoscroll).
-- "Remove PDF markers..." then removes them (for this song, or for all songs with "(all songs)" in the Song menu). Only PDF markers are removed; regions and other markers are not changed. It is one undo step, so Edit > Undo (Ctrl+Z) brings them back.
+- "Remove PDF markers..." removes them (for this song, or for all songs with "(all songs)" in the Song menu). Only PDF markers go; regions and other markers stay. It is 1 undo step, so Edit > Undo (Ctrl+Z) brings them back.
 - The cue list is saved in the project, like the library. Save the project after changes.]==] },
 
   { title = "Setlist", text = [==[
-The Setlist tab puts the songs (regions) in the order of your show. The timeline does not change.
+The Setlist tab puts your songs (regions) in the order of your show. Your timeline stays exactly as it is.
 
-1. Open the Setlist tab and click "Make a setlist": it starts with all regions in timeline order.
-2. Drag the rows, or use the arrows, to change the order. "Add song" adds a region at the end, and "Add pause" a pause; a region can be in the list more than once (for example an interlude).
-3. For each song, choose what happens at its end: Stop (REAPER stops and the edit cursor goes to the next song; press Play to go on) or Continue (the next song plays at once).
+1. Open the Setlist tab and click "Make a setlist". You get all your regions in timeline order.
+2. Drag the rows, or use the arrows, to change the order. "Add song" adds a region at the end, and "Add pause" adds a break. A region can be in the list more than once (for example an interlude).
+3. Pick what happens at the end of each song: Stop (REAPER stops and waits at the start of the next song; press Play when you are ready) or Continue (the next song starts right away).
 4. Tick "Play in setlist order".
 
 - The tick box of a row: play or skip the song. A skipped song stays in the list.
 - The X removes the song from this setlist. The region stays in the project.
-- Click a song to go to it (also during playback).
-- During playback the order is locked, so it cannot change by mistake. "Lock setlist" locks everything in the Setlist tab (greyed out), and a click on a song then does not go to it; the play buttons above the list still work.
+- Click a song to jump to it (also during playback).
+- During playback the order is locked, so nothing changes by accident. "Lock setlist" locks the whole Setlist tab (greyed out), and clicking a song then does not jump to it; the play buttons above the list still work.
 - Stop (the square button) stops and goes back to the start of the song.
-- Page area (Settings > Viewer, or right-click > Page area): PDF (the charts), Setlist (for shows without charts: a coloured status pill with the set length and the time left; the current song in large text, with the time left, a progress bar and the next song; then the setlist in large rows, with a red square for Stop and a green triangle for Continue) or Setlist and PDF (the setlist on top, the PDF below; drag the line between them, double-click it for half and half). With Setlist, the toolbar has only the play buttons; with Setlist and PDF, the play buttons come first.
-- Undo: Ctrl+Z in the Setlist tab, or the arrow at the right end of the list heading, takes back the last change of the list.
-- Right-click a row: Go to song, Skip / Play this row, Move to top, Move to bottom, Remove from setlist.
+- Page area (Settings > Viewer, or right-click > Page area): PDF (the charts), Setlist (for shows without charts: a coloured status pill with the set length and the time left; the current song in large text, with the time left, a progress bar and the next song; then the setlist in large rows, with a red square for Stop and a green triangle for Continue) or Setlist and PDF (the setlist on top, the PDF below; drag the line between them, double-click it for half and half). With Setlist, the toolbar only has the play buttons; with Setlist and PDF, the play buttons come first.
+- Made a mistake? Ctrl+Z in the Setlist tab, or the arrow at the right end of the list heading, undoes the last change.
+- Right-click a row for: Go to song, Skip / Play this row, Move to top, Move to bottom, Remove from setlist.
 - The status bar shows the setlist in use while Play in setlist order is on.
 - The time left in the heading counts down during the song.
-- "More..." has: New setlist, Duplicate, Rename, Reset to timeline order and Delete setlist. Each project can have several setlists, for example "Friday" and "Festival short".
-- Add pause: a pause (10 seconds at first; change it in its row) stops REAPER at the end of the song before it, then plays the next song after its seconds. A pause after a song always stops, also with Continue.
-- The buttons above the list: previous song, play / pause, stop, next song. With Page area Setlist or Setlist and PDF they are in the toolbar instead.
-- The "Chart Cue - Next song" action, for a foot pedal or a key (Settings > Control > Shortcuts and external controls): after a Stop or during a pause it plays the next song; during a song it goes to the next song at once.
+- "More..." has New setlist, Duplicate, Rename, Reset to timeline order and Delete setlist. Each project can have several setlists, for example "Friday" and "Festival short".
+- Add pause: a pause (10 seconds to start with; change it in its row) stops REAPER at the end of the song before it, counts down, then plays the next song. A pause after a song always stops, also with Continue.
+- The buttons above the list: previous song, play / pause, stop, next song. With Page area Setlist or Setlist and PDF, they move to the toolbar.
+- Hands busy? Give the "Chart Cue - Next song" action a foot pedal or a key (Settings > Control > Shortcuts and external controls). After a Stop or during a pause, it starts the next song. During a song, it jumps to the next one right away.
 - The heading shows the length of the set, and the time left from the current song.
-- "Show next song" (Settings > Playback > Setlist): a "Next: ..." label at the bottom right of the page near the end of a song (the last 5 to 30 seconds, or always) and while REAPER waits at the next song.
-- The exact stop: during a song that ends with a stop (Stop, a pause after it, or the last song), the loop points and the time selection show that song, and REAPER's option "Stop playback at end of loop if repeat is disabled" is on. REAPER then stops at the exact end of the song, without a part of the next song. After the stop (also when you stop or move away yourself), your loop points, time selection and that option are put back.
-- Outside the songs of the setlist (a click on the timeline between regions, or in a region that is not in the setlist), the last song stays current: previous song goes back to its start, next song goes to the song after it.
-- The page-turn countdown also runs to the end of a song when the next song follows at once (Continue).]==],
+- "Show next song" (Settings > Playback > Setlist): a "Next: ..." label at the bottom right of the page near the end of a song (the last 5 to 30 seconds, or always), and while REAPER waits at the next song.
+- Clean stops: when a song ends with a stop (Stop, a pause after it, or the last song), REAPER stops at the exact end of it. You never hear the first notes of the next song. (Chart Cue uses REAPER's loop points and time selection for this, and turns on REAPER's "Stop playback at end of loop if repeat is disabled" option. When the song is done, or when you stop or move away, you get your own loop points, time selection and option back.)
+- Clicked somewhere on the timeline that is not in the setlist? No problem: Chart Cue remembers the last song. Previous song goes back to its start, next song goes to the song after it.
+- The page-turn countdown also runs to the end of a song when the next song follows right away (Continue).]==],
     more = [==[
-- Continue: when the next song starts where the last one ends on the timeline, REAPER just plays on, without a gap. Another song is reached with a jump, which can come up to about 1/30 of a second late: a very short gap. Put songs that must flow into each other directly after each other on the timeline.
-- A click on the timeline during playback: the setlist follows you to that song.
-- A row whose region was deleted shows "(missing)" in yellow. It is passed during playback.
+- Continue: when the next song starts where the last one ends on the timeline, REAPER just plays on, with no gap. Any other song is reached with a jump, which can be up to about 1/30 of a second late: a tiny gap. Put songs that must flow into each other right after each other on the timeline.
+- Click on the timeline during playback, and the setlist follows you to that song.
+- A row whose region was deleted shows "(missing)" in yellow. Playback skips it.
 - The setlists are saved in the project.]==] },
 
   { title = "MIDI controller", text = [==[
-You can scroll the page with a knob, fader or endless encoder on a MIDI controller. This is optional.
+Want to scroll the page with a knob, fader or endless encoder on a MIDI controller? You can (it is optional).
 
 1. Open Settings > Control.
 2. Tick "Read MIDI directly".
 3. Set "Knob type" and the CC number that your knob sends.
 
-- Absolute: the knob position is the page position. Use this for normal knobs and faders.
-- Relative: turning moves the page up or down. Use this for endless encoders. If the page moves the wrong way or jumps, try another "Relative encoding", or tick "Invert direction".
-- Turn pages with MIDI: two buttons on your controller can go to the next and previous page.
-- Add cues with MIDI: one button adds a page turn, another one adds a scroll point (Cues tab).
-- These two options show only when "Read MIDI directly" is on. The tab shows only the rows of the chosen MIDI mode.]==],
+- Absolute: the knob position is the page position. Use it for normal knobs and faders.
+- Relative: turning moves the page up or down. Use it for endless encoders. Page moves the wrong way or jumps? Try another "Relative encoding", or tick "Invert direction".
+- Turn pages with MIDI: 2 buttons on your controller go to the next and previous page.
+- Add cues with MIDI: 1 button adds a page turn, another one adds a scroll point (Cues tab).
+- These 2 options only show when "Read MIDI directly" is on. The tab only shows the rows of the MIDI mode you picked.]==],
     more = [==[
-- Another way: bind the Chart Cue action to a knob in REAPER's Action List (Add shortcut, then move the knob). When REAPER asks about the running script, choose "New instance" and "Remember my answer". The new instance only sends the value to the open Chart Cue.
+- Another way: bind the Chart Cue action to a knob in REAPER's Action List (Add shortcut, then move the knob). When REAPER asks about the running script, pick "New instance" and "Remember my answer". The new instance just passes the value to the open Chart Cue.
 - With an Action List binding, do NOT tick "Read MIDI directly".
 - "Scroll speed" sets how far the page moves for each step of a relative encoder.
-- "Show MIDI debug" (Troubleshooting, at the end of Settings > Control) shows the last CC number and value that Chart Cue received. Use it to find the CC number of your knob.
+- Not sure which CC your knob sends? Turn on "Show MIDI debug" (Troubleshooting, at the end of Settings > Control). It shows the last CC number and value that Chart Cue received.
 - Page turning works with direct MIDI input. A value of 64 or more counts as a button press.]==] },
 
   { title = "Settings", text = [==[
@@ -7336,47 +7390,52 @@ Settings has 5 sections: Viewer (what you see on the page), Playback (what happe
 
 Viewer:
 - Page area (or right-click > Page area): PDF, Setlist (the setlist in large text, for shows without charts) or Setlist and PDF (the setlist on top, the PDF below).
-- Pages on screen (or right-click > Pages on screen): 1 page; 2 pages side by side, which zoom and scroll together (the toolbar shows "3-4 / 12"); or continuous: the pages are one long strip, and you scroll through the whole PDF without jumps (the toolbar shows the page at the top). Page turn, side by side: by 1 page (1-2, then 2-3), so the next page is always visible, or by 2 pages like a book (1-2, then 3-4); a page turn to page 4 then shows pages 3-4, and a page turn to a page that is already on screen does nothing. Page turn motion (every layout): Smooth slides the next page in (from below, or from the right side by side), Jump shows it at once; turning by 2 pages always jumps. Cues and markers do not change.
-- Page brightness: lower than 100% makes the white paper darker for dark stages. 100% = not dimmed. The sun button in the toolbar goes 25, 50, 75, 100% and back to 25%; its sun is fuller when the page is brighter.
-- Notes: right-click the page and choose "Add note here..." to put a short text on the page, for example "repeat x2". Drag a note to move it. Double-click it, or right-click it, to edit or delete it. Right-click a note to change its colour or size. The notes are saved in the project, with the PDF and the page; the PDF file does not change. Viewer > Notes: show or hide them, and the size and colour of new notes.
+- Pages on screen (or right-click > Pages on screen): 1 page; 2 pages side by side, which zoom and scroll together (the toolbar shows "3-4 / 12"); or continuous: the pages form 1 long strip, and you scroll through the whole PDF without jumps (the toolbar shows the page at the top). Page turn, side by side: by 1 page (1-2, then 2-3), so the next page is always in view, or by 2 pages like a book (1-2, then 3-4); a page turn to page 4 then shows pages 3-4, and a page turn to a page already on screen does nothing. Page turn motion (every layout): Smooth slides the next page in (from below, or from the right side by side), Jump shows it at once; turning by 2 pages always jumps. Cues and markers stay the same.
+- Page brightness: below 100% makes the white paper darker for dark stages. 100% = not dimmed. The sun button in the toolbar goes 25, 50, 75, 100% and back to 25%; the fuller the sun, the brighter the page.
+- Notes: right-click the page and pick "Add note here..." to put a short text on it, for example "repeat x2". Drag a note to move it. Double-click or right-click it to edit or delete it. Right-click a note to change its colour or size. Notes are saved in the project, with the PDF and the page; the PDF file itself does not change. Viewer > Notes: show or hide them, and the size and colour of new notes.
 
 Playback:
 - Page-turn flash: a short blue frame when the page turns during playback.
 - Page-turn countdown: a thin line at the bottom of the page fills up before an automatic page turn (markers or cue list). "Countdown length" sets when it starts: 1 to 4 seconds before the turn.
 - Setlist: "Show next song" shows "Next: ..." on the page near the end of a song (Setlist tab, Play in setlist order).
-- Hide panel when playing (or the button at the right of the toolbar): while REAPER plays, the tabs and the panel are hidden and only the toolbar and the page show, so the music gets more space. If there is an error, one red line is shown.
+- Hide panel when playing (or the button at the right of the toolbar): while REAPER plays, the tabs and the panel get out of the way and only the toolbar and the page show, so the music gets more room. If there is an error, 1 red line shows.
 
 Control:
-- Shortcuts and external controls: give the actions (next / previous page, performance mode, next song) a key, a foot pedal, MIDI or OSC. MIDI input, MIDI scroll and MIDI troubleshooting: see Help > MIDI controller.
+- Shortcuts and external controls: give the actions (next / previous page, performance mode, next song) a key, a foot pedal, MIDI or OSC. For MIDI input, MIDI scroll and MIDI troubleshooting, see Help > MIDI controller.
 
 Appearance:
-- Tabs: hide the tabs that you do not use. Settings and Help always show.
-- Toolbar: choose which items the toolbar shows. The page buttons always show.
-- Comfortable layout: more empty space between rows and sections; buttons, fields and tabs keep their size.
+- Look: Theme (Dark or Light), and Comfortable layout for more room between rows and sections (buttons, fields and tabs keep their size).
+- Tabs: hide the tabs that you do not use. Settings and Help always stay.
+- Toolbar: pick which items the toolbar shows. The page buttons always stay.
 - Page sharpness (DPI): a higher number gives sharper pages, but the first preparation takes longer. "Page quality" tells you if the page looks sharp.
 - PDF engine: "Windows (built in)" needs no extra software. "Poppler" is an optional alternative.
-- Page cache: Chart Cue keeps the pages on your disk, so PDFs open fast. Its size is shown next to "Clear...", which clears it at any time. It is filled again when needed. Cache limit (default 1 GB): when the cache is larger, the pages of the PDFs that you opened longest ago are removed. The PDFs on screen are kept.]==],
+- Page cache: Chart Cue keeps the pages on your disk, so PDFs open fast. Its size shows next to "Clear...", which empties it at any time; it fills up again when needed. Cache limit (1 GB to start with): when the cache gets larger, the pages of the PDFs you opened longest ago go first. The PDFs on screen are kept.
+
+General:
+- Window: dock Chart Cue in a docker, or reset the window position (for example when it is off-screen).
+- Backup: back up and restore the settings of this computer, or reset them all.]==],
     more = [==[
 - "Match DPI to current view" sets the DPI that fits your current zoom.
-- Chart Cue prepares all pages of a PDF in the background. The pages near the current page come first.
-- Very large pages are limited to 4096 pixels. Then the DPI cannot go higher for that PDF.
+- Chart Cue prepares all pages of a PDF in the background, starting with the pages near the current page.
+- Very large pages are limited to 4096 pixels, so the DPI cannot go higher for that PDF.
 - The Windows engine uses Windows PowerShell in the background. The first time a PDF opens, this takes about 1 second.
-- Poppler: choose "Poppler (pdftoppm.exe)" as the engine, then select pdftoppm.exe. pdfinfo.exe must be in the same folder.
+- Poppler: pick "Poppler (pdftoppm.exe)" as the engine, then select pdftoppm.exe. pdfinfo.exe must be in the same folder.
 - Each engine and each DPI has its own cache folder.
-- "Write diagnostic log" (Settings > General > Troubleshooting) writes technical events to the REAPER console. Use it only to report a problem.
-- "Reset all settings..." (Settings > General > Troubleshooting) sets the settings of this computer back to the defaults. Your projects are not changed.
-- "Reset window position" (Settings > General > Troubleshooting) moves the window back to its default size and place, for example when it is off-screen.]==] },
+- "Write diagnostic log" (Settings > General > Troubleshooting) writes technical events to the REAPER console. Only use it to report a problem.
+- "Reset all settings..." (Settings > General > Backup) sets the settings of this computer back to the defaults. Your projects stay as they are.
+- "Back up..." and "Restore..." (Settings > General > Backup) save a copy of the settings of this computer (settings.ini) in the data folder, and load it back. Restore asks first.
+- "Reset window position" (Settings > General > Window) moves the window back to its default size and place, for example when it is off-screen.]==] },
 
   { title = "Project: saving, opening, closing", text = [==[
-Chart Cue saves the library and the region choices inside your REAPER project. They move with the project when you copy it or use "Save as". Save the project after changes, as with any other change.
+Chart Cue saves the library and the region choices inside your REAPER project, so they travel with it when you copy the project or use "Save as". Save the project after changes, just like any other change.
 
-The round "?" next to a heading tells you where its settings are saved: in this project, or on this computer (the same for all your projects). If a setting is saved in a different place than the rest of its section, the "?" text says so.
+Not sure where a setting is saved? The round "?" next to its heading tells you: in this project, or on this computer (the same for all your projects). If a setting is saved somewhere else than the rest of its section, the "?" text says so.
 
-- "Open automatically": Chart Cue opens by itself when you open a project that uses it. Restart REAPER one time after you turn this on.
+- "Open automatically": Chart Cue opens by itself when you open a project that uses it. Restart REAPER 1 time after you turn this on.
 - "Close with project": Chart Cue closes together with its project.]==],
     more = [==[
 - Saved in the project (.rpp): the library, region choices, ignored regions, "Switch PDF at regions", the autoscroll mode, the PDF on screen, the cue lists, the notes (with their colour and size), the setlists, "Play in setlist order" and "Lock setlist".
-- Saved for your computer (Data\Chart Cue\settings.ini in the REAPER resource folder): the PDF engine, DPI, page cache limit, window and dock place, MIDI settings, the default autoscroll mode (used by projects that have no mode yet), the page area, the look of new notes, the toolbar items, the tabs and the other settings.
+- Saved on your computer (Data\Chart Cue\settings.ini in the REAPER resource folder): the PDF engine, DPI, page cache limit, window and dock place, MIDI settings, the default autoscroll mode (for projects that have no mode yet), the page area, the look of new notes, the toolbar items, the tabs and the other settings.
 - Automatic open adds 3 marked lines at the end of REAPER's Scripts\__startup.lua. A backup is saved first (__startup.lua.chartcue-backup). Turning the option off removes only these 3 lines.
 - Chart Cue closes when you close the project tab, or when File > Close project, New project or Open project replaces the project in the same tab. Switching tabs and "Save as" keep it open.]==] },
 
@@ -7384,7 +7443,7 @@ The round "?" next to a heading tells you where its settings are saved: in this 
 - Left arrow or Page Up: previous page
 - Right arrow or Page Down: next page
 - Home: go to the top of the page
-- F: performance mode (only the page is shown). F or Esc goes back.
+- F: performance mode (only the page shows). F or Esc brings everything back.
 - L: lock (during playback the page ignores the mouse and the keys; MIDI and autoscroll still work). The lock button is in the toolbar.
 - R: record on / off (Cue list and Markers modes; the red dot button in the toolbar and "Record" in the Cues / Markers tab do the same). REC shows on the page while it is on.
 - C: add a page turn at the play cursor (only while Record is on; in the Markers mode: a PDFPAGE marker)
@@ -7392,49 +7451,49 @@ The round "?" next to a heading tells you where its settings are saved: in this 
 - Ctrl and +: zoom in. Ctrl and -: zoom out. Ctrl and 0: fit the page width.
 - Ctrl and Z: undo the last cue change; Ctrl, Shift and Z: redo it (while the Cues tab is open).
 - Mouse wheel: scroll the page. Ctrl and mouse wheel: zoom.
-- Right-click the toolbar or the page for a menu with the most used options: Add PDF, Add note here (on the page), hide the panel when playing, show the panel, lock, performance mode, the autoscroll mode, Record cues, Copy markers into cues (all songs), page brightness, page area, pages on screen, Match DPI, Dock Chart Cue in Docker (ticked while docked) and Close Chart Cue. Grey items are not available now. In lock mode during playback, a right-click on the page does nothing.
+- Right-click the toolbar or the page for a quick menu with the most used options: Add PDF, Add note here (on the page), hide the panel when playing, show the panel, lock, performance mode, the autoscroll mode, Record cues, Copy markers into cues (all songs), page brightness, page area, pages on screen, Match DPI, Dock Chart Cue in Docker (ticked while docked) and Close Chart Cue. Grey items are not available right now. In lock mode during playback, a right-click on the page does nothing.
 - Right-click a row in the Library, Regions, Cues or Setlist list for the options of that PDF, region, cue or song.
 - Ctrl and Z in the Setlist tab: undo the last setlist change.
 - Drag the page with the mouse to move it.
 - Drag the bar on the right of the page to scroll.
 - Drag the thin line under the settings panel to change its height. Double-click it for a larger panel, or to go back to the default height.
 
-The keys work when the Chart Cue window is active. Click on it first.
+The keys work when the Chart Cue window is active, so click on it first.
 
-To turn pages when the Chart Cue window is not active (for example with a foot pedal, or a key while you work in REAPER), use the actions "Chart Cue - Next page", "Chart Cue - Previous page", "Chart Cue - Toggle performance mode" and "Chart Cue - Next song" (setlist). Open Settings > Control > "Shortcuts and external controls" and click "Assign..." next to an action, then press the key or move the control. A MIDI button, OSC or a control surface also works. They also work in lock mode.]==],
+Want to turn pages while the Chart Cue window is not active (for example with a foot pedal, or a key while you work in REAPER)? Use the actions "Chart Cue - Next page", "Chart Cue - Previous page", "Chart Cue - Toggle performance mode" and "Chart Cue - Next song" (setlist). Open Settings > Control > "Shortcuts and external controls", click "Assign..." next to an action, then press the key or move the control. A MIDI button, OSC or a control surface also works. They even work in lock mode.]==],
     more = [==[
-- The fit menu at the top has: Fit width, Fit height, Fit page and 100% (the real size of the page). Each PDF remembers its own fit and zoom (saved in the project).
+- The fit menu at the top has Fit width, Fit height, Fit page and 100% (the real size of the page). Each PDF remembers its own fit and zoom (saved in the project).
 - Click the page number ("3 / 12") in the toolbar to type a page number, then press Enter.
 - In performance mode, move the mouse to the top-right corner of the page for an exit button.
 - A horizontal mouse wheel or tilt wheel moves the page left and right when it is wider than the window.
-- There is no key to close Chart Cue, so it cannot close by mistake during a performance. Use the X of the window, run the Chart Cue action again, or close the project.]==] },
+- There is no key to close Chart Cue, so it cannot close by accident during a show. Use the X of the window, run the Chart Cue action again, or close the project.]==] },
 
   { title = "Problems and solutions", text = [==[
 - "No PDF open": open a PDF in the Library tab.
-- "Loading PDF" or "Preparing page" stays for a long time: wait a moment. Large PDFs need more time the first time. If nothing changes, click "Retry rendering" in the status bar.
+- "Loading PDF" or "Preparing page" takes a long time: give it a moment. Large PDFs need more time the first time. Still stuck? Click "Retry rendering" in the status bar.
 - A PDF name is red: the file was moved or renamed. Click "Relocate..." in the Library tab.
 - The page looks blurry: click "Match DPI to current view" in Settings > Appearance > Page quality (or "Change" to type a higher DPI).
 - The wrong PDF opens for a song: check the menu of that region in the Regions tab.
-- Chart Cue opens twice, or REAPER asks about a running script: use only one way to open Chart Cue automatically (Settings > General).
-- Nothing helps: change the PDF engine in Settings > Appearance > Page quality and try again.]==],
+- Chart Cue opens twice, or REAPER asks about a running script: use only 1 way to open Chart Cue automatically (Settings > General).
+- Nothing helps? Switch the PDF engine in Settings > Appearance > Page quality and try again.]==],
     more = [==[
 - Password-protected PDFs cannot be shown. Save a copy without a password.
 - "Marker warning" in the status bar: a PDFPAGE or PDFSCROLL marker has a wrong number. The message shows its name and time.
-- "Marker autoscroll is on but no PDFSCROLL or PDFPAGE markers were found": add markers, or choose another autoscroll mode.
-- PDFs on network drives or in online-only cloud folders can be slow or not found. Copy them into the project (Library tab).
-- To report a problem: turn on "Write diagnostic log" (Settings > General > Troubleshooting), repeat the problem, and copy the text from the REAPER console.]==] },
+- "Marker autoscroll is on but no PDFSCROLL or PDFPAGE markers were found": add markers, or pick another autoscroll mode.
+- PDFs on network drives or in online-only cloud folders can be slow or missing. Copy them into the project (Library tab).
+- To report a problem: turn on "Write diagnostic log" (Settings > General > Troubleshooting), make the problem happen again, and copy the text from the REAPER console.]==] },
 }
 
 HELP_TOPICS[#HELP_TOPICS + 1] = { title = "Remove Chart Cue", guide_only = true, text = [==[
-To remove Chart Cue completely from this computer:
+Want to remove Chart Cue completely from this computer? Here is how:
 
 1. Settings > General: turn off "Open automatically". This removes the 3 Chart Cue lines from __startup.lua.
-2. Close Chart Cue. In REAPER's Action List, find "Script: Chart Cue.lua", right-click it and choose "Remove".
-3. Delete the folder Data\Chart Cue in the REAPER resource folder (Options > Show REAPER resource path). It contains the settings, the page cache, the guide and the helper scripts.
+2. Close Chart Cue. In REAPER's Action List, find "Script: Chart Cue.lua", right-click it and pick "Remove".
+3. Delete the folder Data\Chart Cue in the REAPER resource folder (Options > Show REAPER resource path). It holds the settings, the page cache, the guide and the helper scripts.
 4. Delete the file Chart Cue.lua.]==],
   more = [==[
-- Your projects are not damaged. They only contain a small Chart Cue data section, which REAPER ignores without Chart Cue.
-- The PDFs folders next to your projects contain your own copies of the PDFs. Keep them or delete them, as you like.
+- Your projects are fine. They only hold a small Chart Cue data section, which REAPER ignores without Chart Cue.
+- The PDFs folders next to your projects hold your own copies of the PDFs. Keep them or delete them, as you like.
 - If Chart Cue changed __startup.lua, a backup of the earlier version is in Scripts\__startup.lua.chartcue-backup.]==] }
 
 

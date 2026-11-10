@@ -1,5 +1,5 @@
 -- @description MIDI Pilot: MIDI editor for amp modelers (Quad Cortex, Line 6 Helix / HX)
--- @version 1.2
+-- @version 1.3
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -7,9 +7,9 @@
 --   HX Stomp XL or HX Effects in REAPER: presets at the song starts, scenes (snapshots) by name, knob values in real
 --   units, nudges and ramps. The MIDI plays without the script. Requires: the free ReaImGui extension (ReaPack).
 -- @changelog
---   Lanes: Add LFO (Sine, Triangle, Square, Saw; the rate follows the tempo; the peaks can grow or shrink); LFOs, ramps and swells show as 1 row that you can move, copy and paste; collapsible sections.
---   A toolbar (device, previous / next song, Snap, Send state, Set up songs, Scene timelines, Export) and hideable tabs; Getting started; adds follow REAPER's Snap.
---   Preset list search and sort; Settings in 4 sections with Back up / Restore; Preset and Scene always written with a capital.
+--   Settings in the same order as Chart Cue: Look (Theme, Comfortable layout), Window (Reset window position), Backup (Reset all settings...); About at the end of Help.
+--   A right-click menu on the panel (Add Scene, Send state, Set up songs, Snap, toolbar, dock, close); compact spacing by default.
+--   A friendlier, easier Help.
 
 -- MIT License
 --
@@ -37,7 +37,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "MIDI Pilot"       -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.2"            -- keep equal to @version in the header
+CFG.VERSION = "1.3"            -- keep equal to @version in the header
 CFG.EXT = "MIDI Pilot"         -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DEFAULT_W, CFG.DEFAULT_H = 560, 640
@@ -53,8 +53,11 @@ CFG.LABEL_W = 190              -- the label column of the settings rows
 CFG.FORM_MAX_W = 280           -- the widest control column
 CFG.FORM_MIN_WIDE = 220        -- below the label column + this width, the labels go above their control
 CFG.CTRL_GAP = 8               -- between 2 controls side by side
-CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = 7, 8, 4 -- spacing (pixels; the same gaps as Chart Cue)
-CFG.SP_TITLE_BEFORE, CFG.SP_TITLE_AFTER = 12, 6
+-- Spacing (pixels): { comfortable, compact }, the same gaps as Chart Cue. Compact is the default; "Comfortable layout"
+-- (Settings > Appearance > Look) uses the first value (UI.apply_spacing sets CFG.SP_*).
+CFG.SP = { ROW = { 7, 4 }, EDGE = { 8, 4 }, PANEL = { 4, 2 }, TITLE_BEFORE = { 12, 6 }, TITLE_AFTER = { 6, 3 } }
+CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = 4, 4, 2
+CFG.SP_TITLE_BEFORE, CFG.SP_TITLE_AFTER = 6, 3
 CFG.ROW_H = 26
 CFG.TAB_H = 32                 -- the tab strip, as in Chart Cue
 CFG.TAB_GAP = 4
@@ -270,6 +273,7 @@ local S = {
   tb_hide = {},       -- the toolbar items that are hidden ({ [key] = true }, TB_ITEMS)
   tb_off = false,     -- Settings > Appearance > Toolbar > Show toolbar: off
   tab_hide = {},      -- Settings > Appearance > Tabs: the hidden tabs ({ [1..3] = true }; Settings and Help always show)
+  comfortable = false, -- Settings > Appearance > Look > Comfortable layout (compact is the default, as in Chart Cue)
 }
 
 ---------------------------------------------------------------------------
@@ -459,6 +463,7 @@ local function load_settings()
   S.tb_hide = {}
   for key in get("tb_hide"):gmatch("[%w_]+") do S.tb_hide[key] = true end
   S.tb_off = get("tb_off") == "1"
+  S.comfortable = get("comfortable") == "1"
   S.tab_hide = {}
   for v in get("tab_hide"):gmatch("%d+") do
     local ti = tonumber(v)
@@ -510,6 +515,7 @@ local function save_settings()
   for key in pairs(S.tb_hide) do th[#th + 1] = key end
   table.sort(th)
   if #th > 0 or r.HasExtState(CFG.EXT, "tb_hide") then r.SetExtState(CFG.EXT, "tb_hide", table.concat(th, " "), true) end
+  if S.comfortable or r.HasExtState(CFG.EXT, "comfortable") then r.SetExtState(CFG.EXT, "comfortable", S.comfortable and "1" or "0", true) end
   if S.tb_off or r.HasExtState(CFG.EXT, "tb_off") then r.SetExtState(CFG.EXT, "tb_off", S.tb_off and "1" or "0", true) end
   local hid = {}
   for ti = 1, 3 do if S.tab_hide[ti] then hid[#hid + 1] = tostring(ti) end end
@@ -3096,78 +3102,81 @@ for _, n in ipairs(PC_NOTES) do PC_NOTE_ITEMS = PC_NOTE_ITEMS .. n[2] .. "\0" en
 
 -- The Help: an introduction, then topics (one open at a time, as in Chart Cue). In a topic text: "# " starts a bold
 -- sub-heading, "- " a bullet, "1. " a numbered step; an empty line is a gap.
-local HELP_INTRO = "MIDI Pilot helps you prepare the MIDI for your amp modeler (Neural DSP Quad Cortex or Quad Cortex mini, "
-  .. "Line 6 Helix, HX Stomp, HX Stomp XL or HX Effects) in REAPER: Preset changes, Scene changes and pedal moves for "
-  .. "each song. It writes normal MIDI on the device's track. REAPER plays it; MIDI Pilot does not need to be open."
+local HELP_INTRO = "MIDI Pilot helps you get your amp modeler ready for the show: Preset changes, Scene changes "
+  .. "and pedal moves for each song. It works with the Neural DSP Quad Cortex and Quad Cortex mini, and the Line 6 Helix, "
+  .. "HX Stomp, HX Stomp XL and HX Effects. Everything it writes is normal MIDI on the device's track, so REAPER plays "
+  .. "it even when MIDI Pilot is closed."
 local HELP_TOPICS = {
   { title = "Getting started", text = [[
-1. Connect the unit by USB (or through a MIDI interface).
-2. Settings (the gear) > Add device. Choose your unit under "Connected", or choose a model and then its MIDI output. MIDI Pilot also adds a track for the device.
-3. Make 1 region for each song (Insert > Region from time selection). MIDI Pilot calls each region a song.
-4. Songs tab: choose the Preset of each song, then add the Scene changes.
-5. Songs > Set up songs: each song gets a Preset change and a first Scene, so playback can start at any song.
+1. Connect your unit by USB (or through a MIDI interface).
+2. Click the gear (Settings) > Add device. Pick your unit under "Connected", or pick a model and then its MIDI output. MIDI Pilot makes a track for it.
+3. Make 1 region for each song (Insert > Region from time selection). In MIDI Pilot, each region is a song.
+4. In the Songs tab, pick the Preset of each song, then add your Scene changes.
+5. Click Songs > Set up songs. Now every song has its Preset and a first Scene, so you can start playback at any song.
 
 # Good to know
-- Every change is 1 undo step: Ctrl+Z takes it back.
-- The Getting started list at the top of the Songs tab ticks these steps. Skip a step that you do not need; its X hides the list (Settings > General > Show Getting started brings it back).
-- REAPER's Snap on (the N key): every add at the edit cursor (values, ramps, LFOs, a paste, Scenes, Preset changes) goes to the nearest grid line.
-- The toolbar above the tabs: the device, the previous / next song, the song, Preset and Scene at the edit cursor, then Snap, Send state, Set up songs, Scene timelines and Export MIDI. Right-click an item to hide it, or the toolbar to hide all of it (Settings > Appearance > Toolbar shows it again).
-- Tabs that you do not use: right-click a tab > Hide this tab, or Settings > Appearance > Tabs. Settings and Help always show.
-- Hold the mouse on a control to see what it does.]] },
+- Every change is 1 undo step. Ctrl+Z takes it back.
+- The Getting started list at the top of the Songs tab ticks off these steps as you go. Do not need a step? Skip it. The X hides the list (Settings > General > Show Getting started brings it back).
+- Turn on REAPER's Snap (the N key), and everything you add at the edit cursor lands on the nearest grid line: values, ramps, LFOs, pastes, Scenes and Preset changes.
+- The toolbar above the tabs shows the device, previous / next song, the song, Preset and Scene at the edit cursor, then Snap, Send state, Set up songs, Scene timelines and Export MIDI. Right-click an item to hide it, or right-click the toolbar to hide all of it (Settings > Appearance > Toolbar brings it back).
+- Do not use a tab? Right-click it > Hide this tab, or use Settings > Appearance > Tabs. Settings and Help always stay.
+- Right-click an empty part of the panel for a quick menu: Add Scene at edit cursor, Send state, Set up songs, Snap, Show toolbar, Dock MIDI Pilot in Docker and Close MIDI Pilot.
+- Want more room between rows? Settings > Appearance > Look > Comfortable layout. Window off-screen? Settings > General > Window > Reset window position. Want a fresh start? Settings > General > Backup > Reset all settings... (your devices and names stay).
+- Not sure what a control does? Hold the mouse over it.]] },
   { title = "Songs and Presets", text = [[
-Each song row has a Preset dropdown. It writes a Preset change near the song start (the time is set in Settings > Editing > Preset settings > First Preset).
+Each song row has a Preset dropdown. Pick a Preset, and MIDI Pilot writes the Preset change near the start of the song (you set how near in Settings > Editing > Preset settings > First Preset).
 
-- A grey Preset: the song has no Preset change of its own, so the Preset of the song before keeps playing.
-- "Choose by number...": choose a Preset that has no name yet.
-- The triangle sends the Preset to the unit now, so you can hear it.
+- A grey Preset means the song has no Preset change of its own. The Preset of the song before just keeps playing.
+- "Choose by number..." picks a Preset that has no name yet.
+- The triangle sends the Preset to the unit right now, so you can hear it.
 - The red X removes the song's Preset change.
 
 # The buttons above the songs
-- Set up songs: each song that has no Preset change gets one (the Preset that already plays there), and each song that has no first Scene gets one. Then playback can start at any song.
+- Set up songs: every song without a Preset change gets one (the Preset that already plays there), and every song without a first Scene gets one. After that, playback can start at any song.
 - Tools > Show overview: all songs in 1 table, with their Preset, their Scenes in order and their Lanes values.
-- Tools > Presets from regions: a song gets the Preset whose number is in its name ("Song One [3B]") or whose name it has (Presets tab).
-- Tools > Presets from markers: a marker named "P 3B" or "P <Preset name>" gets a Preset change at its place.
+- Tools > Presets from regions: a song gets the Preset whose number is in its name ("Song One [3B]"), or whose name it has (Presets tab).
+- Tools > Presets from markers: a marker named "P 3B" or "P <Preset name>" gets a Preset change right there.
 - Tools > Markers from Scenes: adds a project marker with the Scene name at each Scene change.
-- 1 Preset for several songs: Ctrl+click the song names (Shift+click: a range), then choose the Preset in 1 of them.
+- Same Preset for several songs? Ctrl+click the song names (Shift+click for a range), then pick the Preset in 1 of them.
 - Tools > Scenes from markers: a marker with the name of a Scene gets that Scene change.
-- Tools > Merge repeated Scenes: removes a Scene change that selects the Scene that already plays (not a first Scene, not a Scene test or its end).
-- Tools > Export MIDI: saves the device's MIDI as a standard MIDI file, 1 file for the whole show or 1 file per song. A gradual tempo change (a tempo ramp) is saved as a sudden change, so events inside a ramp can move a little.
-- Clear: removes all Scene changes or all Preset changes of the device (asks first).]] },
+- Tools > Merge repeated Scenes: removes Scene changes that select the Scene that is already playing (never a first Scene, a Scene test or its end).
+- Tools > Export MIDI: saves the device's MIDI as a standard MIDI file, either 1 file for the whole show or 1 file per song. Heads up: a gradual tempo change (a tempo ramp) is saved as a sudden change, so events inside a ramp can shift a little.
+- Clear: removes all Scene changes or all Preset changes of the device. It asks first.]] },
   { title = "Scenes", text = [[
 The coloured timeline under a song shows its Scenes from start to end. Each block is 1 Scene, with the name it has in the Preset that plays there.
-- Click a block: the edit cursor goes there.
-- Double-click a block: REAPER's MIDI editor opens at that place.
-- Right-click a block: change or remove that Scene change.
+- Click a block to move the edit cursor there.
+- Double-click a block to open REAPER's MIDI editor at that spot.
+- Right-click a block to change or remove that Scene change.
 
 # The Scene list
 Click the arrow next to the song number to open the list of its Scene changes.
 - Position and Time: type a new value to move the Scene change.
-- The 2 triangles (Nudge): move it a little earlier or later.
+- The 2 triangles (Nudge) move it a little earlier or later.
 - The first row is the song's first Scene. It always stays at the song start.
 - The row at the edit cursor has a blue bar.
 
 # The last row of the list
-- Song (the 2 triangles): move all Scene changes and pedal values of the song a little earlier or later.
-- Add Scene at edit cursor: add a Scene change exactly at REAPER's edit cursor. Faster: the keys 1-8 (Settings > Editing > Scene settings). This list also has "Scene test" and "Preset change...".
-- Preset change...: add a second Preset inside the song. It gets its own row and a white line on the timeline.
-- Clear Scenes: remove all Scene changes of this song.
+- Song (the 2 triangles): moves all Scene changes and pedal values of the song a little earlier or later.
+- Add Scene at edit cursor: adds a Scene change exactly at REAPER's edit cursor. Even faster: the keys 1-8 (Settings > Editing > Scene settings). This list also has "Scene test" and "Preset change...".
+- Preset change...: adds a second Preset inside the song. It gets its own row and a white line on the timeline.
+- Clear Scenes: removes all Scene changes of this song.
 
 # Good to know
-- Name your Scenes and choose their colours in the Presets tab (the Scenes icon of a Preset).
-- The block that plays now is in full colour.
-- Settings > Appearance > Scene timelines: turn the timelines off for a shorter song list.]] },
+- Name your Scenes and pick their colours in the Presets tab (the Scenes icon of a Preset).
+- The block that is playing now is in full colour.
+- Want a shorter song list? Turn the timelines off in Settings > Appearance > Scene timelines.]] },
   { title = "Scene test", text = [[
-"Scene test" (in the Add Scene list) plays every Scene of the unit, 1 after the other and back to the first, 2 beats each, from the edit cursor. Use it to listen to all the Scenes of a Preset.
+Want to hear all the Scenes of a Preset? Use "Scene test" (in the Add Scene list). From the edit cursor, it plays every Scene of the unit, 1 after the other, 2 beats each, and then goes back to the first.
 
-- It shows as 1 block and 1 row. Type a new position to move it; its red X removes it.
-- At its end, the Scene from before the test comes back (a normal Scene change: change or remove it as any other).
-- The status bar reminds you of a Scene test that is still in a song. "Ignore" stops the reminder for that song.]] },
+- It shows as 1 block and 1 row. Type a new position to move it. Its red X removes it.
+- When it ends, the Scene from before the test comes back. That is a normal Scene change, so you can change or remove it like any other.
+- Forgot to remove a Scene test? The status bar reminds you. Click "Ignore" to stop the reminder for that song.]] },
   { title = "Lanes: pedals and other controls", text = [[
-Lanes writes pedal moves and other control changes in the song at the edit cursor (or in all songs).
+Lanes writes pedal moves and other control changes into the song at the edit cursor (or into all songs).
 
 # Quad Cortex
 - Expression 1 and 2 are the unit's 2 pedals. A value is the pedal position: 0% (heel) to 100% (toe).
-- What a pedal moves is different in each Preset. In the Presets tab, the pedal icon of a Preset lists the parameters and their range, as on the unit (for example Hi Pass 0-55%). A value row then shows the result, for example "-> Hi Pass 22%".
+- What a pedal moves is different in each Preset. In the Presets tab, the pedal icon of a Preset lists its parameters and their range, just as on the unit (for example Hi Pass 0-55%). A value row then shows what you get, for example "-> Hi Pass 22%".
 - The Control list also has the unit's other MIDI functions: the footswitches, Tap tempo, Tuner, Gig View and Mode.
 
 # Line 6
@@ -3175,57 +3184,57 @@ Lanes writes pedal moves and other control changes in the song at the edit curso
 
 # The values
 - Position and Time: type a new value to move it. The 2 triangles move it a little.
-- Slope: how the value moves to the next value (Jump changes at once; the others move smoothly).
-- A blue dot in the Control list: that control has values in this song.
+- Slope: how the value gets to the next value. Jump changes at once; the others move smoothly.
+- A blue dot in the Control list means that control has values in this song.
 
-# Add
-- Click a section title (the triangle) to close or open it. MIDI Pilot remembers the open sections on this computer.
+# Adding things
+- Click a section title (the triangle) to open or close it. MIDI Pilot remembers which sections are open on this computer.
 - Add value: the control jumps to that value at the edit cursor.
-- Add ramp: the value moves from one value to another over a length (beats, bars, or to the end of the time selection).
+- Add ramp: the value moves from one value to another over a length (beats, bars, or up to the end of the time selection).
 - Swell: a ramp up, a hold, and a ramp back down.
-- In the Values list, an LFO, a swell or a ramp is 1 row. Click its name to see its values. Its position and nudge move all of it, the red X removes all of it, and the copy icon copies it: "Paste at edit cursor" then shows under the values (also for another control).
-- Add LFO: the value moves between a low and a high value, again and again (Sine, Triangle, Square, Saw up, Saw down), at a rate that follows the tempo. Peaks: the peaks can grow or shrink step by step.]] },
+- Add LFO: the value moves between a low and a high value, again and again (Sine, Triangle, Square, Saw up, Saw down), at a rate that follows the tempo. Peaks: the peaks can grow or shrink step by step.
+- In the Values list, an LFO, a swell or a ramp is just 1 row. Click its name to see its values. Its position and nudge move all of it, the red X removes all of it, and the copy icon copies it. "Paste at edit cursor" then shows under the values (it also works for another control).]] },
   { title = "Nudge and latency", text = [[
 # Nudge
-The 2 triangles of a row move a change a little earlier (left) or later (right). Set the amount in Settings > Editing > Nudge.
+The 2 triangles of a row move a change a little earlier (left) or later (right). Set how far in Settings > Editing > Nudge.
 
 # Latency
-If your unit reacts late, enter its delay in Settings > Devices > Latency. REAPER then sends the device's MIDI that much earlier, so the change happens on the beat.]] },
+Does your unit react a bit late? Enter its delay in Settings > Devices > Latency. REAPER then sends the device's MIDI that much earlier, so the change lands on the beat.]] },
   { title = "Status bar", text = [[
-- Line 1: the device and its MIDI output (green READY or red NOT AVAILABLE), and the song, Preset and Scene at the edit cursor. "Send state" sends that Preset, Scene and pedal values to the unit now. If the output is not available, "Reset MIDI" restarts REAPER's MIDI devices.
+- Line 1: the device and its MIDI output (green READY or red NOT AVAILABLE), and the song, Preset and Scene at the edit cursor. "Send state" sends that Preset, Scene and the pedal values to the unit right now. Output not available? "Reset MIDI" restarts REAPER's MIDI devices.
 - Line 2: a message after an action, or a hint (for example songs without a first Scene).]] },
   { title = "Presets tab", text = [[
-Give your Presets names (for example 3B = Song One). The Songs tab then shows the names. The names are saved on this computer and work in all projects.
+Give your Presets names (for example 3B = Song One), and the Songs tab shows the names instead of numbers. The names are saved on this computer, so they work in all your projects.
 
-- Add Preset: choose the folder, the bank and the Preset, type the name and click Add.
-- Above the Preset list: a search field (a name, a number such as 3B, or a folder) and the Sort menu (Number, Name, Used first).
-- In the list: click a name to change it.
-- Scenes icon: name the 8 Scenes of the Preset and choose their colours.
+- Add Preset: pick the folder, the bank and the Preset, type the name and click Add.
+- Looking for a Preset? Use the search field above the list (a name, a number such as 3B, or a folder) and the Sort menu (Number, Name, Used first).
+- Click a name in the list to change it.
+- Scenes icon: name the 8 Scenes of the Preset and pick their colours.
 - Pedal icon (Quad Cortex): what the 2 expression pedals move in this Preset.
 - Pencil icon: move the name to another folder, bank or Preset.]] },
   { title = "Devices and tracks", text = [[
 Add 1 device for each unit (Settings > Devices). Each device writes on its own track.
 
-- Name: for example Guitar. The track is called "MIDI Guitar". If you rename the track in REAPER, the device gets that name too.
-- MIDI output and MIDI channel: must match the unit's MIDI settings.
-- Create track / Use selected track: give the device a new track, or use a track that you have.
-- New MIDI items (Settings > Devices): when you paste or record a MIDI item on a device's track, MIDI Pilot sets it to the device's channel and adds a first Scene to each song in it.
+- Name: for example Guitar. The track is then called "MIDI Guitar". Rename the track in REAPER, and the device follows.
+- MIDI output and MIDI channel: these must match the unit's MIDI settings.
+- Create track / Use selected track: give the device a new track, or use one you already have.
+- New MIDI items (Settings > Devices): paste or record a MIDI item on a device's track, and MIDI Pilot sets it to the device's channel and adds a first Scene to each song in it.
 
-# Line 6 units (not tested on a unit)
-- A Scene is called a snapshot: Helix 8, HX Stomp 3, HX Stomp XL and HX Effects 4.
-- Preset numbers: show them as the unit does, 01A or 000.]] },
+# Line 6 units (not tested on a unit yet)
+- Line 6 calls a Scene a snapshot: Helix has 8, HX Stomp 3, HX Stomp XL and HX Effects 4.
+- Preset numbers: show them the way your unit does, 01A or 000.]] },
   { title = "Settings and the bank file", text = [[
-- Preset settings (Playback): when the first Preset of a song comes ("Before the song start", 250 ms, gives the unit time to load it), and where an added Preset goes (exactly at the edit cursor, before or after it).
+- Preset settings (Playback): when the first Preset of a song comes ("Before the song start", 250 ms, gives the unit time to load it), and where an added Preset goes (exactly at the edit cursor, before it or after it).
 - Scene settings (Playback): where Set up songs puts the first Scene (at the region start, before or after it, or after the region's Preset), where an added Scene goes, and the Scene keys. A note value keeps the changes on the grid.
 - Nudge (Playback): how far the nudge triangles move a change.
 - Appearance: the theme (Dark or Light), the Scene timelines under the songs (on or off), and how many rows a list shows before it scrolls.
 
 # Preset names in REAPER
-MIDI Pilot writes your Preset names into a bank file (Settings > General). Load it in ReaControlMIDI on the device's track (Bank/Program Select > Load File) to see the names in REAPER's MIDI editor.]] },
-  { title = "What is saved where", text = [[
+Want to see your Preset names in REAPER's MIDI editor too? MIDI Pilot writes them into a bank file (Settings > General). Load it in ReaControlMIDI on the device's track (Bank/Program Select > Load File).]] },
+  { title = "Where your stuff is saved", text = [[
 - On this computer: the devices, the Preset, folder and Scene names, the pedal assignments, the controls and the settings.
 - In the project: which track belongs to which device, the track mode, the export folder and the Scene test reminders that you ignored.
-- The MIDI itself is on the device tracks.]] },
+- The MIDI itself lives on the device tracks.]] },
 }
 
 function UI.tip(text)
@@ -3253,6 +3262,16 @@ local STYLE_VARS = {
   { "FrameBorderSize", 0 },
 }
 for _, v in ipairs(STYLE_VARS) do v[1] = ImGui["StyleVar_" .. v[1]]() end
+-- Compact or comfortable spacing (S.comfortable): the gaps and the ImGui item spacing and window padding.
+function UI.apply_spacing()
+  local k = S.comfortable and 1 or 2
+  CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = CFG.SP.ROW[k], CFG.SP.EDGE[k], CFG.SP.PANEL[k]
+  CFG.SP_TITLE_BEFORE, CFG.SP_TITLE_AFTER = CFG.SP.TITLE_BEFORE[k], CFG.SP.TITLE_AFTER[k]
+  for _, v in ipairs(STYLE_VARS) do
+    if v[1] == ImGui.StyleVar_ItemSpacing() then v[3] = CFG.SP_ROW
+    elseif v[1] == ImGui.StyleVar_WindowPadding() then v[3] = CFG.SP_EDGE end
+  end
+end
 function UI.push_style()
   for _, c in ipairs(STYLE_COLS) do ImGui.PushStyleColor(ctx, c[1], COL[c[2]]) end
   for _, v in ipairs(STYLE_VARS) do
@@ -6533,7 +6552,7 @@ for _, it in ipairs(TB_ITEMS) do TB_NAME[it[1]] = it[2] end
 -- Settings > Appearance: the theme, the scene strips, after how many rows a list scrolls.
 function UI.set_appearance()
   local ch, cw, _
-  UI.heading("Look", "Theme: Dark (the default) or Light.\nScene timelines: the coloured timeline of Scenes under each song "
+  UI.heading("Look", "Theme: Dark (the default) or Light.\nComfortable layout: more empty space (compact is the default).\nScene timelines: the coloured timeline of Scenes under each song "
     .. "(Songs tab). Off: a shorter song list; the Scene lists stay.\n\nSaved on this computer.")
   _, cw = UI.row_start("Theme")
   ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
@@ -6541,25 +6560,15 @@ function UI.set_appearance()
   ch, thi = ImGui.Combo(ctx, "##theme", S.theme == "light" and 1 or 0, "Dark\0Light\0")
   if ch then S.theme = (thi == 1) and "light" or "dark"; apply_theme(S.theme); Util.mark_sdirty() end
   UI.tip("Dark: for dark rooms. Light: for daylight.")
+  local cch
+  cch, S.comfortable = UI.checkbox("Comfortable layout", S.comfortable,
+    "On: more empty space between rows and sections. Off: compact (the default). The controls keep their size.")
+  if cch then UI.apply_spacing(); Util.mark_sdirty() end
   local sch
   sch, S.show_strip = UI.checkbox("Scene timelines", S.show_strip,
     "On: the coloured timeline of Scenes under each song (Songs tab). Off: a shorter song list.")
   if sch then Util.mark_sdirty() end
 
-  UI.heading("List sizes", "How many rows a list shows before it scrolls (Scene lists in Songs, value lists in Lanes).\n\n"
-    .. "Saved on this computer.")
-  _, cw = UI.row_start("Scene rows")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
-  local sr
-  ch, sr = UI.input_int("##srows", S.scene_rows, 1)
-  if ch then S.scene_rows = Util.clamp(sr, 3, 100); Util.mark_sdirty() end
-  UI.tip("A song's Scene list scrolls after this many rows (3-100).")
-  _, cw = UI.row_start("Value rows")
-  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
-  local lr
-  ch, lr = UI.input_int("##lrows", S.lane_rows, 1)
-  if ch then S.lane_rows = Util.clamp(lr, 3, 100); Util.mark_sdirty() end
-  UI.tip("A song's values in Lanes scroll after this many rows (3-100).")
 
   UI.heading("Tabs", "Hide the tabs that you do not use. Settings and Help always show. A right-click on a tab "
     .. "also hides it.\n\nSaved on this computer.")
@@ -6579,6 +6588,21 @@ function UI.set_appearance()
     if tch then S.tb_hide[it[1]] = (not tv) or nil; Util.mark_sdirty() end
   end
   ImGui.EndDisabled(ctx)
+
+  UI.heading("List sizes", "How many rows a list shows before it scrolls (Scene lists in Songs, value lists in Lanes).\n\n"
+    .. "Saved on this computer.")
+  _, cw = UI.row_start("Scene rows")
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
+  local sr
+  ch, sr = UI.input_int("##srows", S.scene_rows, 1)
+  if ch then S.scene_rows = Util.clamp(sr, 3, 100); Util.mark_sdirty() end
+  UI.tip("A song's Scene list scrolls after this many rows (3-100).")
+  _, cw = UI.row_start("Value rows")
+  ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
+  local lr
+  ch, lr = UI.input_int("##lrows", S.lane_rows, 1)
+  if ch then S.lane_rows = Util.clamp(lr, 3, 100); Util.mark_sdirty() end
+  UI.tip("A song's values in Lanes scroll after this many rows (3-100).")
 end
 -- Settings > General: the preset names file, the docker, the version.
 function UI.set_general()
@@ -6597,7 +6621,8 @@ function UI.set_general()
   if UI.button("Make it now", ghalf) then Preset.write_reabank() end
   UI.tip("Write the file again now.")
   UI.heading("Window", "Dock in docker: MIDI Pilot in a REAPER docker, or a floating window.\nShow Getting started: the "
-    .. "list of first steps at the top of the Songs tab.\n\nSaved on this computer.")
+    .. "list of first steps at the top of the Songs tab.\nReset window position: the default size and place, undocked "
+    .. "(for example when the window is off-screen).\n\nSaved on this computer.")
   local docked = R.docked == true
   if UI.checkbox("Dock in docker", docked, "On: MIDI Pilot is in a REAPER docker. Off: a floating window.") then
     R.dock_req = docked and 0 or (S.dock ~= 0 and S.dock or -1)
@@ -6608,10 +6633,14 @@ function UI.set_general()
     if not S.start_hide then S.start_skip = {} end
     Util.mark_sdirty()
   end
+  local wx, wcw = UI.form(nil)
+  ImGui.SetCursorPosX(ctx, wx)
+  if UI.button("Reset window position", UI.fit_w(wcw)) then R.reset_win = true; UI.toast("Window position reset.") end
+  UI.tip("Moves the window back to its default size and place, and undocks it.")
   UI.heading("Backup", "Back up...: every MIDI Pilot setting of this computer in 1 file (its name has the date and time): the devices, the Preset, "
     .. "folder and Scene names, the Scene colours, the pedal assignments, the controls and the options. The file goes "
     .. "into REAPER's Data\\MIDI Pilot folder.\nRestore...: choose a backup file; it replaces all MIDI Pilot settings of "
-    .. "this computer.\n\nThe projects do not change.")
+    .. "this computer.\nReset all settings...: the options go back to the defaults; your devices and names stay.\n\nThe projects do not change.")
   UI.row_start("Backup folder")
   UI.row_text(UI.trunc(Util.backup_dir(), math.max(60, ImGui.GetContentRegionAvail(ctx) - 10)), COL.TEXT_DIM)
   UI.tip(Util.backup_dir())
@@ -6636,8 +6665,15 @@ function UI.set_general()
     end
   end
   UI.tip("Load a backup file. It asks before it replaces anything.")
-  UI.vgap(8)
-  ImGui.TextColored(ctx, COL.TEXT_DIM, "MIDI Pilot " .. CFG.VERSION .. "  -  MIT license")
+  ImGui.SetCursorPosX(ctx, bx)
+  if UI.button("Reset all settings...", UI.fit_w(bcw), nil, "danger") then
+    UI.ask("Reset all MIDI Pilot settings on this computer to the defaults?\nYour devices, Preset, folder and Scene names, "
+      .. "pedal assignments and controls stay. Back up... first to keep the settings.", "Reset", function()
+      Util.reset_settings()
+      UI.toast("All settings are back to the defaults.")
+    end)
+  end
+  UI.tip("Sets the options of this computer back to the defaults. Your devices and names stay.")
 end
 
 -- The Settings tab: 1 section open at a time (as in Chart Cue); a click on a section closes the open one. The open
@@ -6686,6 +6722,10 @@ function UI.help_text(text)
   end
 end
 
+function UI.draw_help_about()
+  UI.heading("About")
+  ImGui.TextColored(ctx, COL.TEXT_DIM, "MIDI Pilot " .. CFG.VERSION .. "  -  MIT license  -  by Nick Gkogkomitros")
+end
 function UI.draw_help_tab()
   UI.heading("Help")
   UI.note(HELP_INTRO, COL.TEXT_MAIN)
@@ -6702,6 +6742,7 @@ function UI.draw_help_tab()
       UI.vgap(8)
     end
   end
+  UI.draw_help_about()
 end
 
 -- The window: the tab strip and the panel of the open tab (a rounded area that scrolls).
@@ -7042,6 +7083,45 @@ function UI.draw_toolbar()
   end
   UI.vgap(4)
 end
+-- The right-click menu of the panel (as Chart Cue's): the most used actions.
+function UI.draw_panel_menu()
+  if R.panel_menu then ImGui.OpenPopup(ctx, "##panelmenu"); R.panel_menu = nil end
+  if not ImGui.BeginPopup(ctx, "##panelmenu") then return end
+  local d = S.devices[Util.clamp(R.cur_dev or 1, 1, math.max(1, #S.devices))]
+  local tc = Util.add_pos()
+  local rg = Midi.song_at(tc)
+  local ok = d and Dev.track(d) and rg
+  if ImGui.BeginMenu(ctx, "Add Scene at edit cursor", ok and true or false) then
+    local pc = Midi.preset_at(d, rg, tc)
+    for v = 0, Midi.nsc(d) - 1 do
+      local nm = Preset.scene_name(d, pc and pc.folder, pc and pc.index or 0, v)
+      if ImGui.MenuItem(ctx, nm .. "##pm" .. v) then
+        local ts = Midi.other_time("sc", tc)
+        Midi.add_scene(d, ts, v)
+        UI.toast(nm .. " at " .. Util.fmt_beats(ts) .. ".")
+      end
+    end
+    ImGui.EndMenu(ctx)
+  end
+  if ImGui.MenuItem(ctx, "Send state", nil, false, d ~= nil) then
+    if Midi.send_state(d, tc) then UI.toast(d.name .. ": the Preset, Scene and control values at " .. Util.fmt_beats(tc) .. " were sent.")
+    else UI.toast(d.name .. ": the MIDI output is not available.", true) end
+  end
+  if ImGui.MenuItem(ctx, "Set up songs", nil, false, (d and Dev.track(d)) and true or false) then
+    local n = Midi.fill_starts(d)
+    R.status = nil
+    UI.toast(n == 0 and "Every song has its Preset and start Scene." or string.format("%d change(s) added.", n))
+  end
+  ImGui.Separator(ctx)
+  if ImGui.MenuItem(ctx, "Snap", nil, r.GetToggleCommandState(1157) == 1) then r.Main_OnCommand(1157, 0) end
+  if ImGui.MenuItem(ctx, "Show toolbar", nil, not S.tb_off) then S.tb_off = not S.tb_off; Util.mark_sdirty() end
+  if ImGui.MenuItem(ctx, "Dock MIDI Pilot in Docker", nil, R.docked == true) then
+    R.dock_req = R.docked and 0 or (S.dock ~= 0 and S.dock or -1)
+  end
+  ImGui.Separator(ctx)
+  if ImGui.MenuItem(ctx, "Close MIDI Pilot") then R.close = true end
+  ImGui.EndPopup(ctx)
+end
 function UI.draw_main()
   R.dev_head = nil
   UI.scene_keys()
@@ -7064,8 +7144,11 @@ function UI.draw_main()
     else UI.draw_help_tab() end
     ImGui.Unindent(ctx, 10)
     ImGui.Dummy(ctx, 0, CFG.SP_PANEL)
+    if ImGui.IsMouseClicked(ctx, 1) and not ImGui.IsAnyItemHovered(ctx)
+      and ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_ChildWindows()) then R.panel_menu = true end
     ImGui.EndChild(ctx)
   end
+  UI.draw_panel_menu()
   UI.draw_export()
   UI.draw_status(status_y)
 end
@@ -7130,7 +7213,11 @@ local function loop()
   R.frames = R.frames + 1
   Project.update()
   Midi.run_send_q()
-  ImGui.SetNextWindowSize(ctx, CFG.DEFAULT_W, CFG.DEFAULT_H, ImGui.Cond_FirstUseEver())
+  ImGui.SetNextWindowSize(ctx, CFG.DEFAULT_W, CFG.DEFAULT_H, R.reset_win and ImGui.Cond_Always() or ImGui.Cond_FirstUseEver())
+  if R.reset_win then -- Settings > General > Window > Reset window position: undocked, default size, near the top left
+    ImGui.SetNextWindowPos(ctx, 100, 100, ImGui.Cond_Always())
+    R.dock_req, R.reset_win = 0, nil
+  end
   if R.dock_req then ImGui.SetNextWindowDockID(ctx, R.dock_req); R.dock_req = nil end
   UI.pre_begin()
   ImGui.PushFont(ctx, font)
@@ -7143,6 +7230,7 @@ local function loop()
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive(), COL.ACCENT_ACTIVE)
   end
   local visible, open = ImGui.Begin(ctx, CFG.TITLE, true, ImGui.WindowFlags_NoResize())
+  if R.close then open = false end -- (the panel menu: Close MIDI Pilot)
   if tri > 0 then ImGui.PopStyleColor(ctx, tri) end
   -- ReaImGui rule: call End() ONLY when Begin() returned true (false: an inactive dock tab or collapsed)
   if visible then
@@ -7211,6 +7299,21 @@ local function settings_keys()
   r.SetExtState = set
   return keys
 end
+-- Settings > General > Backup > Reset all settings: the options back to the defaults (the devices and the names,
+-- pedal assignments and controls stay: devices, lib_, fold_, scn_, exp_, knb_).
+function Util.reset_settings()
+  for _, k in ipairs(settings_keys()) do
+    if k ~= "devices" and not k:match("^devices") and not k:match("^lib_") and not k:match("^fold_")
+      and not k:match("^scn_") and not k:match("^exp_") and not k:match("^knb_") then r.DeleteExtState(CFG.EXT, k, true) end
+  end
+  local keep = { devices = S.devices, lib = S.lib, fnames = S.fnames, snames = S.snames, knobs = S.knobs, expr = S.expr }
+  load_settings()
+  for k, v in pairs(keep) do S[k] = v end
+  apply_theme(S.theme)
+  UI.apply_spacing()
+  R.status, R.plist = nil, nil
+  R.sdirty = true
+end
 function Util.restore(path)
   local f = io.open(path, "r")
   if not f then return nil, "The file cannot be read." end
@@ -7224,12 +7327,14 @@ function Util.restore(path)
   f:close()
   load_settings()
   apply_theme(S.theme)
+  UI.apply_spacing()
   R.conflicts, R.status, R.pick_cache, R.plist, R.fitems, R.expr_txt = nil, nil, nil, nil, nil, nil
   R.bank_dirty = true
   R.pcs = {}
   return true
 end
 load_settings()
+UI.apply_spacing()
 apply_theme(S.theme)
 Dev.read_ports()
 if not r.file_exists(Preset.reabank_path()) then Preset.write_reabank() end
