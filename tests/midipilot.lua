@@ -157,6 +157,20 @@ test("library: saved and read; the .reabank file has the names", function()
   ok(txt:find("Bank 0 1 Guitar - My Presets (1-128)", 1, true), "bank of folder 1")
   ok(txt:find("\n9 2B Song One\n", 1, true), "program line")
   ok(txt:find("Bank 1 2 Guitar - User 1 (129-256)", 1, true), "group 2 of folder 2")
+  -- the Preset list: search (name, number, folder) and sort (Number, Name)
+  Preset.set_name(d, 1, 3, "Zebra"); Preset.set_name(d, 1, 1, "apple")
+  local ks, keepq = S.preset_sort, R.psearch
+  S.preset_sort, R.psearch = 0, ""
+  local keys, total = Preset.list_view(d, S.lib.L1)
+  eq(total, 4); eq(table.concat(keys, ","), "1:1,1:3,1:9,2:130", "by number")
+  S.preset_sort = 1
+  eq(table.concat((Preset.list_view(d, S.lib.L1)), ","), "1:1,2:130,1:9,1:3", "by name, A-Z")
+  R.psearch = "zeb"; eq(table.concat((Preset.list_view(d, S.lib.L1)), ","), "1:3", "search: a name")
+  R.psearch = "2B"; eq(table.concat((Preset.list_view(d, S.lib.L1)), ","), "1:9", "search: a number")
+  R.psearch = "user"; eq(table.concat((Preset.list_view(d, S.lib.L1)), ","), "2:130", "search: a folder")
+  Preset.set_name(d, 1, 3, "Aaa"); R.psearch = ""
+  eq((Preset.list_view(d, S.lib.L1))[1], "1:3", "a renamed Preset: sorted again")
+  S.preset_sort, R.psearch = ks, keepq
   Preset.set_name(d, 1, 9, ""); eq(Preset.name(d, 1, 9), nil, "removed")
   S.devices, S.lib = keep, keepl
 end)

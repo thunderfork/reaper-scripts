@@ -30,12 +30,8 @@
   (tags segue-vX.Y, midipilot-vX.Y).
 
 ## Session handoff (10 November 2026)
-- State: MIDI Pilot Lanes work is done, deployed, tested by the user in REAPER and reviewed (debug time), but NOT
-  committed: collapsible Lanes sections (saved: ExtState `lanes_open`), Add value / Add ramp / Add LFO (shapes with
-  icons, rate in note values, Start / end, Peaks Same / Grow / Shrink), LFO / swell / ramp shown as 1 row in Values
-  (found by pattern; move, nudge, remove, copy; paste bar under the values), the edit cursor goes to the end after
-  an add or a paste, slope icons, double-click resets a Curve bend. Tests in tests\midipilot.lua.
-- Next decision: release it as MIDI Pilot 1.2.
+- State: MIDI Pilot 1.2 is released (committed and pushed); everything in it was tested by the user in REAPER.
+- Next decision: none pending.
 
 ## Session handoff (9 November 2026)
 - State: everything is committed and pushed; MIDI Pilot 1.1 is released. All MIDI Pilot changes were tested by the
@@ -48,6 +44,13 @@
 - Workflow (9 November 2026): quiet tools, tools\known-warnings.txt, tools\docs-check.ps1 (run by check.ps1), the
   visible-change gate and short reports in CLAUDE.md, reworked skills.
 - Next decision: none pending; MIDI Pilot version 2 ideas are in the MIDI Pilot section.
+
+## Released on 10 November 2026: MIDI Pilot 1.2
+- Lanes: Add LFO (shapes with icons, rate in note values, Start / end, Peaks grow / shrink); LFO / swell / ramp as 1
+  row (found by pattern; move, nudge, remove, copy and paste); collapsible sections; slope icons; bend reset.
+- Toolbar (hideable items, Show toolbar), hideable tabs, Getting started, adds follow REAPER's Snap, Preset list
+  search and sort, Settings in 4 sections (Devices, Editing, Appearance, General) with Back up / Restore, Preset and
+  Scene capitalised in every visible text. Two debug-time rounds.
 
 ## Released on 9 November 2026: MIDI Pilot 1.1
 - Faster input (9 November 2026): Scene keys (1-8 add a scene at the edit cursor; Settings > Playback; on by
@@ -164,7 +167,7 @@
   (controls in real units, nearest CC value, slope between values, all songs).
 - Done (6 November 2026): scene edits are exact (no gap, no automatic start scene or merge; "Fill songs" and a
   "Merge repeated scenes" button); Scene test; new MIDI items are checked (channel, a scene at each song start;
-  Settings > Tracks > Check new MIDI items); only the MIDI that REAPER plays is read; the status bar.
+  Settings > Devices > Check new MIDI items); only the MIDI that REAPER plays is read; the status bar.
 - Step 5 done (6 November 2026): latency = the track's playback offset; nudge buttons (rows, songs; Settings > Playback > Nudge).
 - Step 6 done (7 November 2026): ramps in Lanes (from / to, length in beats, bars or to the time selection end, slope).
 - Layout (7 November 2026): scene list and Lanes rows with column labels, icons (send, nudge, - +), editable

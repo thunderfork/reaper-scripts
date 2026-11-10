@@ -111,6 +111,9 @@ MIDI Pilot helps you prepare the MIDI for your amp modeler in REAPER: a Neural D
 - **Lanes:** the 2 expression pedals of the Quad Cortex as pedal positions, with what they move in each preset; the unit's footswitches, tuner, tap tempo, Gig View and mode; ramps, swells and LFOs (Sine, Triangle, Square, Saw; the rate follows the tempo; the peaks can grow or shrink), each shown as 1 row that you can move, remove, copy and paste. Line 6: your own CCs in real units.
 - **Set up songs:** each song gets its preset and first scene, so playback can start at any song.
 - **Show overview** of all songs, and **Export MIDI**: 1 standard MIDI file for the show, or 1 per song.
+- **Getting started:** a list of the first steps, ticked when each one is done.
+- **Toolbar:** the device, previous / next song, the song, Preset and Scene at the cursor, Snap, Send state, Set up songs, Scene timelines and Export; hide any item, any tab or the whole toolbar.
+- Adds follow REAPER's Snap. A search field and a sort menu for the Preset list. Back up and restore all settings in 1 file.
 - Nudge, latency, a status bar, Light / Dark theme.
 - Needs ReaImGui 0.9.3 or newer. It uses only REAPER and ReaImGui. Tested with a Quad Cortex mini.
 

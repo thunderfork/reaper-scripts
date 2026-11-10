@@ -20,7 +20,7 @@ Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are untested). No relation
 - `MODELS`: the device profiles (presets, folders, msb, scene CC and count, reserved CCs, the Quad Cortex
   functions for Lanes). `S` (this computer, ExtState "MIDI Pilot"): the devices (1 line each, with the preset
   number format), the preset / folder / scene names, the expression pedal assignments (`exp_<device>`), the controls
-  (`knb_<device>`), the settings (also `lanes_open`: the open Lanes sections). The LFO, swell and ramp groups of
+  (`knb_<device>`), the settings (also `lanes_open`: the open Lanes sections; `start_skip` / `start_hide`: the Getting started list; `preset_sort`: the Preset list sort; `tb_hide`, `tb_off`: the toolbar; `tab_hide`: the hidden tabs). The LFO, swell and ramp groups of
   the Values list are found by their pattern (`Midi.find_groups`, like the Scene test): nothing is saved for them. Multi-line values go through `Util.ext_set` / `Util.ext_get` (REAPER keeps only
   the first line of a value). `P` (ProjExtState "MIDI Pilot"/"cfg"): the device tracks, the track mode, the export
   folder, the ignored Scene tests.
