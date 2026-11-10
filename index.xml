@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Thunderfork Scripts" commit="f5c157d99316bbc40805f298202631e1e76f9083">
+<index version="1" name="Thunderfork Scripts" commit="9c2a504b5cb2750f168cb4827915bee28228ab39">
   <category name="Chart Cue">
     <reapack name="Chart Cue.lua" type="script" desc="Chart Cue: Open PDF Viewer">
       <metadata>
@@ -112,6 +112,29 @@ A friendlier, easier Help.]]></changelog>
       </version>
     </reapack>
   </category>
+  <category name="FX Link">
+    <reapack name="FX Link.lua" type="script" desc="FX Link: link plugin instances across tracks">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 FX Link - move a knob in one plugin, and the same knob moves in the other plugins of its link group. Put instances of the same plugin (for example FabFilter Pro-Q 3 on 4 guitar tracks) in a group. Exact: all instances get the same value. Relative: all instances get the same change. Link all parameters or only the ones you pick (Learn, or a list with search). Match, Link bypass, Show / Hide plugins, Add all in project. The groups are saved in the project. The links work while the FX Link window is open (docked or floating); it can open and close by itself. Requires: the free ReaImGui extension (ReaPack).\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0" author="Nick Gkogkomitros" time="2026-11-10T23:20:51Z">
+        <changelog><![CDATA[First version: link groups of plugins (Exact or Relative), all or picked parameters (Learn, Pick...),
+Match, Link bypass, Show / Hide plugins, search, drag and sort, foldable sections, track selection,
+another copy on the same track, Open automatically, Close with project, Back up / Restore,
+2 actions (Show plugins, Toggle group), All except, Relative in dB / ms / %, Snapshots A / B,
+out-of-sync warning, activity light, FX Containers, Find again, Add from folder.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/FX%20Link/FX%20Link.lua</source>
+        <source main="main" file="FX Link - Show plugins.lua">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/FX%20Link/FX%20Link%20-%20Show%20plugins.lua</source>
+        <source main="main" file="FX Link - Toggle group.lua">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/FX%20Link/FX%20Link%20-%20Toggle%20group.lua</source>
+      </version>
+    </reapack>
+  </category>
   <category name="MIDI Pilot">
     <reapack name="MIDI Pilot.lua" type="script" desc="MIDI Pilot: MIDI editor for amp modelers (Quad Cortex, Line 6 Helix / HX)">
       <metadata>
@@ -202,6 +225,11 @@ A right-click menu on the panel (Settings, Help, dock, close).
 Help in topics, in a friendlier, easier style.]]></changelog>
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/f5c157d99316bbc40805f298202631e1e76f9083/Segue/Segue.lua</source>
         <source main="main" file="Segue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/f5c157d99316bbc40805f298202631e1e76f9083/Segue/Segue%20-%20Next%20song.lua</source>
+      </version>
+      <version name="1.2.1" author="Nick Gkogkomitros" time="2026-11-10T23:20:51Z">
+        <changelog><![CDATA[The Settings menu drops down right below the gear: it never covers the gear, and a 2nd click on the gear closes it.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/Segue/Segue.lua</source>
+        <source main="main" file="Segue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/Segue/Segue%20-%20Next%20song.lua</source>
       </version>
     </reapack>
   </category>
