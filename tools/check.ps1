@@ -26,7 +26,7 @@ $known = @('reaper', 'string', 'math', 'table', 'utf8', 'io', 'os', 'package', '
   'tostring', 'tonumber', 'type', 'pcall', 'xpcall', 'setmetatable', 'getmetatable', 'dofile',
   'next', 'select', 'error', 'print', 'assert', 'rawget', 'rawset', 'require', '_G')
 
-$files = @("Chart Cue", "Segue", "MIDI Pilot") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } |
+$files = @("Chart Cue", "Segue", "MIDI Pilot", "FX Link") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } |
   ForEach-Object { Get-ChildItem -Path $_ -Filter "*.lua" }
 Say "== 1. Syntax ==" Cyan
 foreach ($f in $files) {
@@ -56,7 +56,7 @@ if ($exe -and (Test-Path $exe)) {
   $log = Join-Path $env:TEMP "chartcue_luals"
   New-Item -ItemType Directory -Force $log | Out-Null
   # each script folder; the warnings come from the JSON file of the tool (its screen format changes between versions)
-  foreach ($dir in @("Chart Cue", "Segue", "MIDI Pilot")) {
+  foreach ($dir in @("Chart Cue", "Segue", "MIDI Pilot", "FX Link")) {
     $src = Join-Path $root $dir
     if (-not (Test-Path $src)) { continue }
     $json = Join-Path $log "result.json"

@@ -15,3 +15,11 @@ Chart Cue.lua [need-check-nil] Need check nil.
 Chart Cue.lua [param-type-mismatch] Cannot assign `unknown|nil` to parameter `<T:table>`.
 Chart Cue.lua [param-type-mismatch] Cannot assign `unknown|nil` to parameter `<T:table>`.
 Chart Cue.lua [param-type-mismatch] Cannot assign `unknown|nil` to parameter `<T:table>`.
+FX Link.lua [need-check-nil] Need check nil.
+FX Link.lua [need-check-nil] Need check nil.
+FX Link.lua [need-check-nil] Need check nil.
+FX Link.lua [need-check-nil] Need check nil.
+FX Link.lua [need-check-nil] Need check nil.
+FX Link.lua [need-check-nil] Need check nil.
+FX Link.lua [need-check-nil] Need check nil.
+FX Link.lua [need-check-nil] Need check nil.

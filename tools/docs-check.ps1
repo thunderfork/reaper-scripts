@@ -20,7 +20,7 @@ foreach ($c in $code) {
   $m = [regex]::Match($c, 'SETTINGS_SECTIONS\s*=\s*\{(.*?)\n\}', 'Singleline')
   if ($m.Success) { $sections += [regex]::Matches($m.Groups[1].Value, '\{\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value } }
 }
-$tops = @("tools", "tests", "Chart Cue", "Segue", "MIDI Pilot", ".claude", ".github")
+$tops = @("tools", "tests", "Chart Cue", "Segue", "MIDI Pilot", "FX Link", ".claude", ".github")
 $problems = @()
 foreach ($doc in $docs) {
   $rel = $doc.Substring($root.Length + 1)

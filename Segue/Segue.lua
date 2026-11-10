@@ -1,5 +1,5 @@
 -- @description Segue: Setlist player
--- @version 1.2
+-- @version 1.2.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -9,9 +9,7 @@
 -- @provides
 --   [main] Segue - Next song.lua
 -- @changelog
---   Gear menu in the order of the other scripts: Look, Window (Reset window position) and Backup (Back up, Restore, Reset all settings).
---   A right-click menu on the panel (Settings, Help, dock, close).
---   Help in topics, in a friendlier, easier style.
+--   The Settings menu drops down right below the gear: it never covers the gear, and a 2nd click on the gear closes it.
 
 -- MIT License
 --
@@ -39,7 +37,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Segue"          -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.2"            -- keep equal to @version in the header
+CFG.VERSION = "1.2.1"         -- keep equal to @version in the header
 CFG.EXT = "Segue"              -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.SL_EARLY = 0.02            -- the least time before the region end that the end is handled (Setlist.lead)
@@ -1029,7 +1027,8 @@ end
 
 -- The Settings menu (the gear button): what the "now playing" area shows, and docking.
 function UI.draw_settings()
-  if not ImGui.BeginPopup(ctx, "##settings") then return end
+  R.settings_open = ImGui.BeginPopup(ctx, "##settings")
+  if not R.settings_open then return end
   ImGui.PushFont(ctx, head_font)
   ImGui.TextColored(ctx, COL.HEADING, "Now playing area")
   ImGui.PopFont(ctx)
@@ -1223,9 +1222,17 @@ function UI.draw_toolbar(l)
     UI.tip(tip)
     return hit, ix + IW / 2, iy + BH / 2, hov
   end
+  -- the gear: the Settings menu drops down below it (right edge in line with the gear; it never covers the gear).
+  -- A click on the gear while the menu is open closes it (the click outside closes it at mouse down: not again open).
   local hit, cx, cy, hov = icon("##gear", x0 + aw - 2 * IW, "Settings")
-  UI.draw_gear_icon(dl, cx, cy, hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN)
-  if hit or R.settings_req then ImGui.OpenPopup(ctx, "##settings"); R.settings_req = nil end
+  if ImGui.IsItemActivated(ctx) then R.gear_toggle = R.settings_open end
+  local gx1, gy1 = ImGui.GetItemRectMax(ctx)
+  if R.settings_open and not hov then ImGui.DrawList_AddRectFilled(dl, gx1 - IW, gy1 - BH, gx1, gy1, COL.BTN_HOVER, 6) end
+  UI.draw_gear_icon(dl, cx, cy, (hov or R.settings_open) and COL.TEXT_BRIGHT or COL.TEXT_MAIN)
+  if (hit and not R.gear_toggle) or R.settings_req then ImGui.OpenPopup(ctx, "##settings") end
+  if hit then R.gear_toggle = nil end
+  R.settings_req = nil
+  ImGui.SetNextWindowPos(ctx, gx1, gy1 + 4, ImGui.Cond_Appearing(), 1, 0)
   UI.draw_settings()
   hit, cx, cy, hov = icon("##helpbtn", x0 + aw - IW, "Help")
   ImGui.PushFont(ctx, head_font)

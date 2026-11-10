@@ -2,16 +2,16 @@
 #   .\tools\test.ps1
 # tests\run.lua (Chart Cue), tests\segue.lua (Segue) and tests\midipilot.lua (MIDI Pilot): for each, the test REAPER opens, runs the
 # tests, writes the result file and closes.
-# -Script "Chart Cue", "Segue" or "MIDI Pilot": run only the tests of the changed script (default: all)
+# -Script "Chart Cue", "Segue", "MIDI Pilot" or "FX Link": run only the tests of the changed script (default: all)
 # Quiet by default: the failed tests and 1 summary line per script. -Full: every test line.
-param([string[]]$Script = @("Chart Cue", "Segue", "MIDI Pilot"), [switch]$Full)
+param([string[]]$Script = @("Chart Cue", "Segue", "MIDI Pilot", "FX Link"), [switch]$Full)
 $root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is in tools\)
 $reaper = "C:\REAPERtest\reaper.exe"
 if (-not (Test-Path $reaper)) { Write-Host "Test REAPER not found: $reaper" -ForegroundColor Red; exit 2 }
 . (Join-Path $PSScriptRoot "background.ps1") # in the background: your window keeps the focus
 
 $bad = $false
-$all = @(@("Chart Cue", "run.lua", "result.txt"), @("Segue", "segue.lua", "result_segue.txt"), @("MIDI Pilot", "midipilot.lua", "result_midipilot.txt"))
+$all = @(@("Chart Cue", "run.lua", "result.txt"), @("Segue", "segue.lua", "result_segue.txt"), @("MIDI Pilot", "midipilot.lua", "result_midipilot.txt"), @("FX Link", "fxlink.lua", "result_fxlink.txt"))
 foreach ($s in $all) {
   if ($Script -notcontains $s[0]) { continue }
   $t = @($s[1], $s[2])

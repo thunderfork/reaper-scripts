@@ -1,6 +1,6 @@
 ---
 name: release
-description: Commit, push and release Chart Cue, Segue and MIDI Pilot (a new version on ReaPack, and a GitHub Release for each script with a new version). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
+description: Commit, push and release Chart Cue, Segue, MIDI Pilot and FX Link (a new version on ReaPack, and a GitHub Release for each script with a new version). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
 ---
 
 # Release
@@ -17,7 +17,7 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
 - `git status` and `git log <last tag>..HEAD`: what is new. Scripts (.lua) in `Chart Cue/` changed = a new
   Chart Cue version; scripts in `Segue/` changed = a new Segue version (both can change in one commit).
   Scripts in `MIDI Pilot/` changed = a new MIDI Pilot version (`@version` and `CFG.VERSION`), with its own GitHub
-  Release (tag `midipilot-vX.Y`).
+  Release (tag `midipilot-vX.Y`). Scripts in `FX Link/` changed = a new FX Link version (tag `fxlink-vX.Y`).
   Only other files (CLAUDE.md, PLAN.md, README.md, tools, tests, .claude): commit and push without a
   version or a release, and say so.
 - A commit that is already made (the user said "commit only" before): do not raise the version again.
@@ -63,7 +63,8 @@ For each script with a new version:
   `release\MIDI-Pilot-X.Y.zip`).
 - Chart Cue: `gh release create vX.Y "release\Chart-Cue-X.Y.zip" --target main --title "Chart Cue X.Y" --notes "<changelog lines>"`.
 - Segue: tag `segue-vX.Y`, title "Segue X.Y", the Segue zip. MIDI Pilot: tag `midipilot-vX.Y`, title "MIDI Pilot X.Y",
-  the MIDI Pilot zip. Release notes: that script's changelog lines.
+  the MIDI Pilot zip. FX Link: tag `fxlink-vX.Y`, title "FX Link X.Y", the FX Link zip (`release\FX-Link-X.Y.zip`).
+  Release notes: that script's changelog lines.
 - Check: `gh release view <tag>`.
 
 ## 6. Report

@@ -5,6 +5,7 @@ Scripts for playing live with REAPER, installed and updated with ReaPack:
 - **Chart Cue:** shows your PDF charts and turns and scrolls the pages while the song plays (Windows only).
 - **Segue:** a setlist player: plays your songs (regions) in the order of your show, with stops and pauses.
 - **MIDI Pilot:** writes the MIDI for amp modelers (Quad Cortex, Line 6 Helix / HX): presets, scenes, pedals.
+- **FX Link:** links plugins across tracks: move a knob in one, and the same knob moves in the others.
 
 # Chart Cue
 
@@ -121,9 +122,29 @@ Install with ReaPack (search "MIDI Pilot"), then run "Script: MIDI Pilot.lua" an
 
 MIDI Pilot saves the devices, your preset and scene names and the pedal assignments in REAPER's own settings, and which track belongs to which device (and the export folder) in the project.
 
+# FX Link
+
+FX Link links plugins across tracks. Put instances of the same plugin (for example Pro-Q 3 on your 4 guitar tracks) in a link group: move a knob in one, and the same knob moves in all the others.
+
+- **Exact** (every instance gets the same value) or **Relative** (every instance gets the same change and keeps its own setting).
+- **All parameters**, or only the ones you pick: from a list with a search box, or with Learn (move the knobs that you want).
+- **All except:** link everything but a few knobs (for example the output gain). Relative works in dB / ms / % when the plugin shows them.
+- **Match:** make all plugins of a group equal to one, with 1 click. **Link bypass:** turn them off and on together.
+- **Snapshots A / B** per group, an **out-of-sync** warning ("2 differ") and an activity light on each group.
+- Plugins inside **FX Containers**; **Find again** for a plugin that went missing (for example after a track template); **Add from folder**.
+- Add the focused plugin, the same plugin from all selected tracks, or every copy in the project. Turn each group on or off.
+- **Show / Hide plugins:** open all plugin windows of a group at once. Click a group to select its tracks.
+- Search, drag and sort the groups; foldable sections; 2 actions for keys (Show plugins, Toggle group).
+- **Open automatically** with projects that have groups, **Close with project**, Back up / Restore the settings.
+- The links work while the FX Link window is open (docked is fine). Needs ReaImGui 0.9.3 or newer.
+
+Install with ReaPack (search "FX Link"), then run "Script: FX Link.lua" and click "+ New group".
+
+FX Link saves the groups in the project, and its settings (theme, window, folded sections, the options in the gear menu) on this computer.
+
 ## Zips
 
-Each script also has a zip on the [Releases](https://github.com/thunderfork/reaper-scripts/releases) page (Chart Cue, Segue, MIDI Pilot): unzip it, copy its .lua files into your REAPER `Scripts` folder, and load them with Actions > Show action list > New action > Load ReaScript....
+Each script also has a zip on the [Releases](https://github.com/thunderfork/reaper-scripts/releases) page (Chart Cue, Segue, MIDI Pilot, FX Link): unzip it, copy its .lua files into your REAPER `Scripts` folder, and load them with Actions > Show action list > New action > Load ReaScript....
 
 ## License
 

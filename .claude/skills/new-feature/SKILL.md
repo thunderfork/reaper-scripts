@@ -1,6 +1,6 @@
 ---
 name: new-feature
-description: Turn a new idea for Chart Cue, Segue or MIDI Pilot into a short plan, a text mockup and the right questions before any code. Use when the user asks for a new feature, option, button, tab, view or setting ("add ...", "is it possible to ...", "can we have ..."), or a larger change to an existing one.
+description: Turn a new idea for Chart Cue, Segue, MIDI Pilot or FX Link into a short plan, a text mockup and the right questions before any code. Use when the user asks for a new feature, option, button, tab, view or setting ("add ...", "is it possible to ...", "can we have ..."), or a larger change to an existing one.
 ---
 
 # New feature

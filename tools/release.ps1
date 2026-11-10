@@ -1,8 +1,8 @@
 # Makes the zips for direct sharing (the GitHub Releases): release\<Name>-<version>.zip
 # (the scripts of the folder, README.md and LICENSE). Run the checks first:
 #   .\tools\check.ps1; .\tools\release.ps1 -Script "Chart Cue"
-# -Script "Chart Cue", "Segue" or "MIDI Pilot": only the scripts that get a new version (default: all 3)
-param([string[]]$Script = @("Chart Cue", "Segue", "MIDI Pilot"))
+# -Script "Chart Cue", "Segue", "MIDI Pilot" or "FX Link": only the scripts that get a new version (default: all)
+param([string[]]$Script = @("Chart Cue", "Segue", "MIDI Pilot", "FX Link"))
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is in tools\)
 $out = Join-Path $root "release"

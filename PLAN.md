@@ -29,6 +29,41 @@
   Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
   (tags segue-vX.Y, midipilot-vX.Y).
 
+## Released on 11 November 2026: FX Link 1.0 (new), Segue 1.2.1
+- FX Link 1.0: the 4th script (tag fxlink-v1.0). Segue 1.2.1: the Settings menu drops down below the gear.
+
+## Session handoff (10 November 2026, 3rd): FX Link 1.0
+- State: new 4th script FX Link (`FX Link/`): link groups of plugin instances, Exact / Relative, All / Picked
+  parameters (Pick... list, Learn), groups saved in the project. Small Chart Cue look (no tabs, no toolbar).
+  Added to the tools (check, test, deploy, release, docs check). The user tested it in REAPER: "works great".
+- Debug round done: a group turned on, a new Mode or new Parameters read the instances again (no late copy of old
+  changes); Learn stops when its group is not shown; better undo / redo detection; picked list cached; docs.
+- Not committed: everything of FX Link, the tools, the docs (and the earlier uncommitted script changes).
+- Tested in REAPER by the user: the debug fixes (off / on, Learn stop, undo); 1 Ctrl+Z undoes a linked change.
+- Round 2 (built, tested): toolbar (Show plugins, search, gear, Help topics), foldable sections, group drag / Sort,
+  plugin sort, Linked parameters rows with Learn flash, Pick... linked first, Match per plugin, Add all in project,
+  "Bypass plugins" (renamed from "Link bypass": it links the plugins' bypass, it does not pause the link), actions
+  "FX Link - Show plugins" and "FX Link - Toggle group", Ctrl+Z / redo passed on to REAPER from the window.
+  Rejected: a Pause links button and Alt to move alone (the group switch does it).
+- Round 3 (built): Show / Hide plugins, Track / Plugin labels, a group click selects its tracks, a plugin row
+  selects its track, the plugin name dropdown (other copies on the track + Open plugin window; "(slot N)" when a
+  track has 2+ copies), gear menu Automatic open and close (as Chart Cue) and Backup (folder row, Show, Change...),
+  "Link bypass" name back. All tested by the user in REAPER (passed).
+- FX Link and Segue: the Settings menu drops down below the gear (not movable, never covers the gear; a 2nd click
+  on the gear closes it). Tested (passed). Segue.lua changed: it needs a new version at the next release.
+- Debug round 2 (FX Link): Close with project stops at once; no undo step without a project; the last touched
+  plugin with a closed window is read every 10th frame; README, @about, @changelog and Help (automation) updated.
+  Known limit (as Chart Cue): File > New project in the same tab over a never-saved project is not seen.
+- Round 4 (mixing engineer review; tested: All except, Relative dB, snapshots, containers, Find, folder): All except, FX Containers, Relative in real
+  units (dB / ms / %), Find again, out-of-sync badge ("2 differ" + orange rows), Snapshots A / B (in the project),
+  activity dot, Add from folder. Possible issue to watch: plugins that show meters as parameters (they would link
+  and show "differ"); the workaround is All except.
+  "differ" showed during a drag (plugins report late): no check until 1 s after a copy, tolerance 1e-3, 2 checks
+  in a row. Then: 'differ' right after Match / a new Pro-Q band (a band turned on resets its knobs after the
+  copy): Exact copies and Match are checked again after 0.25 s and set again (up to 3 times); a knob that never
+  follows is left out of the check; the orange row tooltip names the different knobs. Retest passed.
+- Next: release FX Link 1.0 (tag fxlink-v1.0) when the user asks, or more features.
+
 ## Session handoff (10 November 2026, 2nd)
 - State: Chart Cue 1.6, Segue 1.2 and MIDI Pilot 1.3 released: uniform Settings order (Look, Tabs, Toolbar; Window,
   Backup, Troubleshooting; About last), Back up / Restore / Reset all settings in all 3, right-click panel menus in
