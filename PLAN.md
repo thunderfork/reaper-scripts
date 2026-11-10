@@ -38,7 +38,7 @@
   Added to the tools (check, test, deploy, release, docs check). The user tested it in REAPER: "works great".
 - Debug round done: a group turned on, a new Mode or new Parameters read the instances again (no late copy of old
   changes); Learn stops when its group is not shown; better undo / redo detection; picked list cached; docs.
-- Not committed: everything of FX Link, the tools, the docs (and the earlier uncommitted script changes).
+- Committed, pushed and released (11 November 2026): FX Link 1.0 and Segue 1.2.1 (commit 9c2a504).
 - Tested in REAPER by the user: the debug fixes (off / on, Learn stop, undo); 1 Ctrl+Z undoes a linked change.
 - Round 2 (built, tested): toolbar (Show plugins, search, gear, Help topics), foldable sections, group drag / Sort,
   plugin sort, Linked parameters rows with Learn flash, Pick... linked first, Match per plugin, Add all in project,
