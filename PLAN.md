@@ -31,7 +31,8 @@
 - 1.7 (11 November 2026): no PDF of another project; "+ Add" template; Delete / F2 / row menus; Ctrl+Z to REAPER;
   grey hints; the welcome screen fits. With Segue 1.3, MIDI Pilot 1.4, FX Link 1.1.
 
-## Released on 11 November 2026 (2nd): Chart Cue 1.7, Segue 1.3, MIDI Pilot 1.4, FX Link 1.1
+## Released on 11 November 2026 (2nd): Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1
+- x.x.1 (FX Link, Segue): the notice line is drawn after the panel (an ImGui error in a very small window).
 - Review round and uniform UI, tested by the user in REAPER; a debug round before the release.
 - FX Link (next 1.1): automation / LFO not copied; Pause per plugin (saved `fx_off`); new group from focused plugin
   + selected tracks (menu and the new action "FX Link - Group focused plugin on selected tracks"); "+ Add" menus

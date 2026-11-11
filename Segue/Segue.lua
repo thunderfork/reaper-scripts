@@ -1,5 +1,5 @@
 -- @description Segue: Setlist player
--- @version 1.3
+-- @version 1.3.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -39,7 +39,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Segue"          -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.3"         -- keep equal to @version in the header
+CFG.VERSION = "1.3.1"        -- keep equal to @version in the header
 CFG.EXT = "Segue"              -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DATA_DIR = r.GetResourcePath() .. "/Data/Segue" -- the backups and the autostart watcher
@@ -1309,6 +1309,15 @@ function UI.ask(text, yes, fn)
   if not yes then UI.notice(text); return end
   R.ask = { text = text, yes = yes, fn = fn, open = true }
 end
+-- The notice below the panel (after it: a cursor move is always followed by the text). ah: the panel height.
+function UI.draw_notice(aw, ah)
+  local at, n = R.notice_at, R.notice
+  if not (at and n) then return end
+  ImGui.SetCursorScreenPos(ctx, at[1] + 8, at[2] + ah + 4)
+  ImGui.PushTextWrapPos(ctx, ImGui.GetCursorPosX(ctx) + aw - 16)
+  ImGui.TextColored(ctx, n.warn and COL.ORANGE or COL.TEXT_DIM, n.text)
+  ImGui.PopTextWrapPos(ctx)
+end
 -- A short notice at the bottom of the window (grey; warn: orange); it goes away after CFG.NOTICE_SEC.
 function UI.notice(text, warn)
   text = tostring(text or ""):gsub("\n\n", " "):gsub(":\n", ": "):gsub("\n", ", ")
@@ -1923,17 +1932,11 @@ function UI.draw_main()
   local aw, ah = ImGui.GetContentRegionAvail(ctx)
   local nh = UI.notice_h(aw - 16)
   ah = ah - CFG.SP_EDGE - nh
-  if nh > 0 then -- the notice, below the panel
-    local px, py = ImGui.GetCursorScreenPos(ctx)
-    ImGui.SetCursorScreenPos(ctx, px + 8, py + ah + 4)
-    ImGui.PushTextWrapPos(ctx, ImGui.GetCursorPosX(ctx) + aw - 16)
-    ImGui.TextColored(ctx, R.notice.warn and COL.ORANGE or COL.TEXT_DIM, R.notice.text)
-    ImGui.PopTextWrapPos(ctx)
-    ImGui.SetCursorScreenPos(ctx, px, py)
-  end
+  R.notice_at = nh > 0 and { ImGui.GetCursorScreenPos(ctx) } or nil -- (drawn after the panel: UI.draw_notice)
   local show_now = S.show_now and l ~= nil
   if show_now and S.hide_playing and playing then -- only the now playing area
     UI.draw_now(l, aw, ah)
+    UI.draw_notice(aw, ah)
     return
   end
   -- the panel, the grip and the area share the height; ImGui's row gap comes after the panel and the grip
@@ -1962,6 +1965,7 @@ function UI.draw_main()
     UI.vgap(CFG.GRIP_GAP)
     UI.draw_now(l, aw, now_h)
   end
+  UI.draw_notice(aw, ah)
 end
 
 ---------------------------------------------------------------------------

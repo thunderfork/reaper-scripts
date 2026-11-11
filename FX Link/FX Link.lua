@@ -1,5 +1,5 @@
 -- @description FX Link: link plugin instances across tracks
--- @version 1.1
+-- @version 1.1.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -45,7 +45,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "FX Link"          -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.1"            -- keep equal to @version in the header
+CFG.VERSION = "1.1.1"           -- keep equal to @version in the header
 CFG.EXT = "FX Link"            -- ExtState section (this computer) and the project data section
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DEFAULT_W, CFG.DEFAULT_H = 460, 560
@@ -2761,14 +2761,6 @@ function UI.draw_main()
   local nh = UI.notice_h(aw - 16)
   ah = ah - CFG.SP_EDGE - nh
   local px, py = ImGui.GetCursorScreenPos(ctx)
-  if nh > 0 then -- the notice, below the panel
-    local n = R.notice
-    ImGui.SetCursorScreenPos(ctx, px + 8, py + ah + 4)
-    ImGui.PushTextWrapPos(ctx, ImGui.GetCursorPosX(ctx) + aw - 16)
-    ImGui.TextColored(ctx, n.warn and COL.ORANGE or COL.TEXT_DIM, n.text)
-    ImGui.PopTextWrapPos(ctx)
-    ImGui.SetCursorScreenPos(ctx, px, py)
-  end
   ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), px, py, px + aw, py + ah, COL.PANEL_BG, 8)
   if ImGui.BeginChild(ctx, "##panel", aw, ah) then
     ImGui.SetCursorPosY(ctx, CFG.SP_PANEL)
@@ -2788,6 +2780,13 @@ function UI.draw_main()
     if ImGui.IsMouseClicked(ctx, 1) and ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_ChildWindows())
       and not ImGui.IsAnyItemHovered(ctx) and not ImGui.IsPopupOpen(ctx, "##rowmenu") then R.pmenu = true end
     ImGui.EndChild(ctx)
+  end
+  if nh > 0 then -- the notice, below the panel (after it: a cursor move is always followed by the text)
+    local n = R.notice
+    ImGui.SetCursorScreenPos(ctx, px + 8, py + ah + 4)
+    ImGui.PushTextWrapPos(ctx, ImGui.GetCursorPosX(ctx) + aw - 16)
+    ImGui.TextColored(ctx, n.warn and COL.ORANGE or COL.TEXT_DIM, n.text)
+    ImGui.PopTextWrapPos(ctx)
   end
   UI.draw_panel_menu()
 end
