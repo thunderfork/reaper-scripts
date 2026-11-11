@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Thunderfork Scripts" commit="9c2a504b5cb2750f168cb4827915bee28228ab39">
+<index version="1" name="Thunderfork Scripts" commit="b42b2c00640064d8694bc7c91ef4fab91da53f37">
   <category name="Chart Cue">
     <reapack name="Chart Cue.lua" type="script" desc="Chart Cue: Open PDF Viewer">
       <metadata>
@@ -110,6 +110,16 @@ A friendlier, easier Help.]]></changelog>
         <source main="main" file="Chart Cue - Toggle performance mode.lua">https://github.com/thunderfork/reaper-scripts/raw/f5c157d99316bbc40805f298202631e1e76f9083/Chart%20Cue/Chart%20Cue%20-%20Toggle%20performance%20mode.lua</source>
         <source main="main" file="Chart Cue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/f5c157d99316bbc40805f298202631e1e76f9083/Chart%20Cue/Chart%20Cue%20-%20Next%20song.lua</source>
       </version>
+      <version name="1.7" author="Nick Gkogkomitros" time="2026-11-11T20:34:47Z">
+        <changelog><![CDATA[Fix: an empty or other project no longer shows the PDF of another project.
+Library: "+ Add" on the Add PDFs title (PDF... / From folder...); Delete removes the row under the mouse; Ctrl+Z works in the window.
+Grey hints instead of yellow; the welcome screen fits a low page area.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/Chart%20Cue/Chart%20Cue.lua</source>
+        <source main="main" file="Chart Cue - Next page.lua">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/Chart%20Cue/Chart%20Cue%20-%20Next%20page.lua</source>
+        <source main="main" file="Chart Cue - Previous page.lua">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/Chart%20Cue/Chart%20Cue%20-%20Previous%20page.lua</source>
+        <source main="main" file="Chart Cue - Toggle performance mode.lua">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/Chart%20Cue/Chart%20Cue%20-%20Toggle%20performance%20mode.lua</source>
+        <source main="main" file="Chart Cue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/Chart%20Cue/Chart%20Cue%20-%20Next%20song.lua</source>
+      </version>
     </reapack>
   </category>
   <category name="FX Link">
@@ -132,6 +142,24 @@ out-of-sync warning, activity light, FX Containers, Find again, Add from folder.
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/FX%20Link/FX%20Link.lua</source>
         <source main="main" file="FX Link - Show plugins.lua">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/FX%20Link/FX%20Link%20-%20Show%20plugins.lua</source>
         <source main="main" file="FX Link - Toggle group.lua">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/FX%20Link/FX%20Link%20-%20Toggle%20group.lua</source>
+      </version>
+      <version name="1.1" author="Nick Gkogkomitros" time="2026-11-11T20:34:47Z">
+        <changelog><![CDATA[Automation and LFOs are no longer copied; Pause 1 plugin; Snapshots A / B with Compare, without false "differ".
+"+ Add" menus: a new group from the focused plugin on the selected tracks (also an action); empty groups ask which plugin.
+Right-click a plugin row, F2 / Delete keys; short notices instead of OK windows.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/FX%20Link/FX%20Link.lua</source>
+        <source main="main" file="FX Link - Show plugins.lua">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/FX%20Link/FX%20Link%20-%20Show%20plugins.lua</source>
+        <source main="main" file="FX Link - Toggle group.lua">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/FX%20Link/FX%20Link%20-%20Toggle%20group.lua</source>
+        <source main="main" file="FX Link - Group focused plugin on selected tracks.lua">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/FX%20Link/FX%20Link%20-%20Group%20focused%20plugin%20on%20selected%20tracks.lua</source>
+      </version>
+      <version name="1.1.1" author="Nick Gkogkomitros" time="2026-11-11T20:56:35Z">
+        <changelog><![CDATA[Automation and LFOs are no longer copied; Pause 1 plugin; Snapshots A / B with Compare, without false "differ".
+"+ Add" menus: a new group from the focused plugin on the selected tracks (also an action); empty groups ask which plugin.
+Right-click a plugin row, F2 / Delete keys; short notices instead of OK windows.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/b42b2c00640064d8694bc7c91ef4fab91da53f37/FX%20Link/FX%20Link.lua</source>
+        <source main="main" file="FX Link - Show plugins.lua">https://github.com/thunderfork/reaper-scripts/raw/b42b2c00640064d8694bc7c91ef4fab91da53f37/FX%20Link/FX%20Link%20-%20Show%20plugins.lua</source>
+        <source main="main" file="FX Link - Toggle group.lua">https://github.com/thunderfork/reaper-scripts/raw/b42b2c00640064d8694bc7c91ef4fab91da53f37/FX%20Link/FX%20Link%20-%20Toggle%20group.lua</source>
+        <source main="main" file="FX Link - Group focused plugin on selected tracks.lua">https://github.com/thunderfork/reaper-scripts/raw/b42b2c00640064d8694bc7c91ef4fab91da53f37/FX%20Link/FX%20Link%20-%20Group%20focused%20plugin%20on%20selected%20tracks.lua</source>
       </version>
     </reapack>
   </category>
@@ -189,6 +217,12 @@ A right-click menu on the panel (Add Scene, Send state, Set up songs, Snap, tool
 A friendlier, easier Help.]]></changelog>
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/f5c157d99316bbc40805f298202631e1e76f9083/MIDI%20Pilot/MIDI%20Pilot.lua</source>
       </version>
+      <version name="1.4" author="Nick Gkogkomitros" time="2026-11-11T20:34:47Z">
+        <changelog><![CDATA[Songs tab: "+ Add" on the title gives a device its track (Create track / Use selected track).
+Ctrl+Z works in the window; Settings > Devices: right-click, F2 and Delete on a device.
+Grey hints instead of yellow.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/MIDI%20Pilot/MIDI%20Pilot.lua</source>
+      </version>
     </reapack>
   </category>
   <category name="Segue">
@@ -230,6 +264,20 @@ Help in topics, in a friendlier, easier style.]]></changelog>
         <changelog><![CDATA[The Settings menu drops down right below the gear: it never covers the gear, and a 2nd click on the gear closes it.]]></changelog>
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/Segue/Segue.lua</source>
         <source main="main" file="Segue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/9c2a504b5cb2750f168cb4827915bee28228ab39/Segue/Segue%20-%20Next%20song.lua</source>
+      </version>
+      <version name="1.3" author="Nick Gkogkomitros" time="2026-11-11T20:34:47Z">
+        <changelog><![CDATA[Open automatically and Close with project (gear menu), as in Chart Cue and FX Link.
+Right-click a setlist row (Go to song, Skip, Move, Remove); Delete removes a row; F2 renames the setlist.
+Short notices at the bottom of the window instead of OK windows.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/Segue/Segue.lua</source>
+        <source main="main" file="Segue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/e6f361ad49fd92c1d5f6d534667177953d40fe2e/Segue/Segue%20-%20Next%20song.lua</source>
+      </version>
+      <version name="1.3.1" author="Nick Gkogkomitros" time="2026-11-11T20:56:35Z">
+        <changelog><![CDATA[Open automatically and Close with project (gear menu), as in Chart Cue and FX Link.
+Right-click a setlist row (Go to song, Skip, Move, Remove); Delete removes a row; F2 renames the setlist.
+Short notices at the bottom of the window instead of OK windows.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/b42b2c00640064d8694bc7c91ef4fab91da53f37/Segue/Segue.lua</source>
+        <source main="main" file="Segue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/b42b2c00640064d8694bc7c91ef4fab91da53f37/Segue/Segue%20-%20Next%20song.lua</source>
       </version>
     </reapack>
   </category>
