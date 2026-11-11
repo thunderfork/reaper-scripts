@@ -1,5 +1,5 @@
 -- @description Chart Cue: Open PDF Viewer
--- @version 1.6
+-- @version 1.7
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,9 +13,9 @@
 --   [main] Chart Cue - Toggle performance mode.lua
 --   [main] Chart Cue - Next song.lua
 -- @changelog
---   Settings in the same order as Segue and MIDI Pilot: Appearance starts with Look (Theme, Comfortable layout).
---   Settings > General: Window (Dock in docker, Reset window position) and Backup (Back up..., Restore..., Reset all settings...).
---   A friendlier, easier Help.
+--   Fix: an empty or other project no longer shows the PDF of another project.
+--   Library: "+ Add" on the Add PDFs title (PDF... / From folder...); Delete removes the row under the mouse; Ctrl+Z works in the window.
+--   Grey hints instead of yellow; the welcome screen fits a low page area.
 
 -- MIT License
 --
@@ -100,7 +100,7 @@ CFG.WIN_MIN_W, CFG.WIN_MIN_H = 300, 200 -- smallest window size when resizing
 
 local SEP = package.config:sub(1, 1)
 CFG.TITLE = "Chart Cue"   -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.6"      -- keep equal to @version in the header
+CFG.VERSION = "1.7"      -- keep equal to @version in the header
 CFG.AUTHOR = "Nick Gkogkomitros"
 CFG.FEEDBACK_URL = "https://github.com/thunderfork/reaper-scripts/issues" -- Help > About > "Send feedback"
 CFG.RES = r.GetResourcePath()
@@ -2833,10 +2833,28 @@ function Project.check_project(force)
   Project.cancel_copies() -- pending copies belong to the project we left
   Project.scan_project()
   R.state_cc = r.GetProjectStateChangeCount(0)
+  -- a PDF is shown only when it belongs to this project's library: never a PDF from another project
+  local function in_lib(path)
+    if path == "" then return false end
+    for _, q in ipairs(P.pdfs) do if Util.same_path(q, path) then return true end end
+    return false
+  end
+  if P.active_pdf ~= "" and not in_lib(P.active_pdf) then
+    P.active_pdf = ""; Util.mark_pdirty() -- (an active PDF of another project, saved by mistake: removed)
+  end
   if P.active_pdf ~= "" and Util.file_exists(P.active_pdf) then
     if not Util.same_path(P.active_pdf, S.pdf_path) or R.total == 0 then PDF.open_pdf(P.active_pdf, true) end
-  elseif R.total == 0 and S.pdf_path ~= "" and Util.file_exists(S.pdf_path) then
-    PDF.open_pdf(S.pdf_path, true)
+  else
+    -- the last PDF of this computer only when it is in this library; else (an empty project, or another
+    -- project) the page area is cleared
+    if in_lib(S.pdf_path) and Util.file_exists(S.pdf_path) then
+      if R.total == 0 then PDF.open_pdf(S.pdf_path, true) end
+    elseif R.total > 0 or R.job or S.pdf_path ~= "" then
+      Project.clear_pdf_display()
+      R.stash_pdf = nil -- (it belongs to the other project)
+      -- forget it as the last PDF too: a page job still running for it would open it again when it ends
+      if S.pdf_path ~= "" then S.pdf_path = ""; Util.mark_dirty() end
+    end
   end
 end
 
@@ -4089,6 +4107,26 @@ function UI.heading(ctx, text, help, scope, fold, big)
   return open, clicked
 end
 
+-- "+ Add" on a heading line, at its right (left of the "?"): a ghost button (as in FX Link) that opens a
+-- dropdown menu (the template of all 4 scripts). Call it right after UI.heading. Returns the click, and the
+-- position for the menu (below the button, right-aligned).
+function UI.heading_add(ctx, id, tip)
+  local hr = R.heading_row
+  local label = "+ Add"
+  local w = ImGui.CalcTextSize(ctx, label) + 20
+  local h = UI.h(ctx)
+  local x, y = ImGui.GetCursorScreenPos(ctx)
+  ImGui.SetCursorScreenPos(ctx, hr.x1 - w, hr.y)
+  local nc, nv = UI.push_kind(ctx, "ghost")
+  local hit = UI.button(ctx, label .. "##" .. id, w, h)
+  UI.pop_kind(ctx, nc, nv)
+  if tip then UI.tip(ctx, tip) end
+  local x2, y2 = ImGui.GetItemRectMax(ctx)
+  hr.x1 = hr.x1 - w - 8 -- (a heading message stays left of the button)
+  ImGui.SetCursorScreenPos(ctx, x, y)
+  return hit, x2, y2 + 4
+end
+
 -- Space between sections (the heading underline replaces the old separator line).
 function UI.group_sep(ctx)
   local g = UI.sp("SECTION")
@@ -4500,6 +4538,12 @@ function UI.hide_menu(ctx, m)
 end
 
 -- true while the mouse is over the row that starts at screen (sx, sy), `w` wide, one control high.
+-- The Delete key on the row under the mouse (as its right-click menu's Remove item): no text field in use.
+function UI.delete_on_row(ctx, sx, sy, w)
+  return not ImGui.IsAnyItemActive(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Delete(), false)
+    and UI.mouse_in_row(ctx, sx, sy, w) and not UI.locked()
+end
+
 function UI.mouse_in_row(ctx, sx, sy, w)
   local mx, my = ImGui.GetMousePos(ctx)
   return mx >= sx - 6 and mx < sx + w and my >= sy - 2 and my < sy + UI.h(ctx) + 2
@@ -4621,7 +4665,7 @@ function UI.setlist_menu(ctx, i)
   if UI.menu_item(ctx, "Move to top", nil, false, locked or i == 1) then R.sl_move = { from = i, to = 1 } end
   if UI.menu_item(ctx, "Move to bottom", nil, false, locked or i == #l.items) then R.sl_move = { from = i, to = #l.items } end
   menu_sep(ctx)
-  if UI.menu_item(ctx, "Remove from setlist", nil, false, locked) then R.sl_remove = i end
+  if UI.menu_item(ctx, "Remove from setlist", "Del", false, locked) then R.sl_remove = i end
   -- (the move / remove runs in the Setlist tab, after its rows are drawn)
   if R.sl_move or R.sl_remove then R.sl_menu_change = { move = R.sl_move, remove = R.sl_remove } end
 end
@@ -4655,7 +4699,7 @@ function UI.pdf_menu(ctx, path)
   if UI.menu_item(ctx, "Replace PDF...", nil, false, playing) then Project.replace_pdf(path) end
   if UI.menu_item(ctx, "Show in Explorer") then Util.show_in_explorer(path) end
   menu_sep(ctx)
-  if UI.menu_item(ctx, "Remove from library...") then UI.ask_remove_pdf(path) end
+  if UI.menu_item(ctx, "Remove from library...", "Del") then UI.ask_remove_pdf(path) end
 end
 
 -- Regions row menu: this region.
@@ -4701,7 +4745,7 @@ function UI.cue_menu(ctx, m)
     Cues.add_below(m.reg, P.cues[Cues.key(m.reg)] or list, start and 0 or idx); R.cue_err, R.cue_text = {}, {}
   end
   menu_sep(ctx)
-  if UI.menu_item(ctx, "Remove cue", nil, false, start) then Cues.remove(m.reg, idx); R.cue_err, R.cue_text = {}, {} end
+  if UI.menu_item(ctx, "Remove cue", "Del", false, start) then Cues.remove(m.reg, idx); R.cue_err, R.cue_text = {}, {} end
 end
 
 -- Submenu row ("Label  >"), in the same height and indent as UI.menu_item. Returns true while the
@@ -5318,33 +5362,32 @@ function UI.library_order()
   return idx
 end
 
+-- Library > Add PDFs: "+ Add" on the heading: PDF... / From folder...
+function UI.draw_lib_add(ctx)
+  local hit, mx, my = UI.heading_add(ctx, "libadd", "Add PDFs to the library: 1 file, or all PDFs of a folder.")
+  if hit then ImGui.OpenPopup(ctx, "##libadd") end
+  ImGui.SetNextWindowPos(ctx, mx, my, ImGui.Cond_Appearing(), 1, 0)
+  if ImGui.BeginPopup(ctx, "##libadd") then
+    if ImGui.MenuItem(ctx, "PDF...") then PDF.browse_add_pdf(false) end
+    UI.tip(ctx, "Adds one PDF file to the library.")
+    if ImGui.MenuItem(ctx, "From folder...") then Project.start_folder_pick() end
+    UI.tip(ctx, "Adds all PDFs of a folder. The folder is remembered, and selected in 'Sync folder' below.")
+    ImGui.EndPopup(ctx)
+  end
+end
+
 function UI.draw_library_tab(ctx)
   local ch
   if not R.psaveable then
-    UI.note(ctx, "Project not saved yet: the library and region assignments are stored in the project and are written to disk when you save it.", COL.YELLOW)
+    UI.note(ctx, "Project not saved yet: the library and region assignments are stored in the project and are written to disk when you save it.", COL.TEXT_DIM)
   end
 
-  if UI.heading(ctx, "Add PDFs", "Copy into project ON: imported PDFs are copied into <project folder>\\PDFs\\. "
+  local lib_open = UI.heading(ctx, "Add PDFs", "Copy into project ON: imported PDFs are copied into <project folder>\\PDFs\\. "
     .. "The original files are only read. The project is portable.\n\n"
     .. "Copy into project OFF: the library points to the original PDFs. The project is not portable.\n\n"
-    .. "The PDFs you add are saved in this project; the two options below are for this computer.", nil, "lib_add") then
-    -- row 1: "Add PDF"; row 2: "Add from folder" | sync icon | the folder (grey, cut at the left) |
-    -- Show in Explorer at the right end. The 2 buttons share one width that follows the panel width.
-    do
-      local fh = UI.h(ctx)
-      local x0 = ImGui.GetCursorPosX(ctx)
-      local aw = UI.panel_w(ctx)
-      local _, cx = UI.form(ctx) -- the buttons start in the control column, like the toggles below
-      local bw = UI.std_w(ctx, "Add from folder", aw - (cx - x0) - fh - 24)
-      local nc, nv = UI.push_kind(ctx, "primary")
-      ImGui.SetCursorPosX(ctx, cx)
-      if UI.button(ctx, "Add PDF", bw, fh) then PDF.browse_add_pdf(false) end
-      UI.tip(ctx, "Adds one PDF file to the library.")
-      ImGui.SetCursorPosX(ctx, cx)
-      if UI.button(ctx, "Add from folder", bw, fh) then Project.start_folder_pick() end
-      UI.tip(ctx, "Adds all PDFs of a folder. The folder is remembered, and selected in 'Sync folder' below.")
-      UI.pop_kind(ctx, nc, nv)
-    end
+    .. "The PDFs you add are saved in this project; the two options below are for this computer.", nil, "lib_add")
+  UI.draw_lib_add(ctx)
+  if lib_open then
     UI.draw_sync_folder_row(ctx)
     ch, S.import_copy = UI.checkbox(ctx, "Copy into project", S.import_copy)
     if ch then Util.mark_dirty() end
@@ -5385,13 +5428,13 @@ function UI.draw_library_tab(ctx)
     UI.draw_ask(ctx, "lib_unused", "unused")
     if R.copy or #R.copyq > 0 then
       UI.note(ctx, string.format("Copying into the project... %d PDF(s) left%s", Project.copy_pending(),
-        R.copy and (": " .. Util.name_of(R.copy.src)) or ""), COL.YELLOW)
+        R.copy and (": " .. Util.name_of(R.copy.src)) or ""), COL.TEXT_DIM)
     end
     if R.picker then
-      UI.note(ctx, "Waiting for the folder dialog (it may be behind REAPER)...", COL.YELLOW)
+      UI.note(ctx, "Waiting for the folder dialog (it may be behind REAPER)...", COL.TEXT_DIM)
     elseif R.import then
       UI.note(ctx, string.format("Scanning... %d files checked, %d added, %d duplicates skipped",
-        R.import.scanned, R.import.added, R.import.skipped), COL.YELLOW)
+        R.import.scanned, R.import.added, R.import.skipped), COL.TEXT_DIM)
     else
       UI.section_msg(ctx, "library")
     end
@@ -5429,7 +5472,7 @@ function UI.draw_library_tab(ctx)
     end
   end
 
-  if #P.pdfs == 0 then ImGui.TextDisabled(ctx, "No PDFs in this project's library yet.") end
+  if #P.pdfs == 0 then ImGui.TextColored(ctx, COL.TEXT_DIM, "No PDFs yet. Click \"+ Add\" above to add one.") end
   -- name column width: the widest "name (pages)", measured only when the library changes
   if not R.lib_name_w or R.lib_name_w.ver ~= R.lib_ver then
     local w = 0
@@ -5496,6 +5539,7 @@ function UI.draw_library_tab(ctx)
     if UI.remove_x_button(ctx, "##remove", BTN_W) then UI.ask_remove_pdf(path) end
     -- right-click anywhere on the row: the PDF menu
     if ImGui.IsMouseClicked(ctx, 1) and UI.mouse_in_row(ctx, rsx, rsy, aw) then R.menu_req = { kind = "pdf", path = path } end
+    if UI.delete_on_row(ctx, rsx, rsy, aw) then UI.ask_remove_pdf(path) end -- (Delete: Remove from library...)
     UI.tip(ctx, "Remove this PDF from the library (asks first). The file is not deleted.")
     if missing then
       local dir, mrel = Project.dir(), P.rel[path]
@@ -5503,14 +5547,14 @@ function UI.draw_library_tab(ctx)
         UI.wrapped(ctx, "Expected: " .. Util.join_path(dir, (mrel:gsub("/", "\\"))), COL.GREY)
       end
       UI.wrapped(ctx, "Old location: " .. path, COL.GREY)
-      UI.wrapped(ctx, string.format("Used by %d region(s).", Project.region_use_count(path)), COL.YELLOW)
+      UI.wrapped(ctx, string.format("Used by %d region(s).", Project.region_use_count(path)), COL.TEXT_DIM)
       if UI.button(ctx, "Relocate...", CFG.MEDIUM_BTN_W, 0) then relocate_path = path end
     end
     if R.ask and R.ask.key == path then UI.draw_ask(ctx, "lib_remove", path) end
     ImGui.PopID(ctx)
   end
   UI.pop_row_style(ctx)
-  if #P.pdfs > 0 and shown == 0 and #P.pdfs == n0 then ImGui.TextDisabled(ctx, "No PDFs match the search.") end
+  if #P.pdfs > 0 and shown == 0 and #P.pdfs == n0 then ImGui.TextColored(ctx, COL.TEXT_DIM, "No PDFs match the search.") end
   if relocate_path then
     local ok, f = PDF.ask_file("Locate " .. Util.name_of(relocate_path))
     if ok and f and f ~= "" then
@@ -5797,7 +5841,7 @@ function UI.draw_regions_tab(ctx)
     .. "Symbol: green filled circle = has a PDF, yellow ring = needs a PDF, grey dash = ignored.\n"
     .. "Blue row = the region at the play cursor (edit cursor when stopped).\n"
     .. "Click a row to move the edit cursor to the region start.", "project")
-  if #R.regions == 0 then ImGui.TextDisabled(ctx, "No regions in this project."); return end
+  if #R.regions == 0 then ImGui.TextColored(ctx, COL.TEXT_DIM, "No regions yet. Make 1 region for each song in REAPER."); return end
   -- search + "Show" menu, the same row as in the Library (menu text rebuilt only when a count changes)
   local c = UI.region_counts()
   local ck = c.all .. "," .. c.need .. "," .. c.assigned .. "," .. c.ignored
@@ -5958,6 +6002,12 @@ function UI.draw_cue_rows(ctx, reg, list, first, total)
       local sx, sy = ImGui.GetCursorScreenPos(ctx)
       if ImGui.IsMouseClicked(ctx, 1) and UI.mouse_in_row(ctx, sx, sy, TABLE_W) then -- right-click: the cue menu
         R.menu_req = { kind = "cue", reg = reg, list = list, i = i, c = c, part = R.cue_part_ctx }
+      end
+      if i > 0 and not Util.playing() and UI.delete_on_row(ctx, sx, sy, TABLE_W) then -- Delete: Remove cue (stopped only;
+        -- the Start row stays)
+        local idx = 0
+        for j, cc in ipairs(Cues.list(reg)) do if cc == c then idx = j end end
+        if idx > 0 then Cues.remove(reg, idx); R.cue_err, R.cue_text = {}, {} end
       end
       ImGui.SetNextItemAllowOverlap(ctx)
       if ImGui.InvisibleButton(ctx, "##rowsel", TABLE_W, fh) and not Util.playing() then
@@ -6805,7 +6855,7 @@ function UI.draw_viewer_tab(ctx)
   UI.tip(ctx, "PDF: the charts.\nSetlist: the setlist in large text, with the current song marked.\n"
     .. "Setlist and PDF: the setlist on top and the PDF below.\nAlso in the right-click menu. Saved on this computer.")
   if S.page_area ~= "pdf" and not Setlist.cur() then
-    UI.note(ctx, "There is no setlist in this project yet (Setlist tab): the PDF is shown.", COL.YELLOW)
+    UI.note(ctx, "There is no setlist in this project yet (Setlist tab): the PDF is shown.", COL.TEXT_DIM)
   end
   UI.group_sep(ctx)
   UI.heading(ctx, "Page layout", "What you see in the page area.\n\n"
@@ -7226,7 +7276,7 @@ local HELP_TOPICS = {
   { title = "Getting started", text = [==[
 Chart Cue shows your sheet music or chord charts (PDF files) right inside REAPER, and it can turn and scroll the pages for you while the song plays.
 
-1. Click the Library tab, click "Add PDF" and pick a PDF file.
+1. Click the Library tab, click "+ Add" > "PDF..." and pick a PDF file.
 2. Click the PDF in the list. Its first page shows up.
 3. Use the arrow buttons at the top to go to the previous or next page, and the minus and plus buttons to make the page smaller or bigger.
 4. Optional: in REAPER, make a region with the same name as the PDF. For example, a region "Song One" for the file "Song One.pdf". Chart Cue then opens that PDF by itself when the song plays.
@@ -7244,7 +7294,7 @@ The Library is the list of PDFs in this project.
 
 Images work too. A PNG or JPG (for example a photo of a chart from your phone) acts like a 1-page PDF, with its own cues and notes. Add it with "Add PDF..."; "Add from folder" and Sync only take PDFs, so the photos in a folder stay out. Phone photos are turned the right way up. iPhone photos in HEIC format do not open: set the camera to "Most Compatible" (Settings > Camera > Formats on the phone), or send the photo as JPG.
 
-- "Add PDF" adds 1 file. "Add from folder" adds all PDFs in a folder, and the project remembers that folder in "Sync folder" below. The sync button next to it checks that folder again (or all of them, with "All folders"): it adds new PDFs and updates the copies of changed ones (for example a new version of a chart). PDFs that left the folder stay in the library. The red X removes the selected folder from the list (with "All folders": all of them, after a question); your PDFs and files stay as they are.
+- "+ Add" (on the Add PDFs title): "PDF..." adds 1 file. "From folder..." ("Add from folder") adds all PDFs in a folder, and the project remembers that folder in "Sync folder" below. The sync button next to it checks that folder again (or all of them, with "All folders"): it adds new PDFs and updates the copies of changed ones (for example a new version of a chart). PDFs that left the folder stay in the library. The red X removes the selected folder from the list (with "All folders": all of them, after a question); your PDFs and files stay as they are.
 - Unused PDFs (no region uses them as PDF 1 or PDF 2, and not on screen) have a grey name; "Sort: Unused first" puts them on top. "Remove unused PDFs..." takes them off the library after a question. Their copies in this project's PDFs folder are deleted too, but your original files outside the project are never touched.
 - With "Copy into project" on, Chart Cue copies each PDF into a "PDFs" folder next to your project file. Your original stays as it is, and the project also works on another computer.
 - Click a PDF to show it. "Show in Explorer" opens its folder. The red X takes it off the list (it asks first); the file itself is not deleted.
@@ -7449,6 +7499,8 @@ Not sure where a setting is saved? The round "?" next to its heading tells you: 
 - C: add a page turn at the play cursor (only while Record is on; in the Markers mode: a PDFPAGE marker)
 - S: add a scroll point at the play cursor (only while Record is on; in the Markers mode: a PDFSCROLL marker)
 - Ctrl and +: zoom in. Ctrl and -: zoom out. Ctrl and 0: fit the page width.
+- Ctrl+Z / Ctrl+Shift+Z (or Ctrl+Y): undo / redo (in the Cues and Setlist tabs: their own undo; else REAPER's undo)
+- Delete: removes the row under the mouse (a PDF in the Library, after a question; a song in the setlist; a cue while REAPER is stopped)
 - Ctrl and Z: undo the last cue change; Ctrl, Shift and Z: redo it (while the Cues tab is open).
 - Mouse wheel: scroll the page. Ctrl and mouse wheel: zoom.
 - Right-click the toolbar or the page for a quick menu with the most used options: Add PDF, Add note here (on the page), hide the panel when playing, show the panel, lock, performance mode, the autoscroll mode, Record cues, Copy markers into cues (all songs), page brightness, page area, pages on screen, Match DPI, Dock Chart Cue in Docker (ticked while docked) and Close Chart Cue. Grey items are not available right now. In lock mode during playback, a right-click on the page does nothing.
@@ -8260,6 +8312,7 @@ function UI.draw_setlist_row(ctx, l, i, locked)
   if P.setlist_on and R.sl_pos == i then UI.row_highlight(ctx, aw) end
   local rsx, rsy = ImGui.GetCursorScreenPos(ctx)
   if ImGui.IsMouseClicked(ctx, 1) and UI.mouse_in_row(ctx, rsx, rsy, aw) then R.menu_req = { kind = "setlist", i = i } end
+  if not (P.setlist_lock or Util.playing()) and UI.delete_on_row(ctx, rsx, rsy, aw) then R.sl_remove = i end -- (Ctrl+Z undoes it)
   local clicked, hovered = UI.row_click_area(ctx, "##slrow", aw - line_w - 24)
   if clicked and rg and not P.setlist_lock then Setlist.go(l, i) end
   if hovered then
@@ -8346,7 +8399,7 @@ function UI.draw_setlist_tab(ctx)
     .. "without a jump; another song is reached with a jump, which can give a very short gap.\n\n"
     .. "A region can be in the list more than once (for example an interlude). Skipped songs stay in the list.\n"
     .. "During playback (and with Lock setlist) the order is locked. Saved in this project.", "project", "sl_settings")
-  if #R.regions == 0 then ImGui.TextDisabled(ctx, "No regions in this project. Each song of a setlist is a region."); return end
+  if #R.regions == 0 then ImGui.TextColored(ctx, COL.TEXT_DIM, "No regions yet. Make 1 region for each song in REAPER."); return end
   if #P.setlists == 0 then
     UI.note(ctx, "No setlist yet. Make one from the regions of this project, in timeline order.", COL.TEXT_DIM)
     if UI.full_button(ctx, "Make a setlist", "primary") then
@@ -8460,7 +8513,7 @@ function UI.draw_setlist_tab(ctx)
     .. "to change the order. The tick box: play or skip. The X removes the song from this setlist. "
     .. "The arrow at the right of this title: undo (Ctrl+Z).", "project")
   UI.draw_setlist_undo(ctx, l)
-  if #l.items == 0 then ImGui.TextDisabled(ctx, "This setlist is empty. Add a song above."); return end
+  if #l.items == 0 then ImGui.TextColored(ctx, COL.TEXT_DIM, "No songs yet. Add a song above."); return end
   UI.draw_transport(ctx, l)
   R.sl_move, R.sl_remove = nil, nil
   if R.sl_menu_change then -- a change from the row menu (last frame)
@@ -8754,6 +8807,7 @@ local SHORTCUTS_REC = "C page turn  |  S scroll point  |  " .. SHORTCUTS
 local SHORTCUTS_TIP = "Left arrow / Page Up: previous page\nRight arrow / Page Down: next page\nHome: top of the page\n"
   .. "Ctrl + mouse wheel, Ctrl and + / -: zoom.  Ctrl and 0: fit the page width\nF: performance mode (F or Esc goes back)\n"
   .. "L: lock\nR: record cues on / off (Cue list mode)\nC: add a page turn, S: add a scroll point (while Record cues is on)\n\n"
+  .. "Ctrl+Z / Ctrl+Shift+Z: undo / redo.  Delete: remove the row under the mouse\n\n"
   .. "The keys work when the Chart Cue window is active."
 
 -- The project has cues or PDF markers that the current mode does not use:
@@ -8800,11 +8854,11 @@ function UI.draw_status(ctx)
   elseif PDF.engine() == "poppler" and R.exe == nil then
     ImGui.TextColored(ctx, COL.RED, UI.trunc_text(ctx, PDF.poppler_help(), aw - 6))
   elseif R.picker then
-    ImGui.TextColored(ctx, COL.YELLOW, "Waiting for the folder dialog...")
+    ImGui.TextColored(ctx, COL.TEXT_DIM, "Waiting for the folder dialog...")
   elseif R.import then
-    ImGui.TextColored(ctx, COL.YELLOW, string.format("Importing folder... %d PDF(s) added so far", R.import.added))
+    ImGui.TextColored(ctx, COL.TEXT_DIM, string.format("Importing folder... %d PDF(s) added so far", R.import.added))
   elseif R.copy or #R.copyq > 0 then
-    ImGui.TextColored(ctx, COL.YELLOW, string.format("Copying PDFs into the project... %d left", Project.copy_pending()))
+    ImGui.TextColored(ctx, COL.TEXT_DIM, string.format("Copying PDFs into the project... %d left", Project.copy_pending()))
   elseif needs then
     ImGui.TextColored(ctx, COL.YELLOW, UI.trunc_text(ctx, string.format(
       needs.status == "ignored" and 'Region "%s" is ignored (no PDF).' or 'No PDF assigned to region "%s".', needs.name), aw - 6))
@@ -9016,10 +9070,16 @@ function UI.handle_keys(ctx)
     if ImGui.IsKeyPressed(ctx, K("Equal")) or ImGui.IsKeyPressed(ctx, K("KeypadAdd")) then Nav.zoom_by(CFG.ZOOM_STEP) end
     if ImGui.IsKeyPressed(ctx, K("Minus")) or ImGui.IsKeyPressed(ctx, K("KeypadSubtract")) then Nav.zoom_by(1 / CFG.ZOOM_STEP) end
     if ImGui.IsKeyPressed(ctx, K("0"), false) or ImGui.IsKeyPressed(ctx, K("Keypad0"), false) then Nav.fit_width() end
-    if ImGui.IsKeyPressed(ctx, K("Z"), false) and S.tab == TAB_CUES and S.panel_open then
+    if ImGui.IsKeyPressed(ctx, K("Y"), false) and S.tab == TAB_CUES and S.panel_open then
+      Cues.redo() -- Ctrl+Y: redo (as Ctrl+Shift+Z)
+    elseif ImGui.IsKeyPressed(ctx, K("Z"), false) and S.tab == TAB_CUES and S.panel_open then
       if (ImGui.GetKeyMods(ctx) & ImGui.Mod_Shift()) ~= 0 then Cues.redo() else Cues.undo() end -- Ctrl+Shift+Z: redo
     elseif ImGui.IsKeyPressed(ctx, K("Z"), false) and S.tab == TAB_SETLIST and S.panel_open and Setlist.cur() then
       Setlist.undo(Setlist.cur())
+    elseif ImGui.IsKeyPressed(ctx, K("Z"), false) then -- else REAPER's undo / redo (the window took the keys)
+      r.Main_OnCommand((ImGui.GetKeyMods(ctx) & ImGui.Mod_Shift()) ~= 0 and 40030 or 40029, 0)
+    elseif ImGui.IsKeyPressed(ctx, K("Y"), false) then
+      r.Main_OnCommand(40030, 0) -- Edit: Redo
     end
   end
 end
@@ -9034,18 +9094,53 @@ local WELCOME_STEPS = {
 -- Centered empty state when no PDF is loaded; its buttons are the Library tab's actions.
 -- With an empty library it is the welcome (also inside a region without a PDF).
 function UI.draw_empty_state(ctx, x0, y0, area_w, view_h, dl)
-  local cx, cy = x0 + area_w / 2, y0 + view_h / 2
+  local cx = x0 + area_w / 2
   local welcome = #P.pdfs == 0
-  local top = welcome and (cy - 140) or (cy - 54)
-  UI.push_bold_font(ctx)
-  local msg = welcome and "Welcome to Chart Cue" or "No PDF open"
-  local tw = ImGui.CalcTextSize(ctx, msg)
-  ImGui.DrawList_AddText(dl, cx - tw / 2, top, COL.TEXT_BRIGHT, msg)
-  UI.pop_font(ctx)
-  local by = cy - 20
+  local lh = ImGui.GetTextLineHeightWithSpacing(ctx)
+  local text_w = math.floor(math.max(120, math.min(440, area_w - 40)))
+  if welcome then UI.welcome_lines(ctx, text_w) end
+  -- the heights of the 3 parts: the title, the steps (welcome), the buttons and the link
+  local title_h, btn_h = 38, 78 + lh + 4
+  local steps_h = 0
   if welcome then
-    local text_w = math.floor(math.max(120, math.min(440, area_w - 40)))
+    steps_h = 16
+    for i, l in ipairs(R.welcome_wrap) do steps_h = steps_h + lh + ((i > 1 and l[1] == 0) and 6 or 0) end
+  end
+  -- not enough room (a low page area): leave out the steps, then the title; never draw outside the area
+  local show_steps = welcome and (title_h + steps_h + btn_h + 16 <= view_h)
+  local show_title = title_h + (show_steps and steps_h or 0) + btn_h + 16 <= view_h
+  local total = (show_title and title_h or 0) + (show_steps and steps_h or 0) + btn_h
+  local top = math.floor(y0 + math.max(8, (view_h - total) / 2))
+  ImGui.DrawList_PushClipRect(dl, x0, y0, x0 + area_w, y0 + view_h, true)
+  local by = top
+  if show_title then
+    UI.push_bold_font(ctx)
+    local msg = welcome and "Welcome to Chart Cue" or "No PDF open"
+    local tw = ImGui.CalcTextSize(ctx, msg)
+    ImGui.DrawList_AddText(dl, cx - tw / 2, top, COL.TEXT_BRIGHT, msg)
+    UI.pop_font(ctx)
+    by = top + title_h
+  end
+  if show_steps then
     local c = R.welcome_wrap
+    local sx = cx - text_w / 2
+    local ly = by
+    for i, l in ipairs(c) do
+      if i > 1 and l[1] == 0 then ly = ly + 6 end -- a small gap between the steps
+      ImGui.DrawList_AddText(dl, sx + l[1], ly, COL.TEXT_MAIN, l[2])
+      ly = ly + lh
+    end
+    by = ly + 16
+  end
+  ImGui.DrawList_PopClipRect(dl)
+  if by + 30 > y0 + view_h then return end -- (no room for the buttons either)
+  UI.empty_state_buttons(ctx, cx, by, area_w, welcome, y0 + view_h)
+end
+
+-- The welcome steps, word-wrapped to text_w (cached per width; continued lines are indented): R.welcome_wrap.
+function UI.welcome_lines(ctx, text_w)
+  local c = R.welcome_wrap
+  do
     if not c or c.w ~= text_w then -- word wrap, cached per width; continued lines are indented
       c = { w = text_w }
       local indent = ImGui.CalcTextSize(ctx, "1. ") -- gmatch joins the words with 1 space
@@ -9063,15 +9158,12 @@ function UI.draw_empty_state(ctx, x0, y0, area_w, view_h, dl)
       end
       R.welcome_wrap = c
     end
-    local sx, lh = cx - text_w / 2, ImGui.GetTextLineHeightWithSpacing(ctx)
-    local ly = top + 38
-    for i, l in ipairs(c) do
-      if i > 1 and l[1] == 0 then ly = ly + 6 end -- a small gap between the steps
-      ImGui.DrawList_AddText(dl, sx + l[1], ly, COL.TEXT_MAIN, l[2])
-      ly = ly + lh
-    end
-    by = ly + 16
   end
+end
+
+-- The empty state's buttons (Add PDF..., Add from folder...) and the "Getting started" link, from by down;
+-- what does not fit above bottom is left out.
+function UI.empty_state_buttons(ctx, cx, by, area_w, welcome, bottom)
   local b1, b2 = "Add PDF...", "Add from folder..."
   local bw = UI.std_w(ctx, b2, area_w - 40)
   ImGui.SetCursorScreenPos(ctx, cx - bw / 2, by)
@@ -9079,8 +9171,10 @@ function UI.draw_empty_state(ctx, x0, y0, area_w, view_h, dl)
   local hit1 = UI.button(ctx, b1, bw, 30)
   UI.pop_kind(ctx, nc, nv)
   if hit1 then PDF.browse_add_pdf(true) end
+  if by + 68 > bottom then return end
   ImGui.SetCursorScreenPos(ctx, cx - bw / 2, by + 38)
   if UI.button(ctx, b2, bw, 30) then Project.start_folder_pick() end
+  if by + 78 + ImGui.GetTextLineHeightWithSpacing(ctx) > bottom then return end
   -- link-style button to the "Getting started" help topic
   local link = welcome and "Open 'Getting started'" or "New to Chart Cue? Read 'Getting started'"
   local lw = ImGui.CalcTextSize(ctx, link) + 16

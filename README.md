@@ -74,7 +74,7 @@ To open Chart Cue automatically with your projects, use Settings > General > Ope
 
 ## First steps
 
-1. In the Library tab, click "Add PDF..." and choose a PDF.
+1. In the Library tab, click "+ Add" > "PDF..." and choose a PDF.
 2. Click the PDF in the list. The first page appears.
 3. Optional: make a REAPER region with the same name as the PDF.
 4. Optional: in the Cues tab, click "Use Cue list mode", turn on "Record" (R), play the song, and press C at each page turn.
@@ -97,6 +97,7 @@ Segue is a separate, small script for a setlist only (no PDFs), with its own win
 - A large "now playing" area: the current song, the time left in it, the next song and the time left in the set.
 - REAPER stops at the exact end of a song with Stop (Segue sets the loop points to the song while it plays, and puts yours back after it).
 - The "Segue - Next song" action, for a key or a foot pedal.
+- Open automatically (with every project that has a setlist) and Close with project, in the gear menu.
 - Needs ReaImGui 0.9.3 or newer, like Chart Cue. It uses only REAPER and ReaImGui, so it can also work on macOS and Linux (not tested there).
 
 Install with ReaPack, after you have imported the repository (see "Install with ReaPack" above): Extensions > ReaPack > Browse packages, search "Segue", right-click it > Install. Then run "Script: Segue.lua" in the Action List and click "Make a setlist". The gear button at the top right has the settings and the help.
@@ -134,11 +135,11 @@ FX Link links plugins across tracks. Put instances of the same plugin (for examp
 - Plugins inside **FX Containers**; **Find again** for a plugin that went missing (for example after a track template); **Add from folder**.
 - Add the focused plugin, the same plugin from all selected tracks, or every copy in the project. Turn each group on or off.
 - **Show / Hide plugins:** open all plugin windows of a group at once. Click a group to select its tracks.
-- Search, drag and sort the groups; foldable sections; 2 actions for keys (Show plugins, Toggle group).
+- Search, drag and sort the groups; foldable sections; 3 actions for keys (Show plugins, Toggle group, Group focused plugin on selected tracks); pause 1 plugin.
 - **Open automatically** with projects that have groups, **Close with project**, Back up / Restore the settings.
 - The links work while the FX Link window is open (docked is fine). Needs ReaImGui 0.9.3 or newer.
 
-Install with ReaPack (search "FX Link"), then run "Script: FX Link.lua" and click "+ New group".
+Install with ReaPack (search "FX Link"), then run "Script: FX Link.lua" and click "+ Add" next to Link groups.
 
 FX Link saves the groups in the project, and its settings (theme, window, folded sections, the options in the gear menu) on this computer.
 

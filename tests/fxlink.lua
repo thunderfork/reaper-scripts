@@ -128,6 +128,31 @@ test("exact: a change is copied to the group only", function()
   eq(Link.sync(g, member(g, 1)), 0, "no change, no copy")
 end)
 
+test("plugin list: every plugin once, with its number of copies", function()
+  local list = Fx.plugin_list(nil)
+  local eqn
+  for _, e in ipairs(list) do if e.plug:find("ReaEQ", 1, true) then eqn = (eqn or 0) + e.n end end
+  ok(eqn and eqn >= 3, "ReaEQ with its copies")
+  local seen = {}
+  for _, e in ipairs(list) do ok(not seen[e.ident], "once: " .. e.plug); seen[e.ident] = true end
+end)
+
+test("pause: a paused plugin does not follow and is not copied", function()
+  local g = make_group("exact")
+  set(1, 0, 0.2); set(2, 0, 0.7)
+  Fx.resolve(true)
+  Link.set_paused(member(g, 2), true)
+  set(1, 0, 0.3); Link.sync(g, member(g, 1))
+  near(get(2, 0), 0.7, "paused: no change")
+  local q = Project.parse(Project.serialize())
+  ok(q.groups[1].members[2].off and not q.groups[1].members[1].off, "paused is saved")
+  Link.set_paused(member(g, 2), false)
+  near(get(2, 0), 0.7, "resume: keeps its value")
+  set(1, 0, 0.4); Link.sync(g, member(g, 1))
+  near(get(2, 0), 0.4, "linked again")
+  eq(Project.serialize():find("fx_off", 1, true), nil, "not paused: nothing written")
+end)
+
 test("relative: the same change, the range end, and back", function()
   local g = make_group("rel")
   set(1, 0, 0.5); set(2, 0, 0.8)
@@ -425,6 +450,12 @@ test("snapshots: store, recall, saved", function()
   set(1, 0, 0.9); set(2, 0, 0.9)
   Link.snap_recall(g, "A")
   near(get(1, 0), 0.2, "track 1 back"); near(get(2, 0), 0.4, "track 2 back")
+  ok(R.snap_verify[g], "checked again after the recall")
+  eq(Link.sync(g, member(g, 1)), 0, "the recall itself is not copied")
+  set(2, 0, 0.7) -- (a plugin that changed a knob late)
+  ok(Link.snap_apply(g, R.snap_verify[g].sn), "the check sets it again")
+  near(get(2, 0), 0.4, "track 2 set again")
+  R.snap_verify[g] = nil
   local q = Project.parse(Project.serialize())
   local sn = q.groups[1].snap.A
   ok(sn and sn.vals[member(g, 1).guid], "snapshot saved")

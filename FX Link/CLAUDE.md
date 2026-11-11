@@ -6,7 +6,8 @@ one panel with foldable sections (Link groups, Link settings, Linked parameters,
 
 ## Files
 
-- `FX Link.lua`; the actions `FX Link - Show plugins.lua` and `FX Link - Toggle group.lua` (ExtState "cmd_q"). Version: `@version` and `CFG.VERSION` together (1.0, not released yet). Release: tag
+- `FX Link.lua`; the actions `FX Link - Show plugins.lua`, `FX Link - Toggle group.lua` and
+  `FX Link - Group focused plugin on selected tracks.lua` (ExtState "cmd_q": show, toggle, quick). Version: `@version` and `CFG.VERSION` together (1.0 released). Release: tag
   `fxlink-vX.Y`, title "FX Link X.Y" (the `release` skill).
 
 ## Architecture and data
@@ -14,7 +15,7 @@ one panel with foldable sections (Link groups, Link settings, Linked parameters,
 - `P` (ProjExtState "FX Link"/"cfg"): the groups (`group=` on, mode, parameters: "all", the picked list, or "x" +
   the list that is not linked (All except), plugin identity, short plugin name, name), `g_sort=name` and
   `g_bypass=1` (only when not the default), their instances (`fx=` FX GUID, track name, plugin name: for Find
-  again), the snapshots (`g_snap=A|B` + time, then `sv=` FX GUID + `param:value` list), the selected group (`cur`).
+  again; `fx_off=1` after it when that plugin is paused), the snapshots (`g_snap=A|B` + time, then `sv=` FX GUID + `param:value` list), the selected group (`cur`).
 - `S` (ExtState "FX Link"): `light`, `dock`, `closed` (the folded sections), `close_proj` (Close with project, default
   on), `backup_dir` (the Back up / Restore folder; "" = the data folder); also `cmd` (the command ID for the
   watcher) and `heartbeat` (not kept). The data folder is REAPER's Data\FX Link: the default backup folder, and `autostart.lua` (the watcher; "Open automatically" adds a marked block to `__startup.lua`, with the

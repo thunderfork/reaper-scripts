@@ -1,7 +1,10 @@
 # Segue
 
-A setlist-only script (no PDFs), with its own window and its own data. It uses only `reaper.*` and ReaImGui (no
-`io` / `os`, no files of its own), so it is not Windows-only.
+A setlist-only script (no PDFs), with its own window and its own data. It uses `reaper.*` and ReaImGui, and `io`
+only for its files in `Data\Segue` (backups, the autostart watcher `autostart.lua`) and the marked block in
+`__startup.lua` (Open automatically, as FX Link; backup `__startup.lua.segue-backup`). It is not Windows-only.
+Gear menu: Look, Automatic open and close (Open automatically, Close with project: S `close_proj`, default on),
+Window, Backup.
 
 ## Files
 

@@ -1,5 +1,5 @@
 -- @description MIDI Pilot: MIDI editor for amp modelers (Quad Cortex, Line 6 Helix / HX)
--- @version 1.3
+-- @version 1.4
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -7,9 +7,9 @@
 --   HX Stomp XL or HX Effects in REAPER: presets at the song starts, scenes (snapshots) by name, knob values in real
 --   units, nudges and ramps. The MIDI plays without the script. Requires: the free ReaImGui extension (ReaPack).
 -- @changelog
---   Settings in the same order as Chart Cue: Look (Theme, Comfortable layout), Window (Reset window position), Backup (Reset all settings...); About at the end of Help.
---   A right-click menu on the panel (Add Scene, Send state, Set up songs, Snap, toolbar, dock, close); compact spacing by default.
---   A friendlier, easier Help.
+--   Songs tab: "+ Add" on the title gives a device its track (Create track / Use selected track).
+--   Ctrl+Z works in the window; Settings > Devices: right-click, F2 and Delete on a device.
+--   Grey hints instead of yellow.
 
 -- MIT License
 --
@@ -37,7 +37,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "MIDI Pilot"       -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.3"            -- keep equal to @version in the header
+CFG.VERSION = "1.4"            -- keep equal to @version in the header
 CFG.EXT = "MIDI Pilot"         -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DEFAULT_W, CFG.DEFAULT_H = 560, 640
@@ -3426,6 +3426,20 @@ end
 -- A short notice that goes away by itself (line 2 of the status bar, for CFG.TOAST_SEC: UI.draw_status).
 function UI.toast(text, warn) R.toast = { text = text, t0 = Util.now(), warn = warn } end
 
+-- "+ Add" on a heading line, at its right (as in Chart Cue and FX Link): a ghost button that opens a dropdown
+-- menu. Call it right after UI.heading. Returns the click and the menu position (below, right-aligned).
+function UI.heading_add(id, tip)
+  local label = "+ Add"
+  local w = math.floor((ImGui.CalcTextSize(ctx, label)) + 20)
+  local x, y = ImGui.GetCursorScreenPos(ctx)
+  ImGui.SetCursorScreenPos(ctx, R.head_x1 - w, R.head_y)
+  local hit = UI.button(label .. "##" .. id, w, nil, "ghost")
+  if tip then UI.tip(tip) end
+  local x2, y2 = ImGui.GetItemRectMax(ctx)
+  ImGui.SetCursorScreenPos(ctx, x, y)
+  return hit, x2, y2 + 4
+end
+
 -- Section heading, as in Chart Cue: bold, blue, a full-width blue underline, a "?" at the right.
 -- note / note_col: a short text at the right end of the title line (a notice).
 -- fold: a key of S.lanes_open: a triangle at the left, a click on the title opens / closes it (saved); extra: a
@@ -3468,6 +3482,10 @@ function UI.heading(text, help, note, note_col, fold, extra)
     if open then ImGui.DrawList_AddTriangleFilled(dl, cx - 5, cy - 3, cx + 5, cy - 3, cx, cy + 3, col)
     else ImGui.DrawList_AddTriangleFilled(dl, cx - 3, cy - 5, cx - 3, cy + 5, cx + 3, cy, col) end
   end
+  -- the free right end of the title line (left of the device dropdown and the "?"): for UI.heading_add
+  R.head_y = sy
+  R.head_x1 = sx + full - (help and CFG.HELP_ICON + 10 or 0)
+    - (R.dev_head and (math.floor((ImGui.CalcTextSize(ctx, S.devices[R.cur_dev].name)) + ImGui.GetFrameHeight(ctx) + 18) + 8) or 0)
   if note then
     local x_end = sx + full - (help and CFG.HELP_ICON + 10 or 0)
     local avail = x_end - tx1 - 16
@@ -4023,7 +4041,7 @@ end
 -- "No device yet": the hint of the Songs, Lanes and Presets tabs.
 function UI.no_device_hint()
   if #S.devices > 0 then return false end
-  UI.note("No device yet. Add your Quad Cortex in the Settings tab (the gear).", COL.YELLOW)
+  UI.note("No device yet. Add your Quad Cortex in the Settings tab (the gear).", COL.TEXT_DIM)
   if UI.button("Open Settings", UI.std_w("Open Settings"), nil, "primary") then S.tab = TAB_SETTINGS; S.settings_open = 1; Util.mark_sdirty() end
   return true
 end
@@ -4795,8 +4813,18 @@ function UI.draw_songs_tab()
   local d = UI.device_picker()
   if not Dev.track(d) then
     UI.heading("Songs")
-    UI.note(d.name .. " has no track in this project yet. Create it in Settings > Devices.", COL.YELLOW)
-    if UI.button("Create track", UI.std_w("Create track"), nil, "primary") then Dev.create_track(d) end
+    local hit, mx, my = UI.heading_add("devtrack", "Give " .. d.name .. " a track: a new one, or the selected track.")
+    if hit then ImGui.OpenPopup(ctx, "##devtrack") end
+    ImGui.SetNextWindowPos(ctx, mx, my, ImGui.Cond_Appearing(), 1, 0)
+    if ImGui.BeginPopup(ctx, "##devtrack") then
+      if ImGui.MenuItem(ctx, "Create track") then Dev.create_track(d) end
+      UI.tip("Add a new track for this device, at the end of the project.")
+      local has_sel = r.GetSelectedTrack(R.proj, 0) ~= nil
+      if ImGui.MenuItem(ctx, "Use selected track", nil, false, has_sel) then Dev.use_selected_track(d) end
+      UI.tip(has_sel and "Use the selected track for this device." or "Select a track in REAPER first.")
+      ImGui.EndPopup(ctx)
+    end
+    UI.note(d.name .. " has no track in this project yet. Click \"+ Add\" to give it one.", COL.TEXT_DIM)
     return
   end
   UI.heading(string.format("Songs (%d)", #R.regions), "Each region of the project is a song.\n\n"
@@ -5018,7 +5046,7 @@ function UI.draw_export()
   ImGui.PushTextWrapPos(ctx, 420)
   if dir then ImGui.TextColored(ctx, COL.TEXT_DIM, (ex.per_song and ("1 file per song, in the subfolder '" .. safe_name(d.name) .. "'. ") or "")
     .. "Files with the same name are replaced.")
-  else ImGui.TextColored(ctx, COL.YELLOW, "Save the project first, or choose a folder.") end
+  else ImGui.TextColored(ctx, COL.TEXT_DIM, "Save the project first, or choose a folder.") end
   if ex.done then ImGui.TextColored(ctx, ex.err and COL.RED or COL.GREEN, ex.done) end
   ImGui.PopTextWrapPos(ctx)
   UI.vgap(8)
@@ -6222,7 +6250,8 @@ end
 function UI.draw_device_list()
   UI.heading("Device list", "Add 1 device for each unit. The devices are saved on this computer, for all projects.\n\n"
     .. "With USB, MIDI Pilot finds the unit and its MIDI output. With a MIDI interface, choose the model and the "
-    .. "output yourself.\n\nIf you remove a device but keep its track, Add device brings it back with its settings.")
+    .. "output yourself.\n\nIf you remove a device but keep its track, Add device brings it back with its settings.\n\n"
+    .. "Right-click a device: Rename (F2) or Remove device... (Delete).")
   local fh = ImGui.GetFrameHeight(ctx)
   local aw = ImGui.GetContentRegionAvail(ctx)
   for i, d in ipairs(S.devices) do
@@ -6231,7 +6260,11 @@ function UI.draw_device_list()
     local x, y = ImGui.GetCursorScreenPos(ctx)
     if ImGui.InvisibleButton(ctx, "##row", math.max(1, aw - 4), fh) then R.sel_dev = i end
     local hov = ImGui.IsItemHovered(ctx)
-    UI.tip("Click to edit this device below.")
+    UI.tip("Click to edit this device below. Right-click: Rename, Remove.")
+    if ImGui.IsItemClicked(ctx, 1) then R.sel_dev, R.devmenu_open = i, true end
+    if hov and not ImGui.IsAnyItemActive(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Delete(), false) then
+      R.sel_dev, R.del_dev = i, true -- (Delete: Remove device..., with its question)
+    end
     local dl = ImGui.GetWindowDrawList(ctx)
     if sel then ImGui.DrawList_AddRectFilled(dl, x - 6, y - 2, x + aw - 4, y + fh + 2, COL.ACTIVE_BG, 4)
     elseif hov then ImGui.DrawList_AddRectFilled(dl, x - 6, y - 2, x + aw - 4, y + fh + 2, COL.ROW_HOVER, 4) end
@@ -6243,6 +6276,15 @@ function UI.draw_device_list()
     ImGui.DrawList_AddText(dl, x + 160, ty, COL.TEXT_DIM, UI.trunc(info .. "  -  " .. (tr and Dev.track_name(tr) or "no track"),
       math.max(20, aw - 170)))
     ImGui.PopID(ctx)
+  end
+  -- F2: rename the selected device (the cursor goes into its Name field); the right-click menu of a row
+  if R.sel_dev and not ImGui.IsAnyItemActive(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_F2(), false)
+      and ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows()) then R.focus_name = true end
+  if R.devmenu_open then ImGui.OpenPopup(ctx, "##devmenu"); R.devmenu_open = nil end
+  if ImGui.BeginPopup(ctx, "##devmenu") then
+    if ImGui.MenuItem(ctx, "Rename", "F2") then R.focus_name = true end
+    if ImGui.MenuItem(ctx, "Remove device...", "Del") then R.del_dev = true end
+    ImGui.EndPopup(ctx)
   end
   ImGui.SetNextItemWidth(ctx, UI.cell_w("Add device", UI.std_w("Add device")))
   if ImGui.BeginCombo(ctx, "##adddev", "Add device", ImGui.ComboFlags_HeightLargest()) then
@@ -6269,7 +6311,8 @@ function UI.draw_device_list()
   local d = S.devices[R.sel_dev]
   if d then
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-    if UI.button("Remove device...", UI.std_w("Remove device..."), nil, "danger") then
+    if UI.button("Remove device...", UI.std_w("Remove device..."), nil, "danger") or R.del_dev then
+      R.del_dev = nil
       local i, tr = R.sel_dev, P.track_mode ~= "shared" and Dev.track(d)
       if tr then
         UI.ask("Remove the device '" .. d.name .. "'? You can also remove its track '" .. Dev.track_name(tr)
@@ -6302,6 +6345,7 @@ function UI.draw_device_form()
   local _, cw = UI.row_start("Name")
   ImGui.SetNextItemWidth(ctx, UI.fit_w(cw))
   if R.name_edit == nil or R.name_edit_id ~= d.id then R.name_edit, R.name_edit_id = d.name, d.id end
+  if R.focus_name then ImGui.SetKeyboardFocusHere(ctx); R.focus_name = nil end -- (F2 or Rename)
   ch, R.name_edit = ImGui.InputText(ctx, "##devname", R.name_edit)
   if ImGui.IsItemDeactivated(ctx) then -- the name is used when you leave the field (an empty name: the model)
     local nm = R.name_edit:match("^%s*(.-)%s*$")
@@ -6392,7 +6436,7 @@ function UI.draw_device_form()
 
   local cx = UI.row_start("Track")
   local tr = Dev.track(d)
-  UI.row_text(tr and Dev.track_name(tr) or "No track in this project yet", tr and COL.TEXT_MAIN or COL.YELLOW)
+  UI.row_text(tr and Dev.track_name(tr) or "No track in this project yet", tr and COL.TEXT_MAIN or COL.TEXT_DIM)
   if tr then UI.tip("The track where MIDI Pilot writes this device's MIDI.") end
   ImGui.SetCursorPosX(ctx, cx)
   local _, tcw = UI.form("Track")
@@ -6758,7 +6802,7 @@ function UI.status_lines()
   R.cur_dev = Util.clamp(R.cur_dev or 1, 1, math.max(1, #S.devices))
   local d = S.devices[R.cur_dev]
   if not d then
-    c.dev, c.dev_col, c.l1, c.l2, c.col = "No device yet.", COL.YELLOW, "", "Add your Quad Cortex in Settings > Devices.", COL.YELLOW
+    c.dev, c.dev_col, c.l1, c.l2, c.col = "No device yet.", COL.TEXT_DIM, "", "Add your Quad Cortex in Settings > Devices.", COL.TEXT_DIM
     R.status = c; return c
   end
   local playing = Util.playing()
@@ -6802,9 +6846,9 @@ function UI.status_lines()
     c.l2 = warns[1] .. (#warns > 1 and string.format("  (+%d more: Settings > Devices)", #warns - 1) or "")
     c.col = COL.RED
   elseif not tr then
-    c.l2, c.col = d.name .. " has no track in this project yet: Settings > Devices > Create track.", COL.YELLOW
+    c.l2, c.col = d.name .. " has no track in this project yet: Settings > Devices > Create track.", COL.TEXT_DIM
   elseif #R.regions == 0 then
-    c.l2, c.col = "This project has no regions: make 1 region for each song.", COL.YELLOW
+    c.l2, c.col = "This project has no regions: make 1 region for each song.", COL.TEXT_DIM
   else
     local nopre, nostart, test_song = 0, 0, nil
     for _, x in ipairs(R.regions) do
@@ -6887,6 +6931,16 @@ function UI.draw_status(y)
     end
   end
   ImGui.Unindent(ctx, 6)
+end
+
+-- The window takes the keys while it has the focus: pass Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y on to REAPER (as FX Link).
+function UI.undo_keys()
+  if ImGui.IsAnyItemActive(ctx) or not ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows()) then return end
+  local C, SH = ImGui.Mod_Ctrl(), ImGui.Mod_Shift()
+  if ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Z()) then r.Main_OnCommand(40029, 0) -- Edit: Undo
+  elseif ImGui.IsKeyChordPressed(ctx, C | SH | ImGui.Key_Z()) or ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Y()) then
+    r.Main_OnCommand(40030, 0) -- Edit: Redo
+  end
 end
 
 -- Settings > Editing > Scene keys: with the window active and no text field in use, keys 1-8 add that scene at the
@@ -7125,6 +7179,7 @@ end
 function UI.draw_main()
   R.dev_head = nil
   UI.scene_keys()
+  UI.undo_keys()
   UI.draw_toolbar()
   UI.draw_tabs()
   local aw, ah = ImGui.GetContentRegionAvail(ctx)

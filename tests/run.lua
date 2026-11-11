@@ -762,6 +762,28 @@ test("project: another project does not get the data", function()
   R.quit = false
 end)
 
+test("project: another project does not show the PDF of the last one", function()
+  local R, S = C.R, C.S
+  S.close_with_project = false
+  local pdf = here .. "\\test.pdf"
+  C.get_P().pdfs = { pdf }
+  S.pdf_path, R.total = pdf, 3 -- (a PDF on screen)
+  local other = tmp .. "\\other2.rpp"
+  local h = io.open(other, "w"); if h then h:write("<REAPER_PROJECT 0.1\n>\n"); h:close() end
+  r.Main_openProject("noprompt:" .. other)
+  C.Project.check_project(false)
+  eq(R.total, 0, "the page area is empty")
+  eq(S.pdf_path, "", "the PDF is not the last PDF any more")
+  C.Project.check_project(true) -- (a start of Chart Cue in this project)
+  eq(R.total, 0, "still empty after a start")
+  -- a project that saved the PDF of another project as its active PDF (an old bug): not shown, removed
+  C.get_P().active_pdf = pdf
+  C.Project.save_project_cfg()
+  C.Project.check_project(true)
+  eq(R.total, 0, "not shown")
+  eq(C.get_P().active_pdf, "", "removed from the project")
+end)
+
 test("setlist: Segue's 'Use Segue' command turns Play in setlist order off", function()
   local P = C.get_P()
   P.setlist_on = true

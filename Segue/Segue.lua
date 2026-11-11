@@ -1,5 +1,5 @@
 -- @description Segue: Setlist player
--- @version 1.2.1
+-- @version 1.3
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -9,7 +9,9 @@
 -- @provides
 --   [main] Segue - Next song.lua
 -- @changelog
---   The Settings menu drops down right below the gear: it never covers the gear, and a 2nd click on the gear closes it.
+--   Open automatically and Close with project (gear menu), as in Chart Cue and FX Link.
+--   Right-click a setlist row (Go to song, Skip, Move, Remove); Delete removes a row; F2 renames the setlist.
+--   Short notices at the bottom of the window instead of OK windows.
 
 -- MIT License
 --
@@ -37,9 +39,18 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Segue"          -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.2.1"         -- keep equal to @version in the header
+CFG.VERSION = "1.3"         -- keep equal to @version in the header
 CFG.EXT = "Segue"              -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
+CFG.DATA_DIR = r.GetResourcePath() .. "/Data/Segue" -- the backups and the autostart watcher
+CFG.STARTUP_FILE = r.GetResourcePath() .. "/Scripts/__startup.lua"
+CFG.AUTOSTART_FILE = CFG.DATA_DIR .. "/autostart.lua"
+CFG.AS_BEGIN = "-- >>> Segue autostart (added by Segue; remove with the Segue option) >>>"
+CFG.AS_END = "-- <<< Segue autostart <<<"
+CFG.AS_BLOCK = CFG.AS_BEGIN .. "\n"
+  .. 'pcall(dofile, reaper.GetResourcePath() .. "/Data/Segue/autostart.lua")\n'
+  .. CFG.AS_END .. "\n"
+CFG.HEARTBEAT = 0.25           -- s between the "Segue runs" signals for the autostart watcher
 CFG.SL_EARLY = 0.02            -- the least time before the region end that the end is handled (Setlist.lead)
 CFG.SL_GUARD = 0.25            -- after a jump, wait this long for the play position to follow
 CFG.DEFAULT_W, CFG.DEFAULT_H = 520, 640
@@ -81,7 +92,8 @@ CFG.CONFLICT_SEC = 0.5         -- how often Segue checks whether Chart Cue also 
 CFG.MORE_W = 110               -- the "More..." dropdown
 CFG.SETTINGS_BTN_W = 200       -- the buttons in the gear menu
 CFG.PICK_W = 220               -- the setlist dropdown (at most)
-CFG.TIP_DELAY = 0.5            -- seconds on an item before its tooltip shows (as in Chart Cue)
+CFG.NOTICE_SEC = 4             -- a notice at the bottom of the window shows this long
+CFG.TIP_DELAY = 0.5           -- seconds on an item before its tooltip shows (as in Chart Cue)
 CFG.TIP_WRAP_EM = 32           -- tooltip lines wrap at this many font sizes
 
 local COL = {
@@ -120,7 +132,7 @@ local function apply_theme(light)
   for k, v in pairs(THEMES[light and "light" or "dark"]) do COL[k] = v end
 end
 
-local Util, Project, Setlist, UI = {}, {}, {}, {}
+local Util, Project, Setlist, Autostart, UI = {}, {}, {}, {}, {}
 
 -- R: runtime state (not saved). P: the project data (saved in the project). S: settings of this computer.
 local R = {
@@ -130,6 +142,8 @@ local R = {
   sl_guard = nil, sl_cursor = nil,
   sl_move = nil, sl_remove = nil,
   frames = 0,
+  projfn = "", proj_fp = "", -- the file name and content fingerprint of the project (Close with project)
+  hb_t = 0,          -- the last heartbeat (the autostart watcher sees that Segue runs)
 }
 local P
 -- S: the settings of this computer (REAPER's ExtState "Segue", persistent)
@@ -142,8 +156,9 @@ local S = {
   hide_playing = false, -- the toolbar button: the panel is hidden while REAPER plays
   light = false,      -- the gear menu: Light theme (Dark is the default)
   dock = 0,           -- the REAPER docker of the window (0 = floating; a negative number = a REAPER docker)
+  close_proj = true,  -- the gear menu: Close with project (Segue closes when its project tab closes or is replaced)
 }
-local S_BOOLS = { "show_now", "show_next", "show_times", "settings_open", "hide_playing", "light" }
+local S_BOOLS = { "show_now", "show_next", "show_times", "settings_open", "hide_playing", "light", "close_proj" }
 local S_DEFAULTS = {} -- (for "Reset all settings...")
 for k, v in pairs(S) do S_DEFAULTS[k] = v end
 
@@ -294,9 +309,36 @@ function Project.save()
   R.plast_txt = txt
 end
 
+-- The content of a project in short: "Save as" keeps it; another project opened in the same tab changes it.
+function Project.fingerprint(proj)
+  local nt = r.CountTracks(proj)
+  local g1 = nt > 0 and r.GetTrackGUID(r.GetTrack(proj, 0)) or ""
+  local _, nm, nr = r.CountProjectMarkers(proj)
+  return string.format("%d|%s|%d|%d", nt, g1, nm or 0, nr or 0)
+end
+
+-- Close with project (as in Chart Cue and FX Link): true when the project of Segue closed (its tab), or File >
+-- Close / New / Open project replaced it in the same tab. Switching tabs and "Save as" are no close.
+function Project.closed_or_replaced(proj, fn)
+  if R.proj == nil then return false end
+  if not r.ValidatePtr2(0, R.proj, "ReaProject*") then return true end
+  if proj ~= R.proj or fn == R.projfn then return false end
+  if fn == "" then return true end
+  local n, txt = r.GetProjExtState(proj, CFG.EXT, CFG.PEXT_KEY)
+  if not (n and n > 0) then txt = Project.serialize() end
+  return txt ~= R.plast_txt or Project.fingerprint(proj) ~= R.proj_fp
+end
+
 -- Every frame: another project tab loads its own data; a project change rescans the regions.
 function Project.update()
-  local proj = r.EnumProjects(-1)
+  local proj, fn = r.EnumProjects(-1)
+  fn = fn or ""
+  if (proj ~= R.proj or fn ~= R.projfn) and Project.closed_or_replaced(proj, fn) then
+    R.pdirty = false -- (never write the old setlists into the next project)
+    if S.close_proj then R.proj = nil; R.close = true; return end
+    R.proj = nil
+  end
+  if fn ~= R.projfn then R.projfn, R.proj_fp = fn, Project.fingerprint(proj) end
   if proj ~= R.proj then
     Setlist.disarm()
     if R.pdirty then Project.save() end
@@ -304,7 +346,10 @@ function Project.update()
     Project.load()
   end
   local cc = r.GetProjectStateChangeCount(proj)
-  if cc ~= R.state_cc then R.state_cc = cc; Project.scan() end
+  if cc ~= R.state_cc then
+    R.state_cc = cc; Project.scan()
+    R.proj_fp = Project.fingerprint(proj) -- (kept up to date: "Save as" later compares with it)
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -705,7 +750,7 @@ Below the list is the now playing area: the current song in large text, the time
 
 Drag the grip between the list and that area to change their sizes. Double-click the grip to reset it.
 
-The gear button has the settings: what the now playing area shows, Light theme, docking, Reset window position, and Back up / Restore / Reset all settings.
+The gear button has the settings: what the now playing area shows, Light theme, Open automatically and Close with project, docking, Reset window position, and Back up / Restore / Reset all settings.
 
 Right-click an empty part of the list for a quick menu: Settings, Help, dock and close.]] },
   { title = "Where your stuff is saved", text = [[
@@ -1052,6 +1097,19 @@ function UI.draw_settings()
   ch, S.light = UI.toggle_line("Light theme", S.light,
     "On: light panels and fields, dark text (for daylight or a light REAPER theme). Off: Dark, for dark stages (the default).")
   if ch then apply_theme(S.light); R.sdirty = true end
+  head("Automatic open and close")
+  local on = Autostart.installed()
+  ch, on = UI.toggle_line("Open automatically", on,
+    "Segue opens by itself when you open a project that has Segue setlists. It adds 3 marked lines to REAPER's "
+    .. "__startup.lua (with a backup). Needs one REAPER restart after you change it.")
+  if ch then
+    local msg = on and Autostart.install() or (not on and Autostart.uninstall()) or nil
+    if msg then ImGui.CloseCurrentPopup(ctx); UI.notice(msg) end
+  end
+  ch, S.close_proj = UI.toggle_line("Close with project", S.close_proj,
+    "Segue closes when its project tab closes, or when File > Close / New / Open project replaces it. "
+    .. "Switching tabs and 'Save as' keep it open.")
+  if ch then R.sdirty = true end
   head("Window")
   local docked = R.docked == true
   if UI.toggle_line("Dock in REAPER's docker", docked, "On: Segue is in a REAPER docker. Off: a floating window.") then
@@ -1073,7 +1131,7 @@ function UI.draw_settings()
     if okf and path ~= "" then
       UI.ask("Replace the Segue settings of this computer with this backup?\n" .. path, "Replace", function()
         local okr, err = Util.restore_settings(path)
-        if not okr then UI.ask(err, nil) end
+        if not okr then UI.notice(err, true) end
       end)
     end
   end
@@ -1246,7 +1304,23 @@ end
 
 -- A question with 2 buttons (a popup in the window). UI.ask opens it; UI.draw_ask draws it every frame.
 -- (yes = nil: a message with only "OK")
-function UI.ask(text, yes, fn) R.ask = { text = text, yes = yes, fn = fn, open = true } end
+-- A question (yes = the button text): a window. Without a question: a notice at the bottom of the window (as FX Link).
+function UI.ask(text, yes, fn)
+  if not yes then UI.notice(text); return end
+  R.ask = { text = text, yes = yes, fn = fn, open = true }
+end
+-- A short notice at the bottom of the window (grey; warn: orange); it goes away after CFG.NOTICE_SEC.
+function UI.notice(text, warn)
+  text = tostring(text or ""):gsub("\n\n", " "):gsub(":\n", ": "):gsub("\n", ", ")
+  R.notice = { text = text, warn = warn, t = Util.now() + CFG.NOTICE_SEC }
+end
+function UI.notice_h(w) -- the height of the notice (0: none)
+  local n = R.notice
+  if n and Util.now() > n.t then R.notice = nil; n = nil end
+  if not n then return 0 end
+  local _, h = ImGui.CalcTextSize(ctx, n.text, nil, nil, false, w)
+  return math.min(h, 3 * ImGui.GetTextLineHeight(ctx)) + 6
+end
 function UI.draw_ask()
   local a = R.ask
   if not a then return end
@@ -1320,7 +1394,8 @@ local SETTINGS_HELP = "The order of the songs in your show. Each song is a regio
   .. "Saved in this project."
 local LIST_HELP = "The time: all songs and pauses that play (from the current song on: the time left). Click a song "
   .. "to go to it. Drag a row, or use the arrows, to change the order. The tick box: play or skip. The X removes "
-  .. "the song from this setlist. The arrow at the right of this title: undo (Ctrl+Z)."
+  .. "the song from this setlist (or the Delete key on a row). Right-click a row: Go to song, Skip, Move to top / bottom, Remove. "
+  .. "The arrow at the right of this title: undo (Ctrl+Z). F2 renames the setlist."
 
 -- Section 1 of the panel, "Setlist settings": the setlist and More..., Lock setlist, Play in setlist order,
 -- Add song and Add pause.
@@ -1407,6 +1482,10 @@ function UI.draw_row(l, i, locked)
   -- the row: a click goes to the song; drag it onto another row to move it
   if ImGui.InvisibleButton(ctx, "##row", math.max(1, name_area), fh) and rg and not Setlist.locked() then Setlist.go(l, i) end
   local hovered = ImGui.IsItemHovered(ctx)
+  if ImGui.IsItemClicked(ctx, 1) then R.rowmenu, R.rowmenu_open = i, true end -- (the row menu, opened after the rows)
+  if hovered and not locked and not ImGui.IsAnyItemActive(ctx) and ImGui.IsKeyPressed(ctx, ImGui.Key_Delete(), false) then
+    R.sl_remove = i -- (Delete: Remove from setlist; Ctrl+Z undoes it)
+  end
   if hovered then
     ImGui.DrawList_AddRectFilled(dl, sx - 6, sy - 2, sx + name_area, sy + fh + 2, COL.ROW_HOVER, 4)
     if rg and not Setlist.locked() then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand()) end
@@ -1499,9 +1578,31 @@ function UI.draw_list_section(l, playing)
     end
     ImGui.SetCursorScreenPos(ctx, bx, by)
   end
-  if #l.items == 0 then ImGui.TextDisabled(ctx, "This setlist is empty. Add a song above."); return end
+  if #l.items == 0 then ImGui.TextColored(ctx, COL.TEXT_DIM, "No songs yet. Add a song above."); return end
   R.sl_move, R.sl_remove = nil, nil
-  for i = 1, #l.items do UI.draw_row(l, i, playing or Setlist.locked()) end
+  local locked = playing or Setlist.locked()
+  for i = 1, #l.items do UI.draw_row(l, i, locked) end
+  -- the right-click menu of a row (as in Chart Cue's Setlist tab)
+  if R.rowmenu_open then ImGui.OpenPopup(ctx, "##rowmenu"); R.rowmenu_open = nil end
+  if ImGui.BeginPopup(ctx, "##rowmenu") then
+    local i = R.rowmenu
+    local it = i and l.items[i]
+    if it then
+      local rg = not it.kind and Project.region_by_key(it.key)
+      if ImGui.MenuItem(ctx, "Go to song", nil, false, rg and not Setlist.locked() or false) then Setlist.go(l, i) end
+      ImGui.Separator(ctx)
+      if ImGui.MenuItem(ctx, it.skip and "Play this row" or "Skip this row", nil, false, not locked) then
+        Setlist.save_undo(l); it.skip = not it.skip; Util.mark_pdirty()
+      end
+      if ImGui.MenuItem(ctx, "Move to top", nil, false, not locked and i > 1) then R.sl_move = { from = i, to = 1 } end
+      if ImGui.MenuItem(ctx, "Move to bottom", nil, false, not locked and i < #l.items) then R.sl_move = { from = i, to = #l.items } end
+      ImGui.Separator(ctx)
+      if ImGui.MenuItem(ctx, "Remove from setlist", "Del", false, not locked) then R.sl_remove = i end
+    else
+      ImGui.CloseCurrentPopup(ctx)
+    end
+    ImGui.EndPopup(ctx)
+  end
   local mv = R.sl_move
   if mv and mv.from and mv.from ~= mv.to and l.items[mv.from] and l.items[mv.to] then
     Setlist.save_undo(l)
@@ -1564,7 +1665,7 @@ end
 function UI.draw_panel_content(l, playing)
   if #R.regions == 0 then
     UI.heading("Setlist")
-    ImGui.TextDisabled(ctx, "No regions in this project. Each song of a setlist is a region.")
+    ImGui.TextColored(ctx, COL.TEXT_DIM, "No regions yet. Make 1 region for each song in REAPER.")
     return
   end
   if not l then
@@ -1814,9 +1915,22 @@ function UI.draw_main()
     and ImGui.IsKeyChordPressed and ImGui.IsKeyChordPressed(ctx, ImGui.Mod_Ctrl() | ImGui.Key_Z()) then
     Setlist.undo(l)
   end
+  if l and ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows()) and not ImGui.IsAnyItemActive(ctx)
+    and ImGui.IsKeyPressed(ctx, ImGui.Key_F2(), false) then -- F2: rename the setlist (as FX Link's groups)
+    Setlist.ask_name("Segue - Rename setlist", l.name, function(n) l.name = n; Util.mark_pdirty() end)
+  end
   UI.draw_toolbar(l)
   local aw, ah = ImGui.GetContentRegionAvail(ctx)
-  ah = ah - CFG.SP_EDGE
+  local nh = UI.notice_h(aw - 16)
+  ah = ah - CFG.SP_EDGE - nh
+  if nh > 0 then -- the notice, below the panel
+    local px, py = ImGui.GetCursorScreenPos(ctx)
+    ImGui.SetCursorScreenPos(ctx, px + 8, py + ah + 4)
+    ImGui.PushTextWrapPos(ctx, ImGui.GetCursorPosX(ctx) + aw - 16)
+    ImGui.TextColored(ctx, R.notice.warn and COL.ORANGE or COL.TEXT_DIM, R.notice.text)
+    ImGui.PopTextWrapPos(ctx)
+    ImGui.SetCursorScreenPos(ctx, px, py)
+  end
   local show_now = S.show_now and l ~= nil
   if show_now and S.hide_playing and playing then -- only the now playing area
     UI.draw_now(l, aw, ah)
@@ -1838,7 +1952,7 @@ function UI.draw_main()
     ImGui.Unindent(ctx, 10)
     ImGui.Dummy(ctx, 0, CFG.SP_PANEL)
     if ImGui.IsMouseClicked(ctx, 1) and ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_ChildWindows())
-      and not ImGui.IsAnyItemHovered(ctx) then R.pmenu = true end
+      and not ImGui.IsAnyItemHovered(ctx) and not ImGui.IsPopupOpen(ctx, "##rowmenu") then R.pmenu = true end
     ImGui.EndChild(ctx)
   end
   UI.draw_panel_menu()
@@ -1970,9 +2084,131 @@ function Util.reset_settings()
   R.sdirty = true
 end
 
+---------------------------------------------------------------------------
+-- AUTOSTART: "Open automatically" (as in Chart Cue): Segue opens for every project that has Segue setlists.
+-- A small watcher (Data\Segue\autostart.lua) is started from REAPER's __startup.lua. Segue adds ONE marked
+-- block at the END of __startup.lua (after a backup) and removes only that block. Your own code never changes.
+---------------------------------------------------------------------------
+local AUTOSTART_SCRIPT = [=[
+-- Segue autostart watcher (written by Segue - do not edit, it is overwritten).
+-- Opens Segue when a project that has Segue setlists opens or becomes the active tab.
+local r = reaper
+local last_proj, last_fn = nil, nil
+local next_t, wait_until, pending_until, cooldown_until = 0, 0, 0, 0
+local function running()
+  local hb = tonumber(r.GetExtState("Segue", "heartbeat"))
+  return hb ~= nil and math.abs(r.time_precise() - hb) < 1.0
+end
+local function tick()
+  local t = r.time_precise()
+  if t >= next_t then
+    next_t = t + 0.1
+    local proj, fn = r.EnumProjects(-1)
+    fn = fn or ""
+    if proj ~= last_proj or fn ~= last_fn then
+      last_proj, last_fn = proj, fn
+      local n = r.GetProjExtState(proj, "Segue", "cfg")
+      if n and n > 0 then wait_until, pending_until = t + 0.5, t + 3.5 else pending_until = 0 end
+    end
+    if t < pending_until and t >= wait_until and t >= cooldown_until then
+      if running() then
+        pending_until = 0
+      else
+        local name = r.GetExtState("Segue", "cmd")
+        local id = (name ~= "") and r.NamedCommandLookup(name) or 0
+        if id ~= 0 then r.Main_OnCommand(id, 0) end
+        cooldown_until, pending_until = t + 3, 0
+      end
+    end
+  end
+  r.defer(tick)
+end
+tick()
+]=]
+
+local function read_all(path)
+  local f = io.open(path, "rb")
+  if not f then return nil end
+  local d = f:read("*a"); f:close()
+  return d
+end
+local function write_all(path, data)
+  local f = io.open(path, "wb")
+  if not f then return false end
+  f:write(data); f:close()
+  return true
+end
+
+-- The command ID of Segue (the watcher starts it by this name).
+function Autostart.command_string()
+  local _, _, _, cmd = r.get_action_context()
+  if not cmd or cmd == 0 then return nil end
+  local named = r.ReverseNamedCommandLookup(cmd)
+  if named and named ~= "" then return named:sub(1, 1) == "_" and named or ("_" .. named) end
+  return tostring(cmd)
+end
+
+-- Reads __startup.lua only when asked to refresh; cached otherwise.
+function Autostart.installed(refresh)
+  if refresh or R.as_installed == nil then
+    local d = read_all(CFG.STARTUP_FILE)
+    R.as_installed = (d ~= nil and d:find(CFG.AS_BEGIN, 1, true) ~= nil)
+  end
+  return R.as_installed
+end
+
+function Autostart.write_script()
+  r.RecursiveCreateDirectory(CFG.DATA_DIR, 0)
+  return write_all(CFG.AUTOSTART_FILE, AUTOSTART_SCRIPT)
+end
+
+-- Returns a message for the user.
+function Autostart.install()
+  if Autostart.installed(true) then return "Open automatically is already on." end
+  local ans = r.ShowMessageBox(
+    "Segue will add these 3 lines at the END of your REAPER startup script:\n\n"
+    .. CFG.STARTUP_FILE .. "\n\n" .. CFG.AS_BLOCK .. "\n"
+    .. "Your own code in that file is not changed. A backup is saved as __startup.lua.segue-backup.\n"
+    .. "Restart REAPER once after this change.\n\nContinue?", CFG.TITLE, 1)
+  if ans ~= 1 then return nil end
+  if not Autostart.write_script() then return "Cannot write " .. CFG.AUTOSTART_FILE end
+  local old = read_all(CFG.STARTUP_FILE)
+  local backup = CFG.STARTUP_FILE .. ".segue-backup"
+  if old and not (write_all(backup, old) and read_all(backup) == old) then
+    return "Cannot write the backup " .. backup .. ". __startup.lua was not changed."
+  end
+  local f = io.open(CFG.STARTUP_FILE, "ab")
+  if not f then return "Cannot write " .. CFG.STARTUP_FILE end
+  if old and old ~= "" and old:sub(-1) ~= "\n" then f:write("\n") end
+  f:write("\n", CFG.AS_BLOCK); f:close()
+  Autostart.installed(true)
+  return "Open automatically is on. Restart REAPER once to start it."
+end
+
+function Autostart.uninstall()
+  local d = read_all(CFG.STARTUP_FILE)
+  if not d then Autostart.installed(true); return nil end
+  local a = d:find(CFG.AS_BEGIN, 1, true)
+  local b = a and d:find(CFG.AS_END, a, true)
+  if not (a and b) then Autostart.installed(true); return nil end
+  local stop = b + #CFG.AS_END
+  if d:sub(stop, stop) == "\n" then stop = stop + 1 end
+  local start = a
+  if start > 1 and d:sub(start - 1, start - 1) == "\n" then start = start - 1 end -- (the blank line Segue added)
+  if not write_all(CFG.STARTUP_FILE, d:sub(1, start - 1) .. d:sub(stop)) then return "Cannot write " .. CFG.STARTUP_FILE end
+  Autostart.installed(true)
+  return "Open automatically is off. It stops after the next REAPER restart."
+end
+
 local function loop()
   R.frames = R.frames + 1
+  local now = Util.now()
+  if now - R.hb_t >= CFG.HEARTBEAT then -- the autostart watcher sees that Segue runs
+    R.hb_t = now
+    r.SetExtState(CFG.EXT, "heartbeat", tostring(now), false)
+  end
   Project.update()
+  if R.close then return end -- (Close with project: stop now, before anything reads the closed project)
   Setlist.read_cmds()
   Setlist.tick()
   ImGui.SetNextWindowSize(ctx, CFG.DEFAULT_W, CFG.DEFAULT_H, ImGui.Cond_FirstUseEver())
@@ -2018,6 +2254,7 @@ local function on_exit()
   Setlist.disarm() -- (the loop points and REAPER's options as they were)
   if R.pdirty then Project.save() end
   if R.sdirty then save_settings() end
+  r.DeleteExtState(CFG.EXT, "heartbeat", false)
   local _, _, sec, cmd = r.get_action_context()
   if cmd and cmd > 0 then r.SetToggleCommandState(sec, cmd, 0); r.RefreshToolbar2(sec, cmd) end
 end
@@ -2039,5 +2276,10 @@ do
 end
 load_settings()
 apply_theme(S.light)
+do -- the autostart watcher finds Segue by its command ID (kept); keep the watcher up to date
+  local cs = Autostart.command_string()
+  if cs then r.SetExtState(CFG.EXT, "cmd", cs, true) end
+  if Autostart.installed(true) then Autostart.write_script() end
+end
 r.atexit(on_exit)
 r.defer(loop)

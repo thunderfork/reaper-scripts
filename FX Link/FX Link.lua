@@ -1,5 +1,5 @@
 -- @description FX Link: link plugin instances across tracks
--- @version 1.0
+-- @version 1.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,12 +13,11 @@
 -- @provides
 --   [main] FX Link - Show plugins.lua
 --   [main] FX Link - Toggle group.lua
+--   [main] FX Link - Group focused plugin on selected tracks.lua
 -- @changelog
---   First version: link groups of plugins (Exact or Relative), all or picked parameters (Learn, Pick...),
---   Match, Link bypass, Show / Hide plugins, search, drag and sort, foldable sections, track selection,
---   another copy on the same track, Open automatically, Close with project, Back up / Restore,
---   2 actions (Show plugins, Toggle group), All except, Relative in dB / ms / %, Snapshots A / B,
---   out-of-sync warning, activity light, FX Containers, Find again, Add from folder.
+--   Automation and LFOs are no longer copied; Pause 1 plugin; Snapshots A / B with Compare, without false "differ".
+--   "+ Add" menus: a new group from the focused plugin on the selected tracks (also an action); empty groups ask which plugin.
+--   Right-click a plugin row, F2 / Delete keys; short notices instead of OK windows.
 
 -- MIT License
 --
@@ -46,7 +45,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "FX Link"          -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.0"            -- keep equal to @version in the header
+CFG.VERSION = "1.1"            -- keep equal to @version in the header
 CFG.EXT = "FX Link"            -- ExtState section (this computer) and the project data section
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DEFAULT_W, CFG.DEFAULT_H = 460, 560
@@ -78,6 +77,7 @@ CFG.SLOW_FRAMES = 10           -- the last touched plugin with a closed window: 
 CFG.UNDO_WAIT = 0.6            -- s without a linked change before FX Link makes its undo point
 CFG.TB_ICON_W = 32             -- the gear and "?" in the toolbar
 CFG.SETTINGS_BTN_W = 200       -- the buttons in the Settings menu
+CFG.NOTICE_SEC = 4             -- a notice at the bottom of the window shows this long
 CFG.FLASH_SEC = 1.5            -- a new linked parameter flashes blue this long
 CFG.DATA_DIR = r.GetResourcePath() .. "/Data/FX Link" -- the backups and the autostart watcher
 CFG.STARTUP_FILE = r.GetResourcePath() .. "/Scripts/__startup.lua"
@@ -143,6 +143,8 @@ local R = {
   act = {},          -- group -> the time of its last copy (the activity dot)
   last_src = {},     -- group -> the plugin that was moved last (the reference of the out-of-sync check)
   noset = {},        -- group -> { [param] = true }: knobs that do not take a set value (not checked)
+  snap_verify = {},  -- group -> { sn, t, tries }: a recalled snapshot to check again
+  snap_cur = {},     -- group -> "A" or "B": the snapshot recalled or stored last (the ring; Compare goes to the other)
   verify = {},       -- group -> { t, src, ps = { [param] = true } or nil (all), tries }: the copy to check again
   search = "", search_low = "", -- the toolbar search
   projfn = "", proj_fp = "", -- the file name and content fingerprint of the project (Close with project)
@@ -272,6 +274,9 @@ function Project.parse(txt)
       local guid, tname, fname = v:match("^([^\t]*)\t?([^\t]*)\t?(.*)$")
       local ms = p.groups[#p.groups].members
       if guid and guid ~= "" then ms[#ms + 1] = { guid = guid, tname = tname or "", fname = fname or "" } end
+    elseif k == "fx_off" and #p.groups > 0 then
+      local ms = p.groups[#p.groups].members
+      if ms[#ms] then ms[#ms].off = true end
     elseif k == "g_snap" and #p.groups > 0 then
       local slot, t = v:match("^([AB])\t(.*)$")
       if slot then snap = { t = t, vals = {} }; p.groups[#p.groups].snap[slot] = snap end
@@ -311,6 +316,7 @@ function Project.serialize()
     if g.bypass then w("g_bypass", 1) end
     for _, m in ipairs(g.members) do
       w("fx", m.guid .. "\t" .. Util.clean(m.tname) .. "\t" .. Util.clean(m.fname))
+      if m.off then w("fx_off", 1) end
     end
     for _, slot in ipairs({ "A", "B" }) do
       local sn = g.snap[slot]
@@ -358,7 +364,7 @@ function Project.load()
   if n and n > 0 and txt and txt ~= "" then P = Project.parse(txt); R.plast_txt = txt
   else P = Project.default(); R.plast_txt = Project.serialize() end
   R.learn, R.undo_due, R.plists = nil, nil, {}
-  R.verify, R.noset, R.act, R.last_src, R.differ, R.differ_seen = {}, {}, {}, {}, {}, {} -- (the old project's groups)
+  R.verify, R.noset, R.act, R.last_src, R.differ, R.differ_seen, R.snap_cur, R.snap_verify = {}, {}, {}, {}, {}, {}, {}, {} -- (the old project's groups)
   Fx.resolve(true)
 end
 
@@ -592,16 +598,28 @@ function Fx.focused()
   return nil, nil, "Open a plugin window first (click it), then click this button."
 end
 
--- The plugins on the selected tracks, by identity: { { ident, plug }, ... } (for an empty group).
-function Fx.selected_plugins()
+-- The plugins on these tracks, by identity: { { ident, plug, n = copies }, ... } sorted by name (for an empty
+-- group: "Which plugin?"). tracks = nil: every track of the project and the master.
+function Fx.plugin_list(tracks)
+  if not tracks then
+    tracks = { r.GetMasterTrack(R.proj) }
+    for i = 0, r.CountTracks(R.proj) - 1 do tracks[#tracks + 1] = r.GetTrack(R.proj, i) end
+  end
   local list, seen = {}, {}
-  for i = 0, r.CountSelectedTracks(R.proj) - 1 do
-    local tr = r.GetSelectedTrack(R.proj, i)
+  for _, tr in ipairs(tracks) do
     Fx.each(tr, function(f)
       local id, short = Fx.ident(tr, f)
-      if not seen[id] then seen[id] = true; list[#list + 1] = { ident = id, plug = short } end
+      local e = seen[id]
+      if e then e.n = e.n + 1
+      else e = { ident = id, plug = short, n = 1 }; seen[id] = e; list[#list + 1] = e end
     end)
   end
+  table.sort(list, function(a, b) return a.plug:lower() < b.plug:lower() end)
+  return list
+end
+function Fx.selected_tracks()
+  local list = {}
+  for i = 0, r.CountSelectedTracks(R.proj) - 1 do list[#list + 1] = r.GetSelectedTrack(R.proj, i) end
   return list
 end
 
@@ -623,11 +641,7 @@ function Fx.add_tracks(g, tracks)
   end
   return added, skipped
 end
-function Fx.add_selected(g)
-  local list = {}
-  for i = 0, r.CountSelectedTracks(R.proj) - 1 do list[#list + 1] = r.GetSelectedTrack(R.proj, i) end
-  return Fx.add_tracks(g, list)
-end
+function Fx.add_selected(g) return Fx.add_tracks(g, Fx.selected_tracks()) end
 
 -- The folder tracks of the project (Add from folder): { { track, name }, ... }.
 function Fx.folders()
@@ -836,7 +850,29 @@ end
 
 -- Compares the source instance with its snapshot and copies every change to the other members.
 -- Returns the number of changed parameters.
-function Link.sync(g, src)
+-- A knob that automation or parameter modulation moves (not the user): its changes are not copied.
+-- Automation: during playback, or any knob other than the touched one (a seek while stopped).
+-- Only called for a changed knob (not every frame for every knob).
+function Link.driven(rt, p, touched)
+  local _, mod = r.TrackFX_GetNamedConfigParm(rt.track, rt.idx, "param." .. p .. ".mod.active")
+  if mod == "1" then return true end
+  if r.GetFXEnvelope(rt.track, rt.idx, p, false) then
+    return p ~= touched or (r.GetPlayState() & 1) == 1
+  end
+  return false
+end
+
+-- A plugin that follows its group (not paused, and found): its runtime data, else nil.
+function Link.live(m) return not m.off and R.rt[m] or nil end
+
+-- Pause / resume 1 plugin. On resume its values are read again (no jump: the changes made while paused stay).
+function Link.set_paused(m, off)
+  m.off = off or nil
+  if not off and R.rt[m] then Fx.snapshot(R.rt[m]) end
+  Util.mark_pdirty()
+end
+
+function Link.sync(g, src, touched)
   local srt = R.rt[src]
   if not srt then return 0 end
   local list = Link.plist(g)
@@ -848,6 +884,8 @@ function Link.sync(g, src)
       local v = r.TrackFX_GetParamNormalized(srt.track, srt.idx, p)
       local old = srt.val[p]
       if old == nil then srt.val[p], srt.virt[p] = v, v
+      elseif math.abs(v - old) > CFG.EPS and Link.driven(srt, p, touched) then
+        srt.val[p], srt.virt[p], srt.uvirt[p] = v, v, nil -- (automation or modulation moved it: not copied)
       elseif math.abs(v - old) > CFG.EPS then
         local d = v - old
         -- Relative: the change in dB / ms / % when the plugin shows it
@@ -859,7 +897,7 @@ function Link.sync(g, src)
         end
         srt.val[p], srt.virt[p], srt.uvirt[p] = v, v, nil
         for _, m in ipairs(g.members) do
-          local ort = m ~= src and R.rt[m]
+          local ort = m ~= src and Link.live(m)
           if ort and p < ort.nparams then
             local nv, virt, uv
             if du then
@@ -902,7 +940,7 @@ function Link.verify_tick()
       if srt and g.on and g.mode == "exact" then
         local list = Link.plist(g)
         for _, m in ipairs(g.members) do
-          local ort = m ~= v.src and R.rt[m]
+          local ort = m ~= v.src and Link.live(m)
           if ort then
             local function check(pp)
               if pp < srt.nparams and pp < ort.nparams then
@@ -955,11 +993,11 @@ function Link.tick()
       end
     end
   end
-  if g and g.on and #g.members > 1 then
+  if g and g.on and not m.off and #g.members > 1 and not R.snap_verify[g] then
     -- its window open: every frame; closed (a control surface, the FX chain list): about 3 times per second
     local rt = R.rt[m]
     local due = rt and (r.TrackFX_GetOpen(rt.track, rt.idx) or R.frames % CFG.SLOW_FRAMES == 0)
-    if due and Link.sync(g, m) > 0 then
+    if due and Link.sync(g, m, prm) > 0 then
       R.undo_due = Util.now() + CFG.UNDO_WAIT
       R.act[g], R.last_src[g] = Util.now(), m
       if R.differ then R.differ[g] = nil end -- (checked again soon)
@@ -967,6 +1005,7 @@ function Link.tick()
   end
   if Link.bypass_tick() then R.undo_due = Util.now() + CFG.UNDO_WAIT end
   Link.verify_tick()
+  Link.snap_tick()
   Link.check_sync()
   if R.undo_due and Util.now() > R.undo_due then
     R.undo_due = nil
@@ -982,12 +1021,12 @@ function Link.bypass_tick()
   for _, g in ipairs(P.groups) do
     if g.on and g.bypass and #g.members > 1 then
       for _, m in ipairs(g.members) do
-        local rt = R.rt[m]
+        local rt = Link.live(m)
         local e = rt and r.TrackFX_GetEnabled(rt.track, rt.idx)
         if rt and e ~= rt.enabled then
           rt.enabled = e
           for _, o in ipairs(g.members) do
-            local ort = o ~= m and R.rt[o]
+            local ort = o ~= m and Link.live(o)
             if ort and ort.enabled ~= e then r.TrackFX_SetEnabled(ort.track, ort.idx, e); ort.enabled = e end
           end
           R.act[g] = Util.now()
@@ -1020,16 +1059,16 @@ function Link.check_sync()
   R.differ[g] = nil
   if not (g.on and g.mode == "exact" and #g.members > 1) then R.differ_seen[g] = nil; return end
   local ref = R.last_src[g]
-  if not (ref and R.rt[ref] and R.group_of[ref] == g) then
+  if not (ref and Link.live(ref) and R.group_of[ref] == g) then
     ref = nil
-    for _, m in ipairs(g.members) do if R.rt[m] then ref = m; break end end
+    for _, m in ipairs(g.members) do if Link.live(m) then ref = m; break end end
   end
   local rr = ref and R.rt[ref]
   if not rr then return end
   local list = Link.plist(g)
   local diff, n = nil, 0
   for _, m in ipairs(g.members) do
-    local rt = m ~= ref and R.rt[m]
+    local rt = m ~= ref and Link.live(m)
     if rt then
       local cnt = list and #list or math.min(rr.nparams, rt.nparams)
       local noset = R.noset[g]
@@ -1077,17 +1116,51 @@ end
 function Link.snap_recall(g, slot)
   local sn = g.snap[slot]
   if not sn then return end
+  R.snap_cur[g] = slot
   r.Undo_BeginBlock2(R.proj)
+  Link.snap_apply(g, sn)
+  r.Undo_EndBlock2(R.proj, "FX Link: recall snapshot " .. slot, -1)
+  Link.group_changed(g)
+  -- plugins apply some values late, and turning a band on resets its other knobs: check again soon
+  R.snap_verify[g] = { sn = sn, t = Util.now() + CFG.VERIFY_SEC, tries = 0 }
+  R.act[g] = Util.now()
+end
+-- Sets every plugin to its values of the snapshot, in parameter order (always the same order: a band's
+-- "on" before its frequency). Returns true when a knob had to be set.
+function Link.snap_apply(g, sn)
+  local set = false
   for _, m in ipairs(g.members) do
-    local rt, vals = R.rt[m], sn.vals[m.guid]
+    local rt, vals = Link.live(m), sn.vals[m.guid]
     if rt and vals then
-      for p, v in pairs(vals) do
-        if p < rt.nparams then r.TrackFX_SetParamNormalized(rt.track, rt.idx, p, v) end
+      local ps = {}
+      for p in pairs(vals) do if p < rt.nparams then ps[#ps + 1] = p end end
+      table.sort(ps)
+      for _, p in ipairs(ps) do
+        if math.abs(r.TrackFX_GetParamNormalized(rt.track, rt.idx, p) - vals[p]) > CFG.EPS then
+          r.TrackFX_SetParamNormalized(rt.track, rt.idx, p, vals[p])
+          set = true
+        end
       end
     end
   end
-  r.Undo_EndBlock2(R.proj, "FX Link: recall snapshot " .. slot, -1)
-  Link.group_changed(g)
+  return set
+end
+-- After a recall: set the knobs again that did not take (at most CFG.VERIFY_TRIES times), then read the plugins.
+function Link.snap_tick()
+  local now = Util.now()
+  for g, v in pairs(R.snap_verify) do
+    if now >= v.t then
+      v.tries = v.tries + 1
+      local again = Link.snap_apply(g, v.sn)
+      if again and v.tries < CFG.VERIFY_TRIES then
+        v.t = now + CFG.VERIFY_SEC
+      else
+        R.snap_verify[g] = nil
+        Link.group_changed(g) -- (the new values are the start for the next change)
+      end
+      R.act[g] = now -- (the out-of-sync check waits)
+    end
+  end
 end
 
 -- Match: the other plugins of the group become equal to src (the linked parameters; with Link bypass also
@@ -1098,7 +1171,7 @@ function Link.match(g, src)
   local list = Link.plist(g)
   r.Undo_BeginBlock2(R.proj)
   for _, m in ipairs(g.members) do
-    local ort = m ~= src and R.rt[m]
+    local ort = m ~= src and Link.live(m)
     if ort then
       local n = list and #list or math.min(srt.nparams, ort.nparams)
       for k = 1, n do
@@ -1133,17 +1206,48 @@ function Link.show(g, on)
   end
 end
 
--- The actions "FX Link - Show plugins" and "FX Link - Toggle group" (they act on the selected group).
+-- The actions "FX Link - Show plugins", "FX Link - Toggle group" (the selected group) and
+-- "FX Link - Group focused plugin on selected tracks" (a new group).
 function Link.read_cmds()
   local q = r.GetExtState(CFG.EXT, "cmd_q")
   if q == "" then return end
   r.SetExtState(CFG.EXT, "cmd_q", "", false)
-  local g = P and P.groups[P.cur]
-  if not g then return end
+  if not P then return end
   for c in q:gmatch("([^,]+)") do
-    if c == "show" then Link.show(g, not Link.any_open(g))
+    local g = P.groups[P.cur]
+    if c == "quick" then Link.quick_group()
+    elseif not g then -- (no group yet: nothing to show or toggle)
+    elseif c == "show" then Link.show(g, not Link.any_open(g))
     elseif c == "toggle" then g.on = not g.on; Link.group_changed(g) end
   end
+end
+
+-- Quick group (an action): a new group of the focused plugin and the same plugin on every selected track.
+-- Tracks without it (or with it in another group) are skipped; a message names them.
+function Link.quick_group()
+  local tr, idx, err = Fx.focused()
+  if not tr then UI.notice(err, true); return end
+  local g = Project.new_group("")
+  local ok, e2 = Fx.add(g, tr, idx)
+  if not ok then UI.notice(e2, true); return end
+  g.name = g.plug
+  P.groups[#P.groups + 1] = g
+  P.cur = #P.groups
+  local others = {}
+  for i = 0, r.CountSelectedTracks(R.proj) - 1 do
+    local t = r.GetSelectedTrack(R.proj, i)
+    if t ~= tr then others[#others + 1] = t end
+  end
+  local _, skipped = Fx.add_tracks(g, others)
+  Util.mark_pdirty(); Fx.resolve(false)
+  local msg
+  if #g.members < 2 then
+    msg = "New group \"" .. g.name .. "\" with 1 plugin. Select the other tracks that have " .. g.plug
+      .. " and run it again, or use \"+ Add\" > Selected tracks."
+  elseif #skipped > 0 then
+    msg = "New group \"" .. g.name .. "\" with " .. #g.members .. " plugins.\nSkipped:\n" .. table.concat(skipped, "\n")
+  end
+  if msg then UI.ask(msg, nil) end
 end
 
 -- Starts or stops Learn for a group (Learn adds each parameter that you move in its plugins).
@@ -1373,9 +1477,11 @@ local HELP_INTRO = "FX Link links plugins across tracks. Put the same plugin fro
 -- The Help topics (the "?" button): 1 open at a time.
 local HELP_TOPICS = {
   { title = "Getting started", text = [[
-1. Click "+ New group" and give it a name (for example "Guitars").
-2. Select your guitar tracks and click "Add from selected tracks". Pick the plugin (for example Pro-Q 3).
+1. Open the plugin on 1 of your guitar tracks (for example Pro-Q 3) and click its window.
+2. Select your guitar tracks, then click "+ Add" (Link groups) > "From focused plugin + selected tracks".
 3. Move a knob in any of those plugins. The others follow.
+
+More later? Click "+ Add" below the plugins: the focused plugin, the selected tracks, the same plugin in the whole project or in a folder.
 
 Want to tweak one plugin on its own? Turn the group off with its switch, tweak, and turn it back on. Changes you made while it was off are not copied.]] },
   { title = "Exact or Relative", text = [[
@@ -1385,7 +1491,7 @@ Relative: every plugin gets the same change. Add 2 dB in one, and each one gets 
 
 Need them all equal right now? Click "Match" next to the plugin that has the right settings: the others copy it.
 
-Automation: if a linked knob has automation on one of the tracks, the automation wins during playback (REAPER sets the knob from it).]] },
+Automation: if a linked knob has automation on one of the tracks, the automation wins during playback (REAPER sets the knob from it). FX Link does not copy what automation or parameter modulation (LFO) does: only what you move yourself.]] },
   { title = "Only some knobs", text = [[
 Set Parameters to "Picked". Then the "Linked parameters" section shows which knobs are linked.
 
@@ -1399,10 +1505,12 @@ Click the X next to a parameter to unlink it.]] },
   { title = "Plugins, Match and bypass", text = [[
 The Plugins section lists every plugin of the group: the track and the plugin. Sort it by track order or by track name.
 
-Add focused plugin: click the plugin window first, then the button.
-Add from selected tracks: the same plugin from every selected track (the first one, if a track has 2).
-Add all in project: every copy of this plugin in the project. Remove the ones you do not want with their X.
-Add from folder...: the plugin from every track of a folder (for example "Drums").
+"+ Add" opens a menu:
+- Focused plugin: click the plugin window first, then this.
+- Selected tracks: the same plugin from every selected track (the first one, if a track has 2).
+- Same plugin in whole project: every copy of this plugin in the project. Remove the ones you do not want with their X.
+- Same plugin in folder...: the plugin from every track of a folder (for example "Drums").
+In an empty group, they first ask which plugin (with the number of copies).
 
 Plugins inside FX Containers work too: the row says "(in container)".
 
@@ -1423,9 +1531,10 @@ The dot before a group name flashes blue each time FX Link copies a change. "2 d
 
 The links only work while the FX Link window is open (docked is fine).]] },
   { title = "Keys and toolbar buttons", text = [[
-2 actions in REAPER's Action List work on the selected group (FX Link must be open):
-- "FX Link - Show plugins": opens or closes its plugin windows.
-- "FX Link - Toggle group": turns its link on or off.
+3 actions in REAPER's Action List (FX Link must be open):
+- "FX Link - Show plugins": opens or closes the plugin windows of the selected group.
+- "FX Link - Toggle group": turns the link of the selected group on or off.
+- "FX Link - Group focused plugin on selected tracks": click a plugin window, select its tracks, run it: a new group with that plugin on every selected track. Tracks without the plugin are skipped.
 
 Give them a key or a toolbar button in the Action List.]] },
   { title = "Where your stuff is saved", text = [[
@@ -1454,7 +1563,7 @@ Only changes are copied: a plugin that you add keeps its settings until you move
 
 Relative uses real units when the plugin shows them (dB, ms, %): +2 dB is +2 dB on every plugin.
 
-Snapshots: Store saves the linked knobs of all the plugins as A or B; Recall sets them back (Ctrl+Z undoes it). Good for comparing 2 versions. They are saved in the project.]]
+Snapshots: the disk next to A or B stores the linked knobs of all the plugins there; A or B sets them back (Ctrl+Z undoes it). The arrows switch between A and B to compare 2 versions (store your changes first). The ring shows the snapshot you are on. They are saved in the project.]]
 local HELP_EXCEPT = [[The knobs that this group does NOT link (Parameters: All except). Every other knob is linked.
 
 Good for the output gain or pan: the same EQ curve on every track, but each keeps its own level.
@@ -1471,13 +1580,16 @@ Pick...: all the knobs of the plugin, with a search box.
 The X unlinks a knob.]]
 local HELP_PLUGINS = [[The plugins of this group: the track and the plugin.
 
+Switch at the left: pause this plugin. A paused plugin does not follow the group, and its changes are not copied. Turn it on again and it keeps its own settings (click Match to make it equal).
 Click a row: its track is selected in REAPER.
 Click the plugin name: pick another copy of the plugin on that track, or open its window.
 
 Match: the other plugins copy this one (all linked knobs). Ctrl+Z undoes it.
 Orange track name: this plugin is not equal to the plugin moved last (Exact groups; the group row says "2 differ").
 Missing: the plugin was deleted, or the track came from a template. Find looks for it again on a track with the same name.
-X: removes it from the group (the plugin and its settings stay as they are).]]
+Right-click a row: Open plugin window, Select track, Pause, Remove.
+X (or the Delete key on a row): removes it from the group (the plugin and its settings stay as they are).
+F2: rename the selected group.]]
 
 -- The theme: the same colours and sizes as Chart Cue (pushed every frame; UI.pop_style pops them).
 local STYLE_COLS = {
@@ -1630,6 +1742,10 @@ function UI.heading(text, help, id, fold, reserve)
 end
 
 -- A button on the line of the last heading, right-aligned (each next one goes left of the one before).
+-- "+ Add" (the template of all 4 scripts): a ghost button on the heading line that opens a dropdown menu.
+UI.ADD = "+ Add"
+function UI.add_w() return UI.btn_w(UI.ADD) end
+
 function UI.heading_button(label, tip, kind, w)
   w = w or UI.btn_w(label)
   local x, y = ImGui.GetCursorScreenPos(ctx)
@@ -1690,7 +1806,25 @@ function UI.remove_x_button(id, size)
 end
 
 -- A question with 2 buttons (a popup in the window). yes = nil: a message with only "OK".
-function UI.ask(text, yes, fn) R.ask = { text = text, yes = yes, fn = fn, open = true } end
+-- A question (yes = the button text): a window. Without a question: a notice at the bottom of the window.
+function UI.ask(text, yes, fn)
+  if not yes then UI.notice(text); return end
+  R.ask = { text = text, yes = yes, fn = fn, open = true }
+end
+-- A short notice at the bottom of the window (grey; warn: orange); it goes away after CFG.NOTICE_SEC (+1 s per
+-- extra line). Line breaks become ", " (1 paragraph).
+function UI.notice(text, warn)
+  text = tostring(text or ""):gsub("\n\n", " "):gsub(":\n", ": "):gsub("\n", ", ")
+  local _, lines = text:gsub(", ", "")
+  R.notice = { text = text, warn = warn, t = Util.now() + CFG.NOTICE_SEC + math.min(6, lines) }
+end
+function UI.notice_h(w) -- the height of the notice (0: none)
+  local n = R.notice
+  if n and Util.now() > n.t then R.notice = nil; n = nil end
+  if not n then return 0 end
+  local _, h = ImGui.CalcTextSize(ctx, n.text, nil, nil, false, w)
+  return math.min(h, 3 * ImGui.GetTextLineHeight(ctx)) + 6
+end
 function UI.draw_ask()
   local a = R.ask
   if not a then return end
@@ -1726,6 +1860,26 @@ function UI.toggle_line(label, v, tip)
   if ImGui.IsItemClicked(ctx) then ch, nv = true, not v end
   if tip then UI.tip(tip) end
   return ch, nv
+end
+
+-- Small icons drawn on the last item (a square button): a disk (store) and 2 arrows (compare).
+function UI.draw_disk(dl, col)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local x2, y2 = ImGui.GetItemRectMax(ctx)
+  local cx, cy = math.floor((x1 + x2) / 2), math.floor((y1 + y2) / 2)
+  local r0 = 6
+  ImGui.DrawList_AddRect(dl, cx - r0, cy - r0, cx + r0, cy + r0, col, 2, 0, 1.5)
+  ImGui.DrawList_AddRectFilled(dl, cx - 3, cy - r0, cx + 3, cy - 2, col)
+  ImGui.DrawList_AddRect(dl, cx - 4, cy + 1, cx + 4, cy + r0, col, 0, 0, 1)
+end
+function UI.draw_swap(dl, col)
+  local x1, y1 = ImGui.GetItemRectMin(ctx)
+  local x2, y2 = ImGui.GetItemRectMax(ctx)
+  local cx, cy = math.floor((x1 + x2) / 2), math.floor((y1 + y2) / 2)
+  ImGui.DrawList_AddLine(dl, cx - 6, cy - 3, cx + 5, cy - 3, col, 1.5)
+  ImGui.DrawList_AddTriangleFilled(dl, cx + 7, cy - 3, cx + 3, cy - 6, cx + 3, cy, col)
+  ImGui.DrawList_AddLine(dl, cx + 6, cy + 3, cx - 5, cy + 3, col, 1.5)
+  ImGui.DrawList_AddTriangleFilled(dl, cx - 7, cy + 3, cx - 3, cy, cx - 3, cy + 6, col)
 end
 
 function UI.draw_gear_icon(dl, cx, cy, col)
@@ -1811,14 +1965,23 @@ end
 
 -- The groups list: a row per group (drag handle, switch, name, plugin and count, remove).
 function UI.draw_groups()
-  local reserve = UI.btn_w("+ New group") + UI.btn_w("Sort") + 8
+  local reserve = UI.add_w() + UI.btn_w("Sort") + 8
   local open = UI.heading("Link groups", HELP_GROUPS, "groups", "groups", reserve)
-  if UI.heading_button("+ New group", "Make a new, empty link group.") then
-    Util.ask_name("FX Link - New group", "Group " .. (#P.groups + 1), function(n)
-      P.groups[#P.groups + 1] = Project.new_group(n)
-      P.cur = #P.groups
-      Util.mark_pdirty(); Fx.resolve(false)
-    end)
+  local ng_hit = UI.heading_button(UI.ADD .. "##newgroup", "Make a new link group.", "ghost", UI.add_w())
+  if ng_hit then ImGui.OpenPopup(ctx, "##newgroup") end
+  local ngx, ngy = ImGui.GetItemRectMax(ctx)
+  ImGui.SetNextWindowPos(ctx, ngx, ngy + 4, ImGui.Cond_Appearing(), 1, 0) -- (drops down below the button, right-aligned)
+  if ImGui.BeginPopup(ctx, "##newgroup") then
+    if ImGui.MenuItem(ctx, "From focused plugin + selected tracks") then Link.quick_group() end
+    UI.tip("Click a plugin window, select its tracks, then this: a new group with that plugin on every selected track.")
+    if ImGui.MenuItem(ctx, "Empty group...") then
+      Util.ask_name("FX Link - New group", "Group " .. (#P.groups + 1), function(n)
+        P.groups[#P.groups + 1] = Project.new_group(n)
+        P.cur = #P.groups
+        Util.mark_pdirty(); Fx.resolve(false)
+      end)
+    end
+    ImGui.EndPopup(ctx)
   end
   if #P.groups > 1 and UI.heading_button("Sort", "Sort the groups by name (A to Z).") then
     local cur = P.groups[P.cur]
@@ -1828,7 +1991,7 @@ function UI.draw_groups()
   end
   if not open then return end
   if #P.groups == 0 then
-    ImGui.TextColored(ctx, COL.TEXT_DIM, "No groups yet. Click \"+ New group\" to make one.")
+    ImGui.TextColored(ctx, COL.TEXT_DIM, "No groups yet. Click \"+ Add\" to make one.")
     return
   end
   local L = UI.labels()
@@ -2027,39 +2190,50 @@ function UI.draw_settings_section(g)
   local ch, nv = UI.toggle("##bypass", g.bypass)
   UI.tip("On: turn one plugin of this group off or on (its bypass), and the others follow. This does not pause the link: for that, turn the group off with its switch.")
   if ch then g.bypass = nv; Link.group_changed(g) end
-  -- Snapshots A / B
+  -- Snapshots: [A][disk] [B][disk] [swap]; A / B recall, the disk stores, swap recalls the other one
   UI.row_start("Snapshots")
-  local cx = ImGui.GetCursorPosX(ctx)
-  local full = ImGui.GetContentRegionAvail(ctx) -- (from the control column: room for A and B on 1 line?)
-  local rw, sw = UI.btn_w("Recall"), UI.btn_w("Store")
-  local slot_w = 14 + rw + sw + 50 + 3 * 4
+  local h = math.floor(ImGui.GetFrameHeight(ctx))
   local can = #g.members > 0
+  local cur = R.snap_cur[g]
+  local dl = ImGui.GetWindowDrawList(ctx)
   for k, slot in ipairs({ "A", "B" }) do
     ImGui.PushID(ctx, slot)
-    if k == 2 then
-      if full >= 2 * slot_w + 16 then ImGui.SameLine(ctx, 0, 16)
-      else ImGui.SetCursorPosX(ctx, cx) end
-    end
+    if k == 2 then ImGui.SameLine(ctx, 0, 10) end
     local sn = g.snap[slot]
-    ImGui.PushFont(ctx, bold)
-    UI.row_text(slot)
-    ImGui.PopFont(ctx)
-    ImGui.SameLine(ctx, 0, 6)
+    local on = cur == slot and sn
+    if on then ImGui.PushFont(ctx, bold) end
     ImGui.BeginDisabled(ctx, not sn)
-    if UI.button("Recall", rw) then Link.snap_recall(g, slot) end
+    if UI.button(slot, h, h) then Link.snap_recall(g, slot) end
     ImGui.EndDisabled(ctx)
-    if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
-      ImGui.SetTooltip(ctx, sn and ("Set the plugins back to snapshot " .. slot .. " (" .. sn.t .. "). Ctrl+Z undoes it.")
-        or ("Snapshot " .. slot .. " is empty. Click Store first."))
+    if on then
+      ImGui.PopFont(ctx)
+      local x1, y1 = ImGui.GetItemRectMin(ctx)
+      local x2, y2 = ImGui.GetItemRectMax(ctx)
+      ImGui.DrawList_AddRect(dl, x1, y1, x2, y2, COL.TEXT_MAIN, 6, 0, 1.5) -- (the current snapshot: a ring)
     end
-    ImGui.SameLine(ctx, 0, 4)
+    if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+      ImGui.SetTooltip(ctx, sn and ("Recall snapshot " .. slot .. " (stored " .. sn.t .. "). Ctrl+Z undoes it.")
+        or ("Snapshot " .. slot .. " is empty. Click the disk next to it to store it."))
+    end
+    ImGui.SameLine(ctx, 0, 2)
     ImGui.BeginDisabled(ctx, not can)
-    if UI.button("Store", sw) then Link.snap_store(g, slot) end
+    local hit = UI.button("##store", h, h)
     ImGui.EndDisabled(ctx)
-    UI.tip("Save the linked knobs of all the plugins of this group as snapshot " .. slot .. " (replaces the old one).")
-    ImGui.SameLine(ctx, 0, 4)
-    UI.row_text(sn and sn.t or "empty", COL.TEXT_DIM)
+    UI.draw_disk(dl, can and COL.TEXT_MAIN or COL.TEXT_DIM)
+    if hit then Link.snap_store(g, slot); R.snap_cur[g] = slot end
+    UI.tip("Store the linked knobs of all the plugins as snapshot " .. slot .. (sn and " (replaces the one from " .. sn.t .. ")." or "."))
     ImGui.PopID(ctx)
+  end
+  ImGui.SameLine(ctx, 0, 10)
+  local both = g.snap.A and g.snap.B
+  ImGui.BeginDisabled(ctx, not both)
+  local sw_hit = UI.button("##swap", h, h)
+  ImGui.EndDisabled(ctx)
+  UI.draw_swap(dl, both and COL.TEXT_MAIN or COL.TEXT_DIM)
+  if sw_hit then Link.snap_recall(g, cur == "A" and "B" or "A") end
+  if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
+    ImGui.SetTooltip(ctx, both and "Compare: switch between A and B. Changes since the last recall or store are not kept: store them first."
+      or "Compare: store both A and B first.")
   end
 end
 
@@ -2118,9 +2292,21 @@ function UI.draw_params(g)
 end
 
 -- Plugins: a row per plugin (track, plugin, Match, remove), the sort on the heading line, the add buttons.
+-- Remove a plugin from its group, after a question (the Delete key and the row's right-click menu).
+function UI.ask_remove_member(g, m)
+  local who = R.rt[m] and R.rt[m].track_label or ((m.tname or "") ~= "" and m.tname or "this plugin")
+  UI.ask("Remove " .. who .. " from the group \"" .. g.name .. "\"?\n(The plugin and its settings do not change.)",
+    "Remove", function()
+      for i, o in ipairs(g.members) do if o == m then table.remove(g.members, i); break end end
+      if #g.members == 0 then g.ident, g.plug = "", "" end
+      Util.mark_pdirty(); Fx.resolve(false)
+    end)
+end
+
 function UI.draw_plugins(g)
   local sort_label = g.sort == "name" and "Sort: track name" or "Sort: track order"
-  local open = UI.heading("Plugins (" .. #g.members .. ")", HELP_PLUGINS, "plugins", "plugins",
+  local df = R.differ and R.differ[g]
+  local open = UI.heading("Plugins (" .. #g.members .. (df and (", " .. df.n .. " differ") or "") .. ")", HELP_PLUGINS, "plugins", "plugins",
     UI.btn_w("Sort: track order") + 8)
   if UI.heading_button(sort_label, "How this list is sorted.") then ImGui.OpenPopup(ctx, "##psort") end
   if ImGui.BeginPopup(ctx, "##psort") then
@@ -2128,21 +2314,22 @@ function UI.draw_plugins(g)
     if ImGui.Selectable(ctx, "Track name", g.sort == "name") then g.sort = "name"; Util.mark_pdirty(); R.order = nil end
     ImGui.EndPopup(ctx)
   end
-  if not open then return end
+  if not open then R.hover_m = nil; return end
   if #g.members == 0 then
-    ImGui.TextColored(ctx, COL.TEXT_DIM, "No plugins yet. Use a button below to add them.")
+    ImGui.TextColored(ctx, COL.TEXT_DIM, "No plugins yet. Click \"+ Add\" below to add them.")
   end
   local aw = ImGui.GetContentRegionAvail(ctx)
   local mw = UI.btn_w("Match")
-  local col_w = math.floor((aw - CFG.X_BTN - mw - 24) * 0.55)
+  local tgl_w = math.floor(math.min(20, ImGui.GetFrameHeight(ctx) - 4) * 1.8) + 6 -- (the pause switch)
+  local col_w = math.floor((aw - tgl_w - CFG.X_BTN - mw - 24) * 0.55)
   local filter = R.search_low ~= "" and not UI.name_match(g)
-  local del, match
+  local del, match, hover_m
   if #g.members > 0 then -- the column labels
     local x, y = ImGui.GetCursorScreenPos(ctx)
     local dl = ImGui.GetWindowDrawList(ctx)
     ImGui.PushFont(ctx, bold)
-    ImGui.DrawList_AddText(dl, x + 8, y, COL.TEXT_DIM, "Track")
-    ImGui.DrawList_AddText(dl, x + col_w, y, COL.TEXT_DIM, "Plugin")
+    ImGui.DrawList_AddText(dl, x + tgl_w + 8, y, COL.TEXT_DIM, "Track")
+    ImGui.DrawList_AddText(dl, x + tgl_w + col_w, y, COL.TEXT_DIM, "Plugin")
     ImGui.PopFont(ctx)
     ImGui.Dummy(ctx, 0, ImGui.GetFontSize(ctx) - 2)
   end
@@ -2150,11 +2337,17 @@ function UI.draw_plugins(g)
     local rt = R.rt[m]
     if not filter or (rt and rt.track_low:find(R.search_low, 1, true)) then
       ImGui.PushID(ctx, i)
-      local x, y = ImGui.GetCursorScreenPos(ctx)
+      local x0, y = ImGui.GetCursorScreenPos(ctx)
+      local x = x0 + tgl_w
       local h = ImGui.GetFrameHeight(ctx)
       local dl = ImGui.GetWindowDrawList(ctx)
-      local row_w = aw - CFG.X_BTN - mw - 16
+      local row_w = aw - tgl_w - CFG.X_BTN - mw - 16
       if rt then
+        local tch, tv = UI.toggle("##live", not m.off)
+        if tch then Link.set_paused(m, not tv) end
+        UI.tip(m.off and "Paused: this plugin does not follow the group. Click to link it again."
+          or "Linked. Click to pause this plugin (it stops following the group).")
+        ImGui.SetCursorScreenPos(ctx, x, y)
         -- the track part selects the track; the plugin name opens the dropdown (and selects the track too)
         local sel_hit = ImGui.InvisibleButton(ctx, "##sel", col_w - 4, h)
         local hov1 = ImGui.IsItemHovered(ctx)
@@ -2164,7 +2357,7 @@ function UI.draw_plugins(g)
         local fx_hit = ImGui.InvisibleButton(ctx, "##fx", fx_w, h)
         local hov2 = ImGui.IsItemHovered(ctx)
         UI.tip("Pick another copy of the plugin on this track, or open its window.")
-        if hov1 or hov2 then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand()) end
+        if hov1 or hov2 then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand()); hover_m = m end
         if r.IsTrackSelected(rt.track) or hov1 or hov2 then
           ImGui.DrawList_AddRectFilled(dl, x, y, x + row_w, y + h, (hov1 or hov2) and COL.ROW_HOVER or COL.ACTIVE_BG, 6)
         end
@@ -2174,16 +2367,16 @@ function UI.draw_plugins(g)
           R.slot_list = Fx.copies(g, rt.track)
           R.slot_open = true -- (opened below, outside the row ID: the same ID as BeginPopup)
         end
-        local df = R.differ and R.differ[g]
         local odd = df and df.m[m]
-        ImGui.DrawList_AddText(dl, x + 8, UI.text_y(y), odd and COL.ORANGE or COL.TEXT_MAIN, UI.trunc(rt.track_label, col_w - 12))
+        ImGui.DrawList_AddText(dl, x + 8, UI.text_y(y), m.off and COL.TEXT_DIM or odd and COL.ORANGE or COL.TEXT_MAIN,
+          UI.trunc(rt.track_label, col_w - 12))
         local fl = UI.trunc(rt.fx_label, fx_w - 24)
         ImGui.DrawList_AddText(dl, x + col_w, UI.text_y(y), hov2 and COL.TEXT_MAIN or COL.TEXT_DIM, fl)
         local ax = x + col_w + (ImGui.CalcTextSize(ctx, fl)) + 8
         local ay = math.floor(y + h / 2) + 0.5
         ImGui.DrawList_AddTriangleFilled(dl, ax, ay - 2, ax + 7, ay - 2, ax + 3.5, ay + 2.5, hov2 and COL.TEXT_MAIN or COL.TEXT_DIM)
         ImGui.SameLine(ctx, 0, 8)
-        ImGui.SetCursorScreenPos(ctx, x + aw - CFG.X_BTN - 8 - mw, y)
+        ImGui.SetCursorScreenPos(ctx, x0 + aw - CFG.X_BTN - 8 - mw, y)
         if UI.button("Match", mw, h, "ghost") then match = m end
         if ImGui.IsItemHovered(ctx) then
           local t = "The other plugins of this group copy this one (all linked parameters). Ctrl+Z undoes it."
@@ -2200,22 +2393,42 @@ function UI.draw_plugins(g)
         local who = (m.tname or "") ~= "" and (m.tname .. ", " .. (m.fname ~= "" and m.fname or g.plug)) or "the plugin was deleted"
         ImGui.DrawList_AddText(dl, x + 8, UI.text_y(y), COL.TEXT_DIM, UI.trunc("Missing (" .. who .. ")", row_w - 16))
         ImGui.SameLine(ctx, 0, 8)
-        ImGui.SetCursorScreenPos(ctx, x + aw - CFG.X_BTN - 8 - mw, y)
+        ImGui.SetCursorScreenPos(ctx, x0 + aw - CFG.X_BTN - 8 - mw, y)
         if UI.button("Find", mw, h, "ghost") then
           local ok, err = Fx.find_again(g, m)
-          if not ok then UI.ask(err, nil) end
+          if not ok then UI.notice(err, true) end
         end
         UI.tip("Find again: look for a free " .. g.plug .. " on a track with the same name (for example after a track template).")
       end
       ImGui.SameLine(ctx, 0, 8)
-      ImGui.SetCursorScreenPos(ctx, x + aw - CFG.X_BTN, y + (h - CFG.X_BTN) / 2)
+      ImGui.SetCursorScreenPos(ctx, x0 + aw - CFG.X_BTN, y + (h - CFG.X_BTN) / 2)
       if UI.remove_x_button("##rm", CFG.X_BTN) then del = m end
       UI.tip("Remove from the group (the plugin and its settings do not change).")
-      ImGui.SetCursorScreenPos(ctx, x, y + h)
+      local mx, my = ImGui.GetMousePos(ctx)
+      if ImGui.IsMouseClicked(ctx, 1) and mx >= x0 and mx < x0 + aw and my >= y and my < y + h
+          and ImGui.IsWindowHovered(ctx) then
+        R.rowmenu = m; R.rowmenu_open = true -- (the right-click menu of this row, opened below)
+      end
+      ImGui.SetCursorScreenPos(ctx, x0, y + h)
       ImGui.Dummy(ctx, 0, 0)
       ImGui.PopID(ctx)
     end
   end
+  -- the right-click menu of a plugin row
+  if R.rowmenu_open then ImGui.OpenPopup(ctx, "##rowmenu"); R.rowmenu_open = nil end
+  if ImGui.BeginPopup(ctx, "##rowmenu") then
+    local m = R.rowmenu
+    local rt = m and R.rt[m]
+    if m and R.group_of[m] == g then
+      if ImGui.MenuItem(ctx, "Open plugin window", nil, false, rt ~= nil) then r.TrackFX_Show(rt.track, rt.idx, 3) end
+      if ImGui.MenuItem(ctx, "Select track", nil, false, rt ~= nil) then Fx.select_tracks({ m }) end
+      if ImGui.MenuItem(ctx, m.off and "Resume (link again)" or "Pause", nil, false, rt ~= nil) then Link.set_paused(m, not m.off) end
+      ImGui.Separator(ctx)
+      if ImGui.MenuItem(ctx, "Remove from group...", "Del") then UI.ask_remove_member(g, m) end
+    end
+    ImGui.EndPopup(ctx)
+  end
+  R.hover_m, R.hover_g = hover_m, g -- (the Delete key removes this row)
   -- the dropdown of a plugin name: the copies of the plugin on that track, and Open plugin window
   if R.slot_open then ImGui.OpenPopup(ctx, "##slots"); R.slot_open = nil end
   if ImGui.BeginPopup(ctx, "##slots") then
@@ -2224,7 +2437,7 @@ function UI.draw_plugins(g)
       for k, e in ipairs(R.slot_list or {}) do
         if ImGui.Selectable(ctx, e.label .. "##slot" .. k, e.guid == m.guid) and e.guid ~= m.guid then
           local ok, err = Fx.replace(g, m, e.guid)
-          if not ok then UI.ask(err, nil) end
+          if not ok then UI.notice(err, true) end
         end
       end
       if #(R.slot_list or {}) < 2 then ImGui.TextColored(ctx, COL.TEXT_DIM, "This track has no other copy of " .. g.plug .. ".") end
@@ -2235,6 +2448,7 @@ function UI.draw_plugins(g)
   end
   if del then
     for i, m in ipairs(g.members) do if m == del then table.remove(g.members, i); break end end
+    if #g.members == 0 then g.ident, g.plug = "", "" end -- (empty: the group forgets its plugin)
     Util.mark_pdirty(); Fx.resolve(false)
   end
   if match then
@@ -2244,61 +2458,70 @@ function UI.draw_plugins(g)
       "Match", function() Link.match(g, match) end)
   end
   UI.vgap(CFG.SP_ROW + 4)
-  local b1, b2, b3 = "Add focused plugin", "Add from selected tracks", "Add all in project"
-  if UI.button(b1, UI.btn_w(b1)) then
-    local tr, idx, err = Fx.focused()
-    if tr then
-      local ok, e2 = Fx.add(g, tr, idx)
-      if not ok then UI.ask(e2, nil) end
-    else UI.ask(err, nil) end
-  end
-  UI.tip("Click a plugin window first, then this button.")
-  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  if UI.button(b2, UI.btn_w(b2)) then
-    if r.CountSelectedTracks(R.proj) == 0 then
-      UI.ask("Select the tracks first (click their names in the track panel).", nil)
-    elseif g.ident == "" then
-      R.plug_menu = Fx.selected_plugins()
-      if #R.plug_menu == 0 then UI.ask("The selected tracks have no plugins.", nil)
-      else ImGui.OpenPopup(ctx, "##plugmenu") end
-    else
-      local added, skipped = Fx.add_selected(g)
-      if #skipped > 0 then UI.ask("Added: " .. added .. "\n\nNot added:\n" .. table.concat(skipped, "\n"), nil) end
+  -- 1 "+ Add" button with a menu; the items that need a plugin in the group first are grey
+  local add_hit = UI.button(UI.ADD .. "##addplug", UI.add_w())
+  if add_hit then ImGui.OpenPopup(ctx, "##addmenu") end
+  local adx = ImGui.GetItemRectMin(ctx)
+  local _, ady = ImGui.GetItemRectMax(ctx)
+  ady = ady + 4 -- (the menus of "+ Add" and their lists drop down below the button, all at the same place)
+  UI.tip("Add plugins to this group: the focused plugin, the selected tracks, the whole project or a folder.")
+  local open_plug, open_folder
+  ImGui.SetNextWindowPos(ctx, adx, ady, ImGui.Cond_Appearing())
+  if ImGui.BeginPopup(ctx, "##addmenu") then
+    local empty = #g.members == 0 or g.ident == ""
+    if ImGui.MenuItem(ctx, "Focused plugin") then
+      local tr, idx, err = Fx.focused()
+      if tr then
+        local ok, e2 = Fx.add(g, tr, idx)
+        if not ok then UI.notice(e2, true) end
+      else UI.notice(err, true) end
     end
-  end
-  UI.tip(g.ident == "" and "Adds a plugin from every selected track. You pick the plugin from a list."
-    or ("Adds " .. g.plug .. " from every selected track (the first one, if a track has 2)."))
-  local lx = ImGui.GetItemRectMax(ctx)
-  local wx = ImGui.GetWindowPos(ctx)
-  local room = (wx + ImGui.GetWindowContentRegionMax(ctx)) - lx - CFG.CTRL_GAP
-  if room >= UI.btn_w(b3) then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP) end
-  if UI.button(b3, UI.btn_w(b3)) then
-    if g.ident == "" then UI.ask("Add 1 plugin first, so FX Link knows which plugin to look for.", nil)
-    else
-      local added, other = Fx.add_all(g)
-      UI.ask("Added: " .. added .. " " .. g.plug .. "." .. (other > 0 and ("\n" .. other .. " more are in other groups (a plugin can be in 1 group only).") or ""), nil)
+    UI.tip("The plugin window you clicked last.")
+    if ImGui.MenuItem(ctx, "Selected tracks") then
+      if r.CountSelectedTracks(R.proj) == 0 then
+        UI.ask("Select the tracks first (click their names in the track panel).", nil)
+      elseif empty then
+        R.plug_tracks, R.plug_folder = Fx.selected_tracks(), nil
+        R.plug_menu = Fx.plugin_list(R.plug_tracks)
+        if #R.plug_menu == 0 then UI.ask("The selected tracks have no plugins.", nil) else open_plug = true end
+      else
+        local added, skipped = Fx.add_selected(g)
+        if #skipped > 0 then UI.ask("Added: " .. added .. "\n\nNot added:\n" .. table.concat(skipped, "\n"), nil) end
+      end
     end
-  end
-  UI.tip(g.ident == "" and "Adds every copy of the group's plugin in the project (add 1 plugin first)."
-    or ("Adds every " .. g.plug .. " in the project."))
-  local b4 = "Add from folder..."
-  local lx2 = ImGui.GetItemRectMax(ctx)
-  local room2 = (wx + ImGui.GetWindowContentRegionMax(ctx)) - lx2 - CFG.CTRL_GAP
-  if room2 >= UI.btn_w(b4) then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP) end
-  if UI.button(b4, UI.btn_w(b4)) then
-    if g.ident == "" then UI.ask("Add 1 plugin first, so FX Link knows which plugin to look for.", nil)
-    else
+    UI.tip(empty and "A plugin from every selected track. You pick the plugin from a list."
+      or (g.plug .. " from every selected track (the first one, if a track has 2)."))
+    if ImGui.MenuItem(ctx, "Same plugin in whole project") then
+      if empty then
+        R.plug_tracks, R.plug_folder = nil, nil -- (the whole project)
+        R.plug_menu = Fx.plugin_list(nil)
+        if #R.plug_menu == 0 then UI.ask("This project has no plugins.", nil) else open_plug = true end
+      else
+        local added, other = Fx.add_all(g)
+        UI.ask("Added: " .. added .. " " .. g.plug .. "." .. (other > 0 and ("\n" .. other .. " more are in other groups (a plugin can be in 1 group only).") or ""), nil)
+      end
+    end
+    UI.tip(empty and "Every copy of a plugin in the project. You pick the plugin from a list." or ("Every " .. g.plug .. " in the project."))
+    if ImGui.MenuItem(ctx, "Same plugin in folder...") then
       R.folder_menu = Fx.folders()
-      if #R.folder_menu == 0 then UI.ask("This project has no folder tracks.", nil)
-      else ImGui.OpenPopup(ctx, "##foldermenu") end
+      if #R.folder_menu == 0 then UI.ask("This project has no folder tracks.", nil) else open_folder = true end
     end
+    UI.tip(empty and "A plugin from every track of a folder (for example 'Drums'). You pick the folder, then the plugin."
+      or (g.plug .. " from every track of a folder (for example 'Drums'). You pick the folder from a list."))
+    ImGui.EndPopup(ctx)
   end
-  UI.tip(g.ident == "" and "Adds the group's plugin from every track of a folder (add 1 plugin first)."
-    or ("Adds " .. g.plug .. " from every track of a folder (for example 'Drums'). You pick the folder from a list."))
+  if open_plug then ImGui.OpenPopup(ctx, "##plugmenu") end -- (opened here: the same ID as their BeginPopup)
+  if open_folder then ImGui.OpenPopup(ctx, "##foldermenu") end
+  ImGui.SetNextWindowPos(ctx, adx, ady, ImGui.Cond_Appearing())
   if ImGui.BeginPopup(ctx, "##foldermenu") then
     ImGui.TextColored(ctx, COL.TEXT_DIM, "Which folder?")
     for i, e in ipairs(R.folder_menu or {}) do
-      if ImGui.Selectable(ctx, e.name .. "##fo" .. i) and r.ValidatePtr2(R.proj, e.track, "MediaTrack*") then
+      local hit = ImGui.Selectable(ctx, e.name .. "##fo" .. i) and r.ValidatePtr2(R.proj, e.track, "MediaTrack*")
+      if hit and (#g.members == 0 or g.ident == "") then -- (an empty group: which plugin of this folder?)
+        R.plug_tracks, R.plug_folder = Fx.folder_tracks(e.track), true
+        R.plug_menu = Fx.plugin_list(R.plug_tracks)
+        if #R.plug_menu == 0 then UI.ask("The tracks of \"" .. e.name .. "\" have no plugins.", nil) else R.plug_open = true end
+      elseif hit then
         local added, skipped = Fx.add_tracks(g, Fx.folder_tracks(e.track))
         local miss = {}
         for _, sk in ipairs(skipped) do if not sk:find(": no ", 1, true) then miss[#miss + 1] = sk end end
@@ -2308,14 +2531,23 @@ function UI.draw_plugins(g)
     end
     ImGui.EndPopup(ctx)
   end
+  if R.plug_open then ImGui.OpenPopup(ctx, "##plugmenu"); R.plug_open = nil end -- (from the folder list)
+  ImGui.SetNextWindowPos(ctx, adx, ady, ImGui.Cond_Appearing())
   if ImGui.BeginPopup(ctx, "##plugmenu") then
     ImGui.TextColored(ctx, COL.TEXT_DIM, "Which plugin?")
     for i, e in ipairs(R.plug_menu or {}) do
-      if ImGui.Selectable(ctx, e.plug .. "##pl" .. i) then
+      if ImGui.Selectable(ctx, e.plug .. " (" .. e.n .. ")##pl" .. i) then
         g.ident, g.plug = e.ident, e.plug
-        local added, skipped = Fx.add_selected(g)
+        local added, skipped, other = 0, {}, 0
+        if R.plug_tracks then added, skipped = Fx.add_tracks(g, R.plug_tracks)
+        else added, other = Fx.add_all(g) end
         if added == 0 then g.ident, g.plug = "", "" end
-        if #skipped > 0 then UI.ask("Added: " .. added .. "\n\nNot added:\n" .. table.concat(skipped, "\n"), nil) end
+        local miss = {}
+        for _, sk in ipairs(skipped) do if not (R.plug_folder and sk:find(": no ", 1, true)) then miss[#miss + 1] = sk end end
+        if #miss > 0 or other > 0 then
+          UI.ask("Added: " .. added .. " " .. e.plug .. "." .. (#miss > 0 and ("\n\nNot added:\n" .. table.concat(miss, "\n")) or "")
+            .. (other > 0 and ("\n" .. other .. " more are in other groups (a plugin can be in 1 group only).") or ""), nil)
+        end
         Util.mark_pdirty(); UI.labels_dirty()
       end
     end
@@ -2450,7 +2682,7 @@ function UI.draw_settings()
     if okf and path ~= "" then
       UI.ask("Replace the FX Link settings of this computer with this backup?\n" .. path, "Replace", function()
         local okr, err = Util.restore_settings(path)
-        if not okr then UI.ask(err, nil) end
+        if not okr then UI.notice(err, true) end
       end)
     end
   end
@@ -2526,8 +2758,17 @@ end
 function UI.draw_main()
   UI.draw_toolbar()
   local aw, ah = ImGui.GetContentRegionAvail(ctx)
-  ah = ah - CFG.SP_EDGE
+  local nh = UI.notice_h(aw - 16)
+  ah = ah - CFG.SP_EDGE - nh
   local px, py = ImGui.GetCursorScreenPos(ctx)
+  if nh > 0 then -- the notice, below the panel
+    local n = R.notice
+    ImGui.SetCursorScreenPos(ctx, px + 8, py + ah + 4)
+    ImGui.PushTextWrapPos(ctx, ImGui.GetCursorPosX(ctx) + aw - 16)
+    ImGui.TextColored(ctx, n.warn and COL.ORANGE or COL.TEXT_DIM, n.text)
+    ImGui.PopTextWrapPos(ctx)
+    ImGui.SetCursorScreenPos(ctx, px, py)
+  end
   ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), px, py, px + aw, py + ah, COL.PANEL_BG, 8)
   if ImGui.BeginChild(ctx, "##panel", aw, ah) then
     ImGui.SetCursorPosY(ctx, CFG.SP_PANEL)
@@ -2545,7 +2786,7 @@ function UI.draw_main()
     ImGui.Unindent(ctx, 10)
     ImGui.Dummy(ctx, 0, CFG.SP_PANEL)
     if ImGui.IsMouseClicked(ctx, 1) and ImGui.IsWindowHovered(ctx, ImGui.HoveredFlags_ChildWindows())
-      and not ImGui.IsAnyItemHovered(ctx) then R.pmenu = true end
+      and not ImGui.IsAnyItemHovered(ctx) and not ImGui.IsPopupOpen(ctx, "##rowmenu") then R.pmenu = true end
     ImGui.EndChild(ctx)
   end
   UI.draw_panel_menu()
@@ -2645,6 +2886,11 @@ local function loop()
       if ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Z()) then r.Main_OnCommand(40029, 0) -- Edit: Undo
       elseif ImGui.IsKeyChordPressed(ctx, C | SH | ImGui.Key_Z()) or ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Y()) then
         r.Main_OnCommand(40030, 0) -- Edit: Redo
+      elseif ImGui.IsKeyPressed(ctx, ImGui.Key_F2(), false) and P and P.groups[P.cur] then
+        local g = P.groups[P.cur]
+        Util.ask_name("FX Link - Rename group", g.name, function(n) g.name = n; Util.mark_pdirty(); UI.labels_dirty() end)
+      elseif ImGui.IsKeyPressed(ctx, ImGui.Key_Delete(), false) and R.hover_m and R.rt[R.hover_m] then
+        UI.ask_remove_member(R.hover_g, R.hover_m)
       end
     end
     UI.draw_main()

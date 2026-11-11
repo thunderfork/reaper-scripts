@@ -28,6 +28,22 @@
   lines; right-click menus on the panel, the tabs and the toolbar items ("Hide ..."); the Sync folder dropdown.
   Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
   (tags segue-vX.Y, midipilot-vX.Y).
+- 1.7 (11 November 2026): no PDF of another project; "+ Add" template; Delete / F2 / row menus; Ctrl+Z to REAPER;
+  grey hints; the welcome screen fits. With Segue 1.3, MIDI Pilot 1.4, FX Link 1.1.
+
+## Released on 11 November 2026 (2nd): Chart Cue 1.7, Segue 1.3, MIDI Pilot 1.4, FX Link 1.1
+- Review round and uniform UI, tested by the user in REAPER; a debug round before the release.
+- FX Link (next 1.1): automation / LFO not copied; Pause per plugin (saved `fx_off`); new group from focused plugin
+  + selected tracks (menu and the new action "FX Link - Group focused plugin on selected tracks"); "+ Add" menus
+  (empty group asks which plugin); compact Snapshots with Compare; A/B recall fixed (order + check again);
+  F2 / Delete / row menu; notices at the bottom instead of OK windows.
+- Chart Cue (next 1.7): no PDF of another project (also removes a wrong active PDF); "+ Add" on the Add PDFs
+  heading; Ctrl+Z to REAPER; Delete on PDF / setlist / cue rows; grey hints; welcome screen fits a low page area.
+- Segue (next 1.3): Open automatically + Close with project (S `close_proj`); row menu, Delete, F2; notices.
+- MIDI Pilot (next 1.4): Songs heading "+ Add" (Create track / Use selected track); Ctrl+Z to REAPER; grey hints;
+  device row menu, F2, Delete.
+- Template for all scripts: "+ Add" = ghost button on the heading line, its menu drops down below it; empty lists
+  = 1 grey line "No ... yet. <what to do>."; yellow only for real warnings.
 
 ## Released on 11 November 2026: FX Link 1.0 (new), Segue 1.2.1
 - FX Link 1.0: the 4th script (tag fxlink-v1.0). Segue 1.2.1: the Settings menu drops down below the gear.
