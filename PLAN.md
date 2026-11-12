@@ -47,6 +47,9 @@
 - Open: the manual tests Mono, dual pan and file check; the full run on a real multitrack is on hold (the user brings
   it up). Next: push and release 1.0 (tag `sessionprep-v1.0`).
 - Version 2 ideas: time alignment of close mics, a measured polarity check, routing / bus templates.
+- Dead code (12 November 2026): Session Prep's leftovers removed (UI.toggle_line, UI.fold_arrow, CFG.SETTINGS_BTN_W).
+  To remove with the next real change of each script (no version only for this): Chart Cue `UI.button_pair`,
+  MIDI Pilot `Dev.free_unit` and `Midi.next_song`, FX Link `CFG.FORM_MAX_W`; also the "all 4 scripts" comments.
 
 ## Released on 11 November 2026 (2nd): Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1
 - x.x.1 (FX Link, Segue): the notice line is drawn after the panel (an ImGui error in a very small window).

@@ -85,7 +85,8 @@ if ($exe -and (Test-Path $exe)) {
 
 # the known warnings: a new one is one more of its kind (file, code, text) than the known ones
 if ($UpdateKnown) {
-  $all | Sort-Object | Set-Content -Path $knownFile -Encoding utf8
+  # (UTF-8 without a byte-order mark, LF line ends: Set-Content -Encoding utf8 writes a BOM in PowerShell 5.1)
+  [System.IO.File]::WriteAllText($knownFile, ((@($all | Sort-Object) -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
   Write-Host "Known warnings saved: $($all.Count) in tools\known-warnings.txt"
 }
 $knownCount = @{}

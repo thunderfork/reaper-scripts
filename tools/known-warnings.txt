@@ -1,4 +1,4 @@
-﻿Chart Cue.lua [need-check-nil] Need check nil.
+Chart Cue.lua [need-check-nil] Need check nil.
 Chart Cue.lua [need-check-nil] Need check nil.
 Chart Cue.lua [need-check-nil] Need check nil.
 Chart Cue.lua [need-check-nil] Need check nil.

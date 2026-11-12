@@ -66,7 +66,6 @@ CFG.TAB_GROUP_GAP = 12         -- between the text tabs and the Settings / Help 
 CFG.TAB_LIFT = 6               -- the selected tab is this much taller
 CFG.PRESET_W = 200             -- the preset dropdown
 CFG.MORE_W = 110               -- the "More..." dropdown of the preset (as Chart Cue's setlist "More...")
-CFG.SETTINGS_BTN_W = 200
 CFG.NOTICE_SEC = 4             -- a notice at the bottom of the window shows this long
 CFG.STRIP_MIN = 4              -- a shared prefix / suffix is removed only when it has 4 or more letters or digits
 CFG.AUDIO_SR = 11025           -- the audio check reads the tracks at this sample rate
@@ -1928,16 +1927,6 @@ function UI.toggle(id, v)
   if hov then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand()) end
   return clk, v
 end
--- A toggle with its text at the right.
-function UI.toggle_line(label, v, tip)
-  local ch, nv = UI.toggle("##tl_" .. label, v)
-  if tip then UI.tip(tip) end
-  ImGui.SameLine(ctx, 0, 8)
-  UI.row_text(label)
-  if ImGui.IsItemClicked(ctx) then ch, nv = true, not v end
-  if tip then UI.tip(tip) end
-  return ch, nv
-end
 -- Small round remove button: a red ring with a red X; filled red with a white X on hover.
 function UI.remove_x_button(id, size)
   local hit = ImGui.InvisibleButton(ctx, id, size, size)
@@ -2567,21 +2556,6 @@ function UI.move_before(list, from, before)
   local item = table.remove(list, from)
   if before > from then before = before - 1 end
   table.insert(list, before, item)
-end
-
--- A fold arrow (S.closed[id]) at the cursor, the height of a row. Returns open.
-function UI.fold_arrow(id)
-  local fh = ImGui.GetFrameHeight(ctx)
-  local x, y = ImGui.GetCursorScreenPos(ctx)
-  local open = not S.closed[id]
-  if ImGui.InvisibleButton(ctx, "##fold", 14, fh) then open = not open; S.closed[id] = (not open) or nil; Util.mark_sdirty() end
-  local hov = ImGui.IsItemHovered(ctx)
-  if hov then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand()) end
-  local dl, cx, cy = ImGui.GetWindowDrawList(ctx), x + 6, y + fh / 2
-  local col = hov and COL.TEXT_MAIN or COL.TEXT_DIM
-  if open then ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 2, cx + 4, cy - 2, cx, cy + 3, col)
-  else ImGui.DrawList_AddTriangleFilled(dl, cx - 2, cy - 4, cx - 2, cy + 4, cx + 3, cy, col) end
-  return open
 end
 
 -- 1 folder of the Rules list: its header (fold arrow, color of the folder, name, "+ Rule"), then 1 quiet line per
