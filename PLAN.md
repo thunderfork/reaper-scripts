@@ -31,7 +31,7 @@
 - 1.7 (11 November 2026): no PDF of another project; "+ Add" template; Delete / F2 / row menus; Ctrl+Z to REAPER;
   grey hints; the welcome screen fits. With Segue 1.3, MIDI Pilot 1.4, FX Link 1.1.
 
-## Session handoff (11 November 2026): Session Prep 1.0 (new, not committed)
+## Session handoff (11 November 2026): Session Prep 1.0 (new; committed 12 November 2026 as bcf85f1, not pushed or released)
 - The 5th script: `Session Prep/Session Prep.lua` (tabs Prep, Rules, Settings, Help), its CLAUDE.md, tests
   `tests\sessionprep.lua` (13 passed), Session Prep in the tools (check, test, deploy, release, docs-check), README.
 - Decisions: name Session Prep; 2 tabs; pairs are panned L / R; checks are marked, fixed only when ticked; rules
@@ -111,6 +111,8 @@
   button at the right); teal for buttons that are on (orange only for notes); headings in the Prep section of the Settings (Tracks,
   Routing, Checks: normal headings, as MIDI Pilot); the bus name shows an underline on hover. Tests: 39 passed.
   Tested and passed; open: dual pan, file check.
+- Final review (12 November 2026): a return added later joins the FX Returns folder (no 2nd folder). Tests: 40 passed.
+  Next: the open tests (Mono, dual pan, file check; the full run is on hold), then push and release 1.0 (sessionprep-v1.0).
 - Open: Mono button test, full run on a real client multitrack; then commit and release Session Prep 1.0.
 - Open: Mono button test, full run on a real client multitrack; then commit and release Session Prep 1.0.
 - Open: the manual test in REAPER; then commit, push and release 1.0 (tag sessionprep-v1.0).
