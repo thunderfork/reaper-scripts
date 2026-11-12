@@ -1,11 +1,12 @@
 # Thunderfork Scripts
 
-Scripts for playing live with REAPER, installed and updated with ReaPack:
+Scripts for playing live and for studio work with REAPER, installed and updated with ReaPack:
 
 - **Chart Cue:** shows your PDF charts and turns and scrolls the pages while the song plays (Windows only).
 - **Segue:** a setlist player: plays your songs (regions) in the order of your show, with stops and pauses.
 - **MIDI Pilot:** writes the MIDI for amp modelers (Quad Cortex, Line 6 Helix / HX): presets, scenes, pedals.
 - **FX Link:** links plugins across tracks: move a knob in one, and the same knob moves in the others.
+- **Session Prep:** cleans up the tracks of a multitrack from a client: names, colors, folders, L / R pans, silent and fake stereo tracks.
 
 # Chart Cue
 
@@ -143,9 +144,32 @@ Install with ReaPack (search "FX Link"), then run "Script: FX Link.lua" and clic
 
 FX Link saves the groups in the project, and its settings (theme, window, folded sections, the options in the gear menu) on this computer.
 
+# Session Prep
+
+Session Prep cleans up the tracks of a multitrack that you got from a client, in one step.
+
+- **Scan** reads the selected tracks (or all) and shows a preview: the old name, the new name, the folder and notes. Nothing changes until you click **Apply**; one Ctrl+Z undoes everything.
+- **Names from rules:** a built-in list of short names (kik, sn, oh, gtr, vox...) becomes Kick, Snare, OH, Gtr, Vox; words like In, Out, Top, L, R and numbers stay. "Audio 1_", track numbers, ".wav" and a shared prefix or suffix go.
+- **Colors and folders:** each rule has a color and a folder; Apply puts the tracks in folders in the order of the rules.
+- **Pan, M and S** on each row: the Pan button starts at L or R from the name ("OH L", "Gtr 1 R") and cycles L, C, R, -; M and S mute and solo the track at once, as in REAPER. **Checks:** empty, silent, fake stereo and one silent side (a Mono button fixes it).
+- **Scan all** reads the whole project, whatever is selected.
+- **Studio order and names:** drums first (kick, snare, hats, toms, overheads, room), then percussion, bass, guitars, keys, strings, brass, vocals; change the folder order in the Rules tab (or use the "Vocals first" preset). A spacer above each folder (optional). Colors are optional (off by default; SWS Auto Color wins).
+- **Client projects:** pans that are already set are kept; armed tracks are disarmed; empty tracks can be deleted; an optional pan width (off: hard L / R).
+- **Engineering:** each FX return has its own source (the tracks or the folder), send level and output (the master, a folder or a bus: Drum Crush goes into the drum folder); a polarity button per track (Snare Btm flips by default); a file check (a sample rate that is not the project's, a later start); click / guide never reach the mix; overdubs join their folder later; Kick In, Kick Out, Kick Sub in order.
+- **Buses tab:** Instrument Bus (the music), Vocal Bus (lead vocal, BVs) and Lead Bus (lead guitar, lead synth), each optional with its own color and members: the members are routed to the bus track, so one fader (and one FX chain) controls them. The FX returns are here too.
+- **Capital letters** for the new names, folders and buses (All by default; or folders and buses, buses only, none).
+- **No double prep:** a prepped track is left out of the next Scan (Ctrl+Z of the Apply frees it); later overdubs are scanned alone.
+- **FX Chains tab:** an FX chain for each folder and bus (Folder FX) and each track name (Track FX). **FX returns** (Buses tab): Room Verb, Hall Verb, Delay, Drum Crush with post-fader sends from the folders you tick (off by default).
+- **Gain staging** (off by default): sets the item gain of each track to a target level (default -18 dBFS RMS, peak limit -6 dBFS); change any value before Apply.
+- **Presets** of rules: edit, copy, export and import them. Folders, the pans and the audio check can each be turned off.
+
+Install with ReaPack (search "Session Prep"), then run "Script: Session Prep.lua". Needs ReaImGui 0.9.3 or newer.
+
+Session Prep saves nothing in the project; its presets and settings are saved on this computer.
+
 ## Zips
 
-Each script also has a zip on the [Releases](https://github.com/thunderfork/reaper-scripts/releases) page (Chart Cue, Segue, MIDI Pilot, FX Link): unzip it, copy its .lua files into your REAPER `Scripts` folder, and load them with Actions > Show action list > New action > Load ReaScript....
+Each script also has a zip on the [Releases](https://github.com/thunderfork/reaper-scripts/releases) page (Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep): unzip it, copy its .lua files into your REAPER `Scripts` folder, and load them with Actions > Show action list > New action > Load ReaScript....
 
 ## License
 

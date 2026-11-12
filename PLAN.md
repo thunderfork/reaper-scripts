@@ -31,6 +31,91 @@
 - 1.7 (11 November 2026): no PDF of another project; "+ Add" template; Delete / F2 / row menus; Ctrl+Z to REAPER;
   grey hints; the welcome screen fits. With Segue 1.3, MIDI Pilot 1.4, FX Link 1.1.
 
+## Session handoff (11 November 2026): Session Prep 1.0 (new, not committed)
+- The 5th script: `Session Prep/Session Prep.lua` (tabs Prep, Rules, Settings, Help), its CLAUDE.md, tests
+  `tests\sessionprep.lua` (13 passed), Session Prep in the tools (check, test, deploy, release, docs-check), README.
+- Decisions: name Session Prep; 2 tabs; pairs are panned L / R; checks are marked, fixed only when ticked; rules
+  1 row each (drag to reorder); presets in ExtState "Session Prep" (approved), nothing in the project.
+- Small change from the mockup: no "Save" button (rule changes are saved right away); "Save as...", "Rename...", "Delete".
+- Debug round (12 November 2026), 9 fixes: unnamed tracks no longer renamed to numbers; Gtr R kept its R (the side
+  word was dropped when the rule name had the letter); a new name can be cleared; a rule color shows at once; a
+  project switch clears the preview; Apply always closes its undo block; no "empty" on folder tracks; half the
+  audio reads; the footer counts only ticked rows. Tests: 15 passed.
+- User decision (12 November 2026): every track with an L / R word is panned (not only pairs): "Gtr 1 R" ->
+  right. Note "pan L / R"; setting "Pan L / R tracks" (the key stays `pairs`). The pan also sets the dual pan knobs.
+- Prep table (user request, tested): Pan button per row (L, C, R, -), REAPER-style M (red) / S (yellow) that act at
+  once, a "Mono" button (orange = on) in place of the fix tick box; rows aligned. Open tests: Mono, full run.
+- New (user request, 12 November 2026): "Scan all" next to Scan; Folder FX (an .RfxChain per folder, Rules tab,
+  saved in the preset); Gain staging (Settings, off by default; item gain to -18 dBFS RMS, peak limit -6; Gain
+  column, editable, 0 = no change, right-click = measured). Tested: Scan all, the Gain column.
+- Folder FX failed in the user's REAPER (folder made, no FX; the user's chains work in the test REAPER): rewritten
+  to add the chain after any FX that the new track has. Gain: Target RMS / Peak choice (Peak: -10 dBFS). Tests: 21.
+  Both tested and passed by the user.
+- Studio round (approved, 12 November 2026): industry names (Kick Sub, Hi-Hat, Floor Tom, Lead Vox, Piano / Organ /
+  Synth, Perc, Strings, Brass, Click / Guide / Talkback in "Other"); presets "Default" (drums first) and "Vocals
+  first"; Order list (Rules tab); colors off by default (SWS Auto Color wins); spacer above each folder (on); fold
+  arrows on the sections; FX tab (Track FX, Folder FX, Returns: Room Verb, Hall Verb, Delay, Drum Crush + sends
+  matrix, -12 dB post-fader, off by default). Tests: 24 passed. Tested by the user: names, order, folding, FX tab.
+  Fixed: the Order list showed the previous preset (cache not tied to the preset); Folder FX above Track FX.
+- Round 4 (approved, 12 November 2026): Inst / Lead buses (nested folders; drums in the Inst Bus; Lead flag per
+  rule, new rules Lead Gtr / Lead Synth); Rules columns Color, Folder, Name, Match, Lead; "Colors win over SWS"
+  (turns SWS Auto Color off); Settings in the MIDI Pilot layout; prep mark per track (P_EXT, approved project
+  data): prepped tracks are left out of the next Scan. Tests: 26 passed. Tested by the user: prep lock, layout,
+  SWS. Buses changed on request: routed bus tracks (sends, own output off), not folders. Not tested yet.
+- Round 5 (approved, 12 November 2026): Buses tab (Inst / Vocal / Lead bus, each with a switch, color and members;
+  the returns moved here, with colors); no Lead flag in the rules; Rules list grouped by folder, click to edit; plain
+  table titles, no row stripes; Capital letters (Settings > Appearance, default All); Settings "Look" -> "Appearance"
+  (theme, colors, SWS, capitals, spacer). Tests: 27 passed. Not tested in REAPER yet.
+- Debug round (12 November 2026, full, before 1.0), 6 fixes: the rule's Folder field kept its focus (saved when
+  you leave it); the Prep table keeps your edits after a rule / setting change (`Prep.keep_edits`); Help: Spacer
+  and Colors are in Appearance; the prefix / suffix switch in the label-left style; "+ Add" ticks the members of
+  the bus; no strings built every frame (folder group ids, the preset line). Tests: 28 passed.
+- UI round (approved): Order section removed (drag a folder header); x at the right of each rule; "Trim shared
+  text"; Buses tab as cards with member chips and a grouped "+ Add" menu; returns in a card, "..." and x aligned.
+- Fixed: the cards crashed (DrawList_ChannelsSplit is not in ReaImGui 0.9; the card box now uses the height of the
+  frame before). Names: "Instrument Bus", "FX Returns", tab "FX Chains", "Trim prefix / suffix"; click / drag on
+  the whole folder header and rule line; folder chips blue-grey, track chips with a fader mark. The user's saved
+  test presets were reset (approved). All tested and passed by the user.
+- Polish: drag shows a blue line where the item goes (no yellow box); FX Chains labels bold, Track FX grouped by
+  folder; X buttons the row height (as in Chart Cue); track chips with an audio clip mark; Pan button teal when it
+  pans; column titles centered over Gain / Pan / M / S; many more match words (gtr lead, gtr rtm, guide vox, bass
+  gtr, kick drum...), Click / Guide / Talkback rules first. Tests: 29 passed.
+- Fixed after the user's tests: the drop with accept flags failed (no line, no move): now `GetDragDropPayload` +
+  hover, no drop target; no line where the drop would not move; an open folder takes only "before" (no jumping
+  line); chip icons and x on the text's center line; the track mark is only a waveform. All tested and passed.
+- Debug round (12 November 2026): a renamed folder or rule name takes its settings along when no rule uses the
+  old name (`Rules.rename`: Folder / Track FX, sends, bus members, folder order); "Order list" texts updated.
+  Left as it is (user's choice): the bus cards show no background for 1 frame when the tab opens. Tests: 30 passed.
+- Full review (programmer + UI/UX), all approved: own returns / buses only (prep mark); tooltips and cut texts not
+  built every frame; Scan in steps with "Scanning n / m"; new names numbered against the other tracks; 1 dB room
+  under the peak limit; Prep: hover on the old name, notes on a 2nd line, no "Prep" heading; Track FX groups fold
+  (closed by default); "+ Bus", rename, delete; keys Delete / F2 / Enter. Tests: 32 passed.
+- Undo button per section (user request): on the Rules, Buses and FX Returns headings, each for its own section
+  (30 steps, quick changes merged, a new history per preset). Tests: 33 passed. All of this round tested and passed.
+- "Reset / Delete" menu button (user request): Reset to original (built-in: built-in settings; own preset: as made
+  with Save as / Import, saved as `preset_orig_N`) and Delete preset; both ask. Tests: 34 passed. Tested and passed.
+- Save (user request, approved): edits wait for Save (dot after the name, blue disk icon; `preset_saved_N` while
+  unsaved); Save as gives the new preset the edits; More... (as Chart Cue's setlist): Rename, Export, Import; red
+  Revert to saved, Reset to original, Delete preset. Tests: 35 passed. Tested and passed.
+- Engineering round (approved): per-return Source / Level / Out (Drum Crush: tracks, 0 dB, into Drums; a loop is
+  skipped); the global send level is gone; Other folder no master output (on); file check notes (sample rate, later
+  start); polarity per rule + the Ø button (Snare Btm); overdubs join their folder; natural order (Kick In, Out, Sub);
+  gain staging help text. Preset format changed (no migration: saved presets go back to the built-in ones).
+  Tests: 37 passed. Tested and passed: returns routing, polarity, order, Other folder, overdubs (fixed: the overdub
+  took the next folder's spacer). Open: the file check test.
+- Review round 2 (approved): the level of a one-sided file is its live side (no 3 dB error after Mono); pans that are
+  already set are kept ("kept pan"); Pan width (Settings switch, off: a Width column per track); Delete fix for empty tracks; Disarm tracks (on).
+  Tests: 38 passed. Tested and passed (Pan width changed on request: a switch + a Width column per track). Open: file check.
+- Review round 3 (approved): dual pan as the project default is read for "kept pan"; Apply finds each folder track
+  once (returns); the cut-text cache is cleared at each Scan; Notes as short tags (full text in a tooltip, the fix
+  button at the right); teal for buttons that are on (orange only for notes); headings in the Prep section of the Settings (Tracks,
+  Routing, Checks: normal headings, as MIDI Pilot); the bus name shows an underline on hover. Tests: 39 passed.
+  Tested and passed; open: dual pan, file check.
+- Open: Mono button test, full run on a real client multitrack; then commit and release Session Prep 1.0.
+- Open: Mono button test, full run on a real client multitrack; then commit and release Session Prep 1.0.
+- Open: the manual test in REAPER; then commit, push and release 1.0 (tag sessionprep-v1.0).
+- Version 2 ideas: routing / bus templates, polarity check (snare top / bottom, kick in / out), sample rate warning.
+
 ## Released on 11 November 2026 (2nd): Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1
 - x.x.1 (FX Link, Segue): the notice line is drawn after the panel (an ImGui error in a very small window).
 - Review round and uniform UI, tested by the user in REAPER; a debug round before the release.

@@ -1,15 +1,17 @@
 # Thunderfork REAPER scripts: development
 
 Repository `thunderfork/reaper-scripts` (https://github.com/thunderfork/reaper-scripts), shown in ReaPack as
-"Thunderfork Scripts". 4 separate scripts, each in its own folder (the folder is the ReaPack category; keep each
+"Thunderfork Scripts". 5 separate scripts, each in its own folder (the folder is the ReaPack category; keep each
 script's files there). Each folder has its own CLAUDE.md with its modules, data, tests and release details:
 
 - **Chart Cue** (`Chart Cue/`): Windows-only; shows and scrolls PDF charts during playback. The UI style guide.
 - **Segue** (`Segue/`): setlist only (no PDFs); shares its setlist logic and now playing view with Chart Cue.
 - **MIDI Pilot** (`MIDI Pilot/`): prepares the MIDI for amp modelers (Quad Cortex, Line 6). A preparation tool.
 - **FX Link** (`FX Link/`): links plugin instances across tracks (Exact / Relative). Small Chart Cue look, no tabs.
+- **Session Prep** (`Session Prep/`): cleans up a multitrack import (names, colors, folders, pairs, checks).
+  A preparation tool; Chart Cue look with tabs; in the project only a mark on each prepped track.
 
-The rules below apply to all 4 scripts ("the script" = the script being changed).
+The rules below apply to all 5 scripts ("the script" = the script being changed).
 
 ## Working with me
 
@@ -55,8 +57,9 @@ The rules below apply to all 4 scripts ("the script" = the script being changed)
 
 ## Saved data
 
-- What counts as saved data: the project data (ProjExtState "ChartCue"/"cfg", "Segue"/"cfg", "MIDI Pilot"/"cfg", "FX Link"/"cfg"),
-  the settings (Chart Cue's `settings.ini`, the ExtState "Segue", "MIDI Pilot" and "FX Link" keys), their defaults, and the
+- What counts as saved data: the project data (ProjExtState "ChartCue"/"cfg", "Segue"/"cfg", "MIDI Pilot"/"cfg", "FX Link"/"cfg";
+  Session Prep's track mark `P_EXT:SessionPrep`),
+  the settings (Chart Cue's `settings.ini`, the ExtState "Segue", "MIDI Pilot", "FX Link" and "Session Prep" keys), their defaults, and the
   files in Chart Cue's data folder (including the autostart block). Ask me before you change any of them.
 - Current decision (November 2026; the scripts are public on ReaPack, but I treat them as without other users):
   no migration code, no old keys, no fallback to old names or folders. Write clean code for a new user. Ask me
@@ -73,7 +76,7 @@ The rules below apply to all 4 scripts ("the script" = the script being changed)
 - Call End / EndChild / EndPopup only when its Begin returned true; keep pushes and pops paired; keep ReaImGui
   calls in their UI / deferred-loop context.
 - Do not move state between `CFG`, `S`, `R` and `P` without asking (`CFG` constants, `COL` colours, `S` settings
-  of this computer, `R` runtime, `P` project data: the same in all 4 scripts).
+  of this computer, `R` runtime, `P` project data: the same in all 5 scripts; Session Prep has no `P`, only its track mark).
 
 ## Performance
 
