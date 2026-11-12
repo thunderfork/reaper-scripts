@@ -118,6 +118,6 @@ The rules below apply to all 5 scripts ("the script" = the script being changed)
   changed feature).
 - `tools\`: check.ps1 (with `.luarc.json` and `known-warnings.txt`), test.ps1, deploy.ps1, release.ps1 (`-Script "<name>"`: the zips in
   the git-ignored `release\`), shots.ps1, ui-test.ps1 / ui-test.lua, background.ps1.
-- `tests\`: run.lua (Chart Cue), segue.lua, midipilot.lua, fxlink.lua, shots.lua, test.pdf (make_pdf.lua makes it; run it with
+- `tests\`: run.lua (Chart Cue), segue.lua, midipilot.lua, fxlink.lua, sessionprep.lua, shots.lua, test.pdf (make_pdf.lua makes it; run it with
   the normal Lua, not REAPER).
 - Temporary files (test logs, helper scripts): in the scratchpad folder, never in the repository.

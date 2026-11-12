@@ -10,7 +10,8 @@ description: Read-only audit of the repository (everything except the scripts) -
 - In scope (may be changed after approval): README.md, PLAN.md, the root and folder CLAUDE.md files,
   `.claude/skills/`, `tests/*.lua`, `tools/ui-test.lua`, `tools/known-warnings.txt`, `.luarc.json`, `.gitignore`.
   A change to a test, ui-test.lua or .luarc.json: run check.ps1 and the tests after it.
-- Inspect only: the scripts (`Chart Cue/*.lua`, `Segue/*.lua`, `MIDI Pilot/*.lua`), `tools/*.ps1`,
+- Inspect only: the scripts (`Chart Cue/*.lua`, `Segue/*.lua`, `MIDI Pilot/*.lua`, `FX Link/*.lua`,
+  `Session Prep/*.lua`), `tools/*.ps1`,
   `.github/workflows/`, `index.xml` (generated: never edit it).
 - Report only, never change: anything outside the repository (the deployed copies in `%APPDATA%\REAPER\Scripts\`,
   Chart Cue's data folder, the user's REAPER) and Claude's memory folder.

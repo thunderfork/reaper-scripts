@@ -1,6 +1,6 @@
 ---
 name: debug-time
-description: A review round of Chart Cue, Segue, MIDI Pilot or FX Link before a commit or a release - 4 passes (developer, UI/UX, musician, engineer), a cross-review, feedback, fixes and a check of the fixes. Use when the user says "debug time" (or asks for a debug / optimize / review round).
+description: A review round of Chart Cue, Segue, MIDI Pilot, FX Link or Session Prep before a commit or a release - 4 passes (developer, UI/UX, musician, engineer), a cross-review, feedback, fixes and a check of the fixes. Use when the user says "debug time" (or asks for a debug / optimize / review round).
 ---
 
 # Debug time
@@ -41,6 +41,8 @@ folder CLAUDE.md). The user does not read code: report in plain words, with what
 - MIDI Pilot (a preparation tool, never live): the speed of preparation, things left in a show project by mistake
   (Scene tests, muted items), MIDI timing and order, routing (outputs, channels), what REAPER really plays, undo
   steps and side effects on the user's own MIDI and tracks.
+- FX Link and Session Prep (studio tools): what REAPER really does to the tracks (routing, sends, folders, gain,
+  pans, polarity), undo steps, a client's project that is already mixed, and side effects on the user's own tracks.
 
 ## 5. Cross-review and feedback
 

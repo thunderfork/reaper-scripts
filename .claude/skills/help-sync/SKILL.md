@@ -1,6 +1,6 @@
 ---
 name: help-sync
-description: Find and fix every text in Chart Cue, Segue, MIDI Pilot and FX Link that names a feature, control, section or setting after it was added, renamed, moved or removed (Help topics, tooltips, "?" texts, messages, menu items, "Settings > ..." paths, comments, CLAUDE.md, PLAN.md, README.md). Use after any rename or move, and as a step of new-feature and debug-time.
+description: Find and fix every text in Chart Cue, Segue, MIDI Pilot, FX Link and Session Prep that names a feature, control, section or setting after it was added, renamed, moved or removed (Help topics, tooltips, "?" texts, messages, menu items, "Settings > ..." paths, comments, CLAUDE.md, PLAN.md, README.md). Use after any rename or move, and as a step of new-feature and debug-time.
 ---
 
 # Help sync
@@ -20,6 +20,9 @@ old and new place ("Settings > Display > ..." -> "Settings > Viewer > ...").
 - `Segue/Segue.lua`: HELP_TEXT, the "?" texts (SETTINGS_HELP, LIST_HELP), tooltips, the notice texts.
 - `MIDI Pilot/MIDI Pilot.lua`: HELP_INTRO and HELP_TOPICS, the "?" texts of the headings, tooltips, the notices (UI.toast),
   the questions (UI.ask) and the undo names (Undo_EndBlock).
+- `FX Link/FX Link.lua`: HELP_INTRO and HELP_TOPICS, the HELP_* "?" texts, tooltips, the gear menu, the notices.
+- `Session Prep/Session Prep.lua`: HELP_INTRO and HELP_TOPICS, the HELP_* and PREP_HELP_* "?" texts, tooltips
+  (UI.tip / UI.tipf), the notices (UI.notice) and questions (UI.ask), the notice of Apply.
 - The action scripts' comments, the root and folder CLAUDE.md files, the skills, PLAN.md (history and
   checklist), README.md.
 - Every "Settings > A > B" path: A must be a section name, B a heading in that section.
