@@ -1,6 +1,6 @@
 ---
 name: release
-description: Commit, push and release Chart Cue, Segue, MIDI Pilot, FX Link and Session Prep (a new version on ReaPack, and a GitHub Release for each script with a new version). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
+description: Commit, push and release Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep and SFX Drop (a new version on ReaPack, and a GitHub Release for each script with a new version). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
 ---
 
 # Release
@@ -19,6 +19,7 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
   Scripts in `MIDI Pilot/` changed = a new MIDI Pilot version (`@version` and `CFG.VERSION`), with its own GitHub
   Release (tag `midipilot-vX.Y`). Scripts in `FX Link/` changed = a new FX Link version (tag `fxlink-vX.Y`).
   Scripts in `Session Prep/` changed = a new Session Prep version (tag `sessionprep-vX.Y`).
+  Scripts in `SFX Drop/` changed = a new SFX Drop version (tag `sfxdrop-vX.Y`).
   Only other files (CLAUDE.md, PLAN.md, README.md, tools, tests, .claude): commit and push without a
   version or a release, and say so.
 - A commit that is already made (the user said "commit only" before): do not raise the version again.
@@ -66,6 +67,7 @@ For each script with a new version:
 - Segue: tag `segue-vX.Y`, title "Segue X.Y", the Segue zip. MIDI Pilot: tag `midipilot-vX.Y`, title "MIDI Pilot X.Y",
   the MIDI Pilot zip. FX Link: tag `fxlink-vX.Y`, title "FX Link X.Y", the FX Link zip (`release\FX-Link-X.Y.zip`).
   Session Prep: tag `sessionprep-vX.Y`, title "Session Prep X.Y", the Session Prep zip (`release\Session-Prep-X.Y.zip`).
+  SFX Drop: tag `sfxdrop-vX.Y`, title "SFX Drop X.Y", the SFX Drop zip (`release\SFX-Drop-X.Y.zip`).
   Release notes: that script's changelog lines.
 - Check: `gh release view <tag>`.
 

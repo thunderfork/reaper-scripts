@@ -7,6 +7,7 @@ Scripts for playing live and for studio work with REAPER, installed and updated 
 - **MIDI Pilot:** writes the MIDI for amp modelers (Quad Cortex, Line 6 Helix / HX): presets, scenes, pedals.
 - **FX Link:** links plugins across tracks: move a knob in one, and the same knob moves in the others.
 - **Session Prep:** cleans up the tracks of a multitrack from a client: names, colors, folders, L / R pans, silent and fake stereo tracks.
+- **SFX Drop:** puts impacts, risers, drops and atmospheres from your library exactly on the beat of your backing tracks.
 
 # Chart Cue
 
@@ -167,9 +168,34 @@ Install with ReaPack (search "Session Prep"), then run "Script: Session Prep.lua
 
 Session Prep saves nothing in the project; its presets and settings are saved on this computer.
 
+# SFX Drop
+
+SFX Drop puts sound effects from your library (impacts, risers, drops, atmospheres) on the beat of your backing tracks. No nudging.
+
+- **Hit points:** SFX Drop reads each sound and finds the moment that must land on the beat: the start of an impact (the silence before it is skipped), the peak of a riser.
+- **Your library:** choose a folder in Settings; the type of each sound comes from its folder and file name (Impacts, Risers, Drops, Atmos, Other). Search, filter by type, and click a column title to sort.
+- **Insert** at the edit cursor, at the nearest bar line, or at the start of each region. Double-click a sound or press Enter. One Ctrl+Z undoes it.
+- **Tracks:** each sound goes on the track of its type in an "FX" folder; SFX Drop makes the tracks when they are missing.
+- **Clean items:** trim silence and short fades (both optional).
+- **Check the show:** one click lists missing files, sounds that are only in your library (Copy into the project), other sample rates and effects that ring into the next song (Cut).
+- **FX output:** the FX folder plays through the master or its own hardware outputs (a separate FX feed to FOH).
+- **Vary:** an insert at several places uses a different sound of the same folder each time.
+- **Copy into the project** (optional, asked at the first start): each sound is copied into the project folder, so the show runs on any computer; a warning above a size (500 MB) and a Clean up for unused copies. Pause or stop the library scan at any time.
+- **Your own hit point:** right-click a sound to pick the start or the loudest point, or move an inserted item by ear and let SFX Drop learn it.
+- **Preview** a sound (needs the free SWS extension).
+- **Soundcheck** tab: builds a new "Soundcheck" track after the last song from a source track (for example your stereo backing track) or a folder of stems: areas of different level, from quiet to loud, then an impacts zone with each impact and bass drop repeated (4x by default). You set the full length; Find areas shows the plan first; 1 Ctrl+Z undoes a build.
+- **Find spots** (Spots tab): reads your song bar by bar and suggests where a riser and an impact (quiet to loud), a drop (loud to quiet) or an atmosphere (a quiet part) fits; the spots are grouped by region; choose the types to add and words for the sounds ("boom, explosion"); tick the spots, pick the sounds, insert them all with one click.
+- **Favourites:** star your best sounds; they come first everywhere.
+- **Riser length:** pick 1, 2, 4 or 8 bars and the risers of that length come first. A Bars column shows each sound's length in bars.
+- **Levels** (optional): every impact, riser, drop and atmosphere at its own level, by LUFS or by peak.
+
+Install with ReaPack (search "SFX Drop"), then run "Script: SFX Drop.lua". Needs ReaImGui 0.9.3 or newer.
+
+SFX Drop saves only its Soundcheck list in the project; its settings and its library index are saved on this computer.
+
 ## Zips
 
-Each script also has a zip on the [Releases](https://github.com/thunderfork/reaper-scripts/releases) page (Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep): unzip it, copy its .lua files into your REAPER `Scripts` folder, and load them with Actions > Show action list > New action > Load ReaScript....
+Each script also has a zip on the [Releases](https://github.com/thunderfork/reaper-scripts/releases) page (Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep, SFX Drop): unzip it, copy its .lua files into your REAPER `Scripts` folder, and load them with Actions > Show action list > New action > Load ReaScript....
 
 ## License
 

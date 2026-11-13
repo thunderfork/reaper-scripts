@@ -31,6 +31,42 @@
 - 1.7 (11 November 2026): no PDF of another project; "+ Add" template; Delete / F2 / row menus; Ctrl+Z to REAPER;
   grey hints; the welcome screen fits. With Segue 1.3, MIDI Pilot 1.4, FX Link 1.1.
 
+## SFX Drop 1.0 (new, 12-13 November 2026): committed, not pushed (not ready for a release: the user wants more work first)
+- The 6th script (`SFX Drop/`, tests `tests\sfxdrop.lua`: 9 passed). A preparation tool: sound effects from a
+  library on the beat (hit points: start of the sound / loudest point; own hit point, Learn from the moved item).
+- Decisions: name SFX Drop; 1 tab Sounds + Settings + Help; preview with SWS, hidden without; 1 track per type in an
+  "FX" folder. Saved data (new): ExtState "SFX Drop" keys, `Data\SFX Drop\library.txt`.
+- Manual tests in REAPER (13 November 2026): all passed (library, impact, riser, nearest bar line, preview,
+  learn). Place at "Next bar line" became "Nearest bar line".
+- "Version 2" (13 November 2026, still version 1.0 by request): Spots tab (Find spots), favourites (star column),
+  Riser length (under Place at), Settings > Insert > Levels. Tests: 14 passed. The index format changed (fav, level):
+  the library is read again once. Manual tests: Favourites passed; Riser length worked but stretching changed
+  the samples too much -> now a filter (the risers that fit come first) + a Bars column; Levels passed -> now LUFS /
+  Peak per type (index again: + top). Find spots: "does not really work well with what I had in mind": talk about it
+  later (ask what the user expects). Then: Riser length fits by the Bars value (the build-up was wrong);
+  click a column title to sort (Riser length sorts by Length). All manual tests passed (13 November 2026).
+  Then: Copy into the project (off; first-start question; Warn above 500 MB; Clean up), scan Pause / Stop,
+  Spots tab: 1 line per spot, grouped by region; Add (type chips) and Sounds with (words). Tests: 19 passed. Manual: all passed.
+- Debug time (13 November 2026): spots cleared on a project switch; the fade-in ends at the start of the sound;
+  Clean up keeps the copies that another .rpp of the folder names; Find skips a deleted track; a lookup table for
+  the sounds (speed). Tests: 19 passed. Manual tests passed.
+- Full debug time (13 November 2026): Enter does nothing while a question is open; Sort by Name uses the sound's
+  name (not its folder); Help text of Warn above. Known limit: a very long file can pause the window for a moment
+  in the first scan (REAPER builds its peaks).
+- Soundcheck tab (13 November 2026), rebuilt to the user's idea: 1 source track -> a new Soundcheck track after the
+  last song: areas from quiet to loud (Steps), then an impacts zone (FX folder impacts / drops + the strongest hits of
+  the source, each repeated, 4x), Full length for everything; Find areas shows the plan. Saved data (approved):
+  ProjExtState "SFX Drop"/"soundcheck" (now the settings; the first parts-list design was dropped with its key sc_len).
+  Tests: 22 passed. Manual tests passed (plan, build, rebuild + undo).
+- Pro review round (13 November 2026): Check the show (missing / library / sample rate / tail; Copy, Cut, Go), FX
+  output (Settings > Insert > Tracks), Soundcheck from a folder (stems), Vary. New keys (approved with the plan):
+  fx_out, vary. Tests: 26 passed. Manual tests passed (after 2 fixes: the Check window as a table, FX output up
+  to Out 15/16 whatever the device). Next: more work (Find spots, the later ideas) before a release. Note: a push
+  publishes SFX Drop on ReaPack (the index workflow reads its header); add @noindex first if it must stay hidden. Later ideas: templates, key match, tags, mono check,
+  sub limit, a pink noise / sweep step, cue markers, Move with region.
+  Next: commit / release, or Find spots.
+  Later ideas: key match, templates.
+
 ## Session Prep 1.0 (new, 12 November 2026): committed (bcf85f1), not pushed or released
 - The 5th script (`Session Prep/`, tests `tests\sessionprep.lua`: 40 passed). A preparation tool for a client's
   multitrack: Scan / Scan all (in steps) and a preview table; Apply with 1 undo point and a prep mark per track.

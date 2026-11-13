@@ -1,6 +1,6 @@
 ---
 name: debug-time
-description: A review round of Chart Cue, Segue, MIDI Pilot, FX Link or Session Prep before a commit or a release - 4 passes (developer, UI/UX, musician, engineer), a cross-review, feedback, fixes and a check of the fixes. Use when the user says "debug time" (or asks for a debug / optimize / review round).
+description: A review round of Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep or SFX Drop before a commit or a release - 4 passes (developer, UI/UX, musician, engineer), a cross-review, feedback, fixes and a check of the fixes. Use when the user says "debug time" (or asks for a debug / optimize / review round).
 ---
 
 # Debug time

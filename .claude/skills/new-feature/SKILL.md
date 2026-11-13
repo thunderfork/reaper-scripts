@@ -1,6 +1,6 @@
 ---
 name: new-feature
-description: Turn a new idea for Chart Cue, Segue, MIDI Pilot, FX Link or Session Prep into a short plan, a text mockup and the right questions before any code. Use when the user asks for a new feature, option, button, tab, view or setting ("add ...", "is it possible to ...", "can we have ..."), or a larger change to an existing one.
+description: Turn a new idea for Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep or SFX Drop into a short plan, a text mockup and the right questions before any code. Use when the user asks for a new feature, option, button, tab, view or setting ("add ...", "is it possible to ...", "can we have ..."), or a larger change to an existing one.
 ---
 
 # New feature
@@ -18,6 +18,9 @@ whole round, so the visible decisions come first (CLAUDE.md visible-change gate)
   - FX Link: the toolbar, the gear menu (Look, Automatic open and close, Window, Backup), the foldable sections.
   - Session Prep: tabs Prep, Rules, FX Chains, Buses; Settings sections Appearance, Prep (Tracks, Routing, Checks),
     Gain staging, Window. A preparation tool (Session Prep/CLAUDE.md).
+  - SFX Drop: tabs Sounds, Spots, Soundcheck; Settings sections Appearance, Library, Insert (Items, Files, Tracks,
+    Levels), Window.
+    A preparation tool (SFX Drop/CLAUDE.md).
 - Its on/off switch and default (every optional feature can be turned off).
 - What is saved: in the project (P) or on this computer (S); the "?" text says where. A new key: ask first.
 - The special states: playing, paused, stopped, an empty list or project; Chart Cue: locked, performance mode,

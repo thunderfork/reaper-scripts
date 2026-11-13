@@ -22,8 +22,8 @@ Get-ChildItem -Path $srcdir -Filter "Chart Cue*.lua" | ForEach-Object {
 }
 $done += "Chart Cue ($n)"
 
-# Segue, MIDI Pilot, FX Link and Session Prep: the ReaPack folder when installed with ReaPack, else Scripts\<name>
-foreach ($s in "Segue", "MIDI Pilot", "FX Link", "Session Prep") {
+# Segue, MIDI Pilot, FX Link, Session Prep and SFX Drop: the ReaPack folder when installed with ReaPack, else Scripts\<name>
+foreach ($s in "Segue", "MIDI Pilot", "FX Link", "Session Prep", "SFX Drop") {
   $setsrc = Join-Path $root $s
   if (-not (Test-Path $setsrc)) { continue }
   $base = Join-Path $env:APPDATA "REAPER\Scripts"
