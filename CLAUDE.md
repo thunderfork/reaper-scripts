@@ -92,9 +92,14 @@ The rules below apply to all 6 scripts ("the script" = the script being changed)
   globals, then Lua Language Server warnings as information). It compares the warnings with
   `tools\known-warnings.txt` and shows only new ones: look at each new one; fix it, or (a false alarm) run
   `.\tools\check.ps1 -UpdateKnown`. It also runs `tools\docs-check.ps1`: paths, skill names and "Settings > ..."
-  paths in the docs and skills that no longer match; fix each one it reports.
+  paths in the docs and skills that no longer match; fix each one it reports. And `tools\imgui-check.ps1`: the
+  ImGui Push / Pop balance of each function; a new finding: fix it, or (a helper that pushes for its caller, a
+  false alarm) run `.\tools\imgui-check.ps1 -UpdateKnown` (`tools\imgui-known.txt`).
+- Test gaps: `.\tools\test.ps1 -Script "<name>" -Coverage` lists the functions that the tests never run
+  (`tests\coverage_<test file>.txt`); use it to find where a test is missing (the `lessons` skill, step 5).
 - For logic changes: `.\tools\test.ps1 -Script "<the changed script>"` (all scripts only before a release); it
-  must end with "0 failed". Add a test for each fixed bug when practical. The tests run in the portable test
+  must end with "0 failed". An escaped bug (found by me in REAPER, or by `debug-time`): the `lessons` skill
+  (a test that fails first, the fix, a search of the other scripts, an entry in `LESSONS.md`). The tests run in the portable test
   REAPER `C:\REAPERtest`, in the background; never use, close or save my normal REAPER.
 - For UI code that the tests do not reach: the UI test (`ui-test` skill; Chart Cue only), after asking.
 - These checks do not replace a test in REAPER. Do not claim a change is tested unless I tested it in REAPER.
@@ -110,16 +115,24 @@ The rules below apply to all 6 scripts ("the script" = the script being changed)
   Follow the `release` skill.
 - After each push: the "ReaPack index" workflow must succeed (`gh run list`), then `git pull` the new
   `index.xml`. Never edit `index.xml` by hand.
+- A script that is not released has `Released = $false` in `tools\scripts.psd1`: `@noindex` in its .lua files and
+  its README part hidden (`<!-- -->`). The pre-push hook (`tools\hooks\pre-push`, `git config core.hooksPath
+  tools/hooks`) runs `tools\publish-check.ps1` and stops a push that would publish it.
+- A new script starts on its own branch (`script/<name>`), with its docs and its line in `tools\scripts.psd1`; it
+  merges into main at its first release. (SFX Drop is the exception: it was on main before this rule.)
 
 ## Other files
 
 - `PLAN.md`: done work, open items, the roadmap of each script and the release checklist.
+- `LESSONS.md`: the escaped bugs, their cause tags and the rules that came from them (`lessons` skill).
 - `README.md`: for users. `LICENSE`: MIT.
 - `.claude/skills/`: `release`, `debug-time` (the review round), `ui-test`, `housekeeping` (read-only audit, changes
   only after my approval), `new-feature` (plan and questions before code), `help-sync` (every text that names a
-  changed feature).
-- `tools\`: check.ps1 (with `.luarc.json` and `known-warnings.txt`), test.ps1, deploy.ps1, release.ps1 (`-Script "<name>"`: the zips in
-  the git-ignored `release\`), shots.ps1, ui-test.ps1 / ui-test.lua, background.ps1.
+  changed feature), `lessons` (the self-improvement routine for escaped bugs).
+- `tools\scripts.psd1`: the 1 list of the scripts (name, test file, tag, released); every tool reads it.
+- `tools\`: check.ps1 (with `.luarc.json` and `known-warnings.txt`; it also runs publish-check.ps1 and imgui-check.ps1), test.ps1 (`-Coverage`), deploy.ps1, release.ps1 (`-Script "<name>"`: the zips in
+  the git-ignored `release\`), shots.ps1, ui-test.ps1 / ui-test.lua, background.ps1, session-start.ps1 (the state
+  at each session start: the SessionStart hook in `.claude\settings.json`), `hooks\pre-push`.
 - `tests\`: run.lua (Chart Cue), segue.lua, midipilot.lua, fxlink.lua, sessionprep.lua, sfxdrop.lua, shots.lua, test.pdf (make_pdf.lua makes it; run it with
   the normal Lua, not REAPER).
 - Temporary files (test logs, helper scripts): in the scratchpad folder, never in the repository.

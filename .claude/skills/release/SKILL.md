@@ -34,14 +34,19 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
   for new features (1.4 -> 1.5), a major step only when the user says so.
 - `@changelog`: 1-3 user-facing lines (what the user gets, plain words), replacing the old lines.
 - `@provides`: every action script of the script's folder is listed.
-- PLAN.md: the history line of this version (Chart Cue: History; Segue: its own section).
-- Segue and MIDI Pilot: the same steps in their own file (their own versions), each with its own GitHub Release.
+- A first release: merge its branch into main (when it has one); `Released = $true` in `tools\scripts.psd1`;
+  remove `@noindex` from its .lua files; show its README part (remove the `<!-- -->` around it). In the same commit,
+  so the publish check passes.
+- PLAN.md: the version in the Context table, and its line in the script's section (Chart Cue: History; the
+  others: "Released:").
+- Each other script: the same steps in its own file (its own version), each with its own GitHub Release.
 
 ## 2. Checks
 
 - `.\tools\check.ps1` ("Syntax and globals OK", no new warnings), `.\tools\test.ps1` (all scripts, "0 failed").
 - Before a major release (x.0): the `housekeeping` audit (docs, skills, folder CLAUDE.md files) and a full
   `debug-time` round of that script.
+- The escaped-bug count since the last release (`lessons` skill, step 5), in 1 line.
 - When menus, popups, tabs or views changed since the last UI test: ask for the UI test (`ui-test` skill).
 - `.\tools\deploy.ps1`.
 
@@ -62,7 +67,7 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
 
 For each script with a new version:
 - `.\tools\release.ps1 -Script "<name>"` (makes `release\Chart-Cue-X.Y.zip`, `release\Segue-X.Y.zip`,
-  `release\MIDI-Pilot-X.Y.zip`, `release\FX-Link-X.Y.zip` or `release\Session-Prep-X.Y.zip`).
+  `release\MIDI-Pilot-X.Y.zip`, `release\FX-Link-X.Y.zip`, `release\Session-Prep-X.Y.zip` or `release\SFX-Drop-X.Y.zip`).
 - Chart Cue: `gh release create vX.Y "release\Chart-Cue-X.Y.zip" --target main --title "Chart Cue X.Y" --notes "<changelog lines>"`.
 - Segue: tag `segue-vX.Y`, title "Segue X.Y", the Segue zip. MIDI Pilot: tag `midipilot-vX.Y`, title "MIDI Pilot X.Y",
   the MIDI Pilot zip. FX Link: tag `fxlink-vX.Y`, title "FX Link X.Y", the FX Link zip (`release\FX-Link-X.Y.zip`).

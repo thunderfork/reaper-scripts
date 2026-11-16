@@ -1,7 +1,7 @@
 # MIDI Pilot
 
 "MIDI editor for amp modelers": it prepares the MIDI for a Quad Cortex / Quad Cortex mini or a Line 6 Helix, HX
-Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are untested). No relation to the other 2 scripts.
+Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are untested). No relation to the other scripts.
 
 ## Rules
 
@@ -11,7 +11,7 @@ Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are untested). No relation
 
 ## Files
 
-- `MIDI Pilot.lua`. Version: `@version` and `CFG.VERSION` together (1.0 on 8 November 2026). Release: tag
+- `MIDI Pilot.lua`. Version: `@version` and `CFG.VERSION` together. Release: tag
   `midipilot-vX.Y`, title "MIDI Pilot X.Y" (the `release` skill).
 - Roadmap (version 2) and history: PLAN.md, section "MIDI Pilot".
 

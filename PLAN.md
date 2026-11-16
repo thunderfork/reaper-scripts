@@ -1,74 +1,104 @@
-# Thunderfork scripts: plan (state on 7 November 2026)
+# Thunderfork scripts: plan (state on 17 November 2026)
 
 ## Context
-- File: `Chart Cue/Chart Cue.lua`, public version 1.5.2. Chart Cue's data (settings.ini, page cache, tmp, autostart.lua, guide) is in REAPER\Data\Chart Cue since 1.2. REAPER 7 ReaScript, Lua 5.4, ReaImGui API pinned to 0.9.3 through the ReaTeam shim. Windows only.
-- Modules: CFG, S (settings.ini), R (runtime), COL, P (project config in the .rpp ExtState "ChartCue"/"cfg"), Util, PDF, Project, Nav, Midi, UI, Cues, Notes, Setlist, Pane, Msg, Dock, Autostart.
-- Layout system: UI.form / UI.field / UI.button_pair / UI.full_button, CFG.SP + UI.sp, one control height UI.h, one text rule CFG.TEXT_LIFT. Compact layout is the default.
-- Constraints:
-  - No users yet: no code for earlier development versions. Ask before a change to the .rpp ExtState format, the settings keys, the cache folder layout or the __startup.lua markers. New keys get defaults and are written only when they differ from them ("Save as" detection). The old keys tab_ver, sl_view, fixed_start, continue_after_end and scroll_mode=fixed were removed on 5 November 2026.
-  - Keep every disk or long operation non-blocking.
-  - Every Push needs a Pop. Call End only when Begin returned true.
-- Working rules from the user:
-  - Make small passes. The user tests each pass in REAPER and approves it before the next pass.
-  - Do not remove a control without approval. List it first.
-  - Write the help texts in plain, simple English, and update HELP_TOPICS with each change.
-  - Keep @changelog to 1–3 user-facing lines.
+- 6 scripts, each in its own folder (details in each folder's CLAUDE.md; the rules in the root CLAUDE.md):
 
-## History (short)
-- Pre-release (v4.6–4.8): async PDF engine and cache, Record cues, scroll mode per project, keep last page, Cues tab, one Settings tab, inline confirmations (UI.ask), cue field validation, sticky messages, Fixed speed and "Continue after region end" removed, REAPER actions via ExtState "cmd_q".
-- 1.0 (2 November 2026): first public version (ReaPack and GitHub Release).
-- 1.1 (3 November 2026): UI review (gear tab, welcome, Settings sections, Help About / Send feedback, SWS and "This computer" labels removed); tests in the portable test REAPER; toolbar in 3 groups with drawn icons and a "Hide controls when playing" button; Autoscroll "Scroll" Smooth / Jump (P.scroll_jump, written only when on); cue list: full-width rows, click = edit cursor, Start row, "Use current view", "+ below", bar with Record / + Page turn / + Scroll point / Undo (own snapshot stack, Ctrl+Z), messages in the title line; panel grip double-click 40% <-> 60%; floating window: own resize edges and corner grip, full size kept while collapsed; right-click menus (toolbar / page, Library / Regions / Cues rows), "Replace PDF..."; page brightness minimum 25%; tools moved to `tools\`.
-- 1.2 (3 November 2026): settings and page cache moved to REAPER\Data\Chart Cue (no migration: no other users yet); autoscroll mode locked during playback (text in both toolbars); repository renamed to thunderfork/reaper-scripts, ReaPack name "Thunderfork Scripts"; index workflow fixed (CMake 4, pinned runner).
-- 1.3 (4 November 2026): 2 PDFs per song (split view, PDF 1 / PDF 2 in Regions, own cues, active part; design: panes, module Pane); pages on screen (1, side by side with Rolling / Book, continuous) and the slide-in page turn; Display > Page layout (now Viewer > Page layout); Library: Add from folder remembers the folders, Sync, Remove unused PDFs, Sort: Unused first, Replace PDF; right-click menus; Redo; bold row labels; one standard button width; panel fit to sections; fixes (region PDF at playback start, empty dropdown text, clicks during playback, double flash, odd last page).
-- 1.4 (4 November 2026): Setlist tab (show order, Stop / Continue, timed pauses, several setlists, lock, undo, right-click menu, play buttons, "Next song" action, Page area: PDF / Setlist / Setlist and PDF, "Next: ..." label); notes on the pages (colour and size per note); page-turn countdown (also before the next song); toolbar and tab items can be hidden; brightness button; Settings in 5 sections (Viewer, Playback, Control, Appearance, General); Shortcuts and external controls (Assign...); page cache limit (1 GB); "debug time" review skill (.claude/skills/debug-time).
-- 1.4.1 (4 November 2026): code clean-up with no visible change: the toolbar is built again only when it changes (R.tb_cache); the PDF 1 / PDF 2 cue list choice is always set back (Cues.with_part); named sizes in CFG and CFG.UI_SCALE for the icons; the UI test is in tools.
-- 1.5 (5 November 2026): PNG / JPG images (Add PDF only); the marker list in the cue-list layout, with Record, the add buttons, the marker colour and Copy cues into markers; the 3-band setlist view; the armed exact stop; tab icons and 2-line rows when narrow; numpad zoom; the Segue conflict command. Segue 0.1 released with it.
-- 1.5.1 (5 November 2026): clean-up with no visible change: the old keys tab_ver, sl_view, fixed_start, continue_after_end and scroll_mode=fixed removed; housekeeping skill; .gitattributes keeps LF.
-- 1.5.2 (7 November 2026): questions in a centred window (UI.draw_ask_popup); tooltips with a 0.5 s delay and wrapped
-  lines; right-click menus on the panel, the tabs and the toolbar items ("Hide ..."); the Sync folder dropdown.
-  Released with Segue 1.0 and MIDI Pilot 0.1.1. From now on Segue and MIDI Pilot get their own GitHub Releases too
-  (tags segue-vX.Y, midipilot-vX.Y).
-- 1.7 (11 November 2026): no PDF of another project; "+ Add" template; Delete / F2 / row menus; Ctrl+Z to REAPER;
-  grey hints; the welcome screen fits. With Segue 1.3, MIDI Pilot 1.4, FX Link 1.1.
+  | Script | Version | State |
+  |---|---|---|
+  | Chart Cue | 1.7 | released 11 November 2026 |
+  | Segue | 1.3.1 | released 11 November 2026 |
+  | MIDI Pilot | 1.4 | released 11 November 2026 |
+  | FX Link | 1.1.1 | released 11 November 2026 |
+  | Session Prep | 1.0 | committed, not pushed or released |
+  | SFX Drop | 1.0 | committed, not released (hidden with @noindex) |
 
-## SFX Drop 1.0 (new, 12-13 November 2026): committed, not pushed (not ready for a release: the user wants more work first)
-- The 6th script (`SFX Drop/`, tests `tests\sfxdrop.lua`: 9 passed). A preparation tool: sound effects from a
+- REAPER 7 ReaScript, Lua 5.4, ReaImGui pinned to 0.9.3 (the shim). Chart Cue is Windows only.
+
+## Session handoff (16-17 November 2026)
+- Done and committed (17 November 2026, commit only): housekeeping (PLAN.md tidy, docs check reads all folder CLAUDE.md files, SFX Drop hidden with
+  @noindex and in README); the self-improvement routine (`lessons` skill, LESSONS.md); the process work: 1 script
+  list `tools\scripts.psd1` read by all tools, the publish check + pre-push hook (core.hooksPath set on this
+  computer), the session-start hook, the open manual tests moved here from the memory, a branch for each new script.
+  The SFX Drop header changed, but SFX Drop stays 1.0 and unreleased.
+- 17 November 2026: Session Prep full review (engineer, debug, programmer, UI/UX): 7 fixes (hi-hat read silent,
+  exact peak, client return not "empty", Apply after File > Open, return names, Electric / Acoustic Piano, Rules tab
+  speed) with 5 new tests (45 passed); the coverage map and the ImGui balance check. Committed (commit only).
+- Not pushed: 5 earlier commits (Session Prep 1.0, SFX Drop 1.0 and docs). Note for the Session Prep release:
+  Session Prep.lua changed after the commit where 1.0 first appears, so ReaPack would link 1.0 to the old file: the
+  release needs a new number (1.0.1, or 1.1) (the release skill, step 0). The publish check stops a push until
+  Session Prep is released (Released = $true, the release skill) or hidden. Next decision: commit, and push with the
+  Session Prep 1.0 release?
+
+## Open manual tests
+Give them in question windows, 1 question per test (Passed / Failed / Skip for now); a skipped or failed test stays
+here; remove a test when the user reports it passed.
+
+- MIDI Pilot (2026-11-08): read the rewritten Help topics and tooltips (Set up songs, Tools items, scene list, Lanes,
+  Settings): are they clear? Note the unclear ones.
+- Session Prep (2026-11-12): Mono button on a fake stereo track (grey -> orange on click; Apply plays one side;
+  Ctrl+Z undoes it). Skipped twice.
+- Session Prep (2026-11-12): file check: a 44.1 kHz file in a 48 kHz project (or an item that starts later) shows
+  an orange "44.1k" / "late" tag in the Prep table.
+- Session Prep (2026-11-12): dual pan: a track in dual pan (or a project whose default pan mode is dual pan) with
+  its knobs not at full L / R shows "kept" and keeps its pans after Apply.
+
+- Session Prep (2026-11-17): Gain staging on, Scan with hi-hat / OH / cymbal tracks: no "silent" tag, normal Gain values.
+- Session Prep (2026-11-17): a client's return (no items, receives a send): no "empty" tag, no Delete button.
+- Session Prep (2026-11-17): rename a return to empty, then to "Delay" (taken): the old name comes back each time.
+- Session Prep (2026-11-17): "Electric Piano" / "Acoustic Piano" become KEYS / PIANO.
+- Session Prep (2026-11-17): Scan speed with Gain staging on (a large session; the 1st Scan of new files builds peaks).
+
+On hold (do NOT ask until the user brings it up):
+- SFX Drop: Find spots "does not work well with what I had in mind; work on it later" (2026-11-13): ask what they
+  expect when they bring it up.
+- MIDI Pilot: own playback offset kept by "Use selected track" with Latency 0 (said "skip until i tell you", 2026-11-07).
+- Session Prep: full run on a real client multitrack (Scan all, Apply, 1x Ctrl+Z, speed) (said "skip until i say
+  so, don't bring it up", 2026-11-12).
+
+## Open items (all scripts)
+- Lessons rule (stale-state, accepted 17 November 2026): add an "another project" test to Chart Cue, Segue, MIDI Pilot
+  and FX Link for the data they keep from a project.
+- Session Prep feedback, not decided yet (17 November 2026): deleting a return does not ask (a bus does); the Prep
+  table does not show a row's bus, sends or Track FX (the Help promises "you see everything first").
+- SFX Drop (17 November 2026, found in the Session Prep round): Find spots reads at 2000 Hz and Soundcheck at 500 Hz,
+  so cymbal parts count too little. Look at it before the SFX Drop release (with Find spots). Lessons rule
+  (audio-measure): its measurements get tests with generated WAV files.
+- MIDI Pilot (19) and FX Link (10) call UI.trunc in the UI loop: check which are in lists (use UI.trunc_c there).
+- Flaky test (17 November 2026): SFX Drop "find spots on real tracks" failed once ("a rise at bar 5") in a full
+  `test.ps1 -Coverage` run, then passed 3 times. Find the cause (the WAV peaks not ready yet?) before the SFX Drop release.
+- API name check (not built, the user's choice, 17 November 2026): a generator of the REAPER and ReaImGui 0.9.3
+  function names from the test REAPER, so the check reports a wrong function name. Build it only when such a bug
+  appears (the lessons routine, step 4). No maintained ready-made definition files exist.
+- Coverage (17 November 2026, `test.ps1 -Coverage`): Chart Cue 27%, Segue 36%, Session Prep 45%, FX Link 51%,
+  SFX Drop 56%, MIDI Pilot 57% of the functions (the UI functions count too; the logic tests do not reach them).
+- REAPER crashes inside reaper_imgui-x64.dll 0.10.0.5 (offset 0x9fd1c, access violation) when a docked script
+  window closes (middle-click on its dock tab) or its dock tab is switched; seen with Chart Cue and MIDI Pilot, 4 times
+  on 6-7 November 2026. Not in the scripts' code. Workaround: close with the toolbar button. A report for the
+  ReaImGui author can be written again from these facts.
+- Dead code, to remove with the next real change of each script (no version only for this): Chart Cue
+  `UI.button_pair`, MIDI Pilot `Dev.free_unit` and `Midi.next_song`, FX Link `CFG.FORM_MAX_W`; also the "4 scripts"
+  comments in Chart Cue, FX Link and Session Prep (now 6).
+- Template for all scripts: "+ Add" = ghost button on the heading line, its menu drops down below it; empty lists
+  = 1 grey line "No ... yet. <what to do>."; yellow only for real warnings.
+
+## SFX Drop 1.0 (new, 12-13 November 2026): committed, not released (the user wants more work first)
+- The 6th script (`SFX Drop/`, tests `tests\sfxdrop.lua`). A preparation tool: sound effects from a
   library on the beat (hit points: start of the sound / loudest point; own hit point, Learn from the moved item).
-- Decisions: name SFX Drop; 1 tab Sounds + Settings + Help; preview with SWS, hidden without; 1 track per type in an
-  "FX" folder. Saved data (new): ExtState "SFX Drop" keys, `Data\SFX Drop\library.txt`.
-- Manual tests in REAPER (13 November 2026): all passed (library, impact, riser, nearest bar line, preview,
-  learn). Place at "Next bar line" became "Nearest bar line".
-- "Version 2" (13 November 2026, still version 1.0 by request): Spots tab (Find spots), favourites (star column),
-  Riser length (under Place at), Settings > Insert > Levels. Tests: 14 passed. The index format changed (fav, level):
-  the library is read again once. Manual tests: Favourites passed; Riser length worked but stretching changed
-  the samples too much -> now a filter (the risers that fit come first) + a Bars column; Levels passed -> now LUFS /
-  Peak per type (index again: + top). Find spots: "does not really work well with what I had in mind": talk about it
-  later (ask what the user expects). Then: Riser length fits by the Bars value (the build-up was wrong);
-  click a column title to sort (Riser length sorts by Length). All manual tests passed (13 November 2026).
-  Then: Copy into the project (off; first-start question; Warn above 500 MB; Clean up), scan Pause / Stop,
-  Spots tab: 1 line per spot, grouped by region; Add (type chips) and Sounds with (words). Tests: 19 passed. Manual: all passed.
-- Debug time (13 November 2026): spots cleared on a project switch; the fade-in ends at the start of the sound;
-  Clean up keeps the copies that another .rpp of the folder names; Find skips a deleted track; a lookup table for
-  the sounds (speed). Tests: 19 passed. Manual tests passed.
-- Full debug time (13 November 2026): Enter does nothing while a question is open; Sort by Name uses the sound's
-  name (not its folder); Help text of Warn above. Known limit: a very long file can pause the window for a moment
-  in the first scan (REAPER builds its peaks).
-- Soundcheck tab (13 November 2026), rebuilt to the user's idea: 1 source track -> a new Soundcheck track after the
-  last song: areas from quiet to loud (Steps), then an impacts zone (FX folder impacts / drops + the strongest hits of
-  the source, each repeated, 4x), Full length for everything; Find areas shows the plan. Saved data (approved):
-  ProjExtState "SFX Drop"/"soundcheck" (now the settings; the first parts-list design was dropped with its key sc_len).
-  Tests: 22 passed. Manual tests passed (plan, build, rebuild + undo).
-- Pro review round (13 November 2026): Check the show (missing / library / sample rate / tail; Copy, Cut, Go), FX
-  output (Settings > Insert > Tracks), Soundcheck from a folder (stems), Vary. New keys (approved with the plan):
-  fx_out, vary. Tests: 26 passed. Manual tests passed (after 2 fixes: the Check window as a table, FX output up
-  to Out 15/16 whatever the device). Next: more work (Find spots, the later ideas) before a release. Note: a push
-  publishes SFX Drop on ReaPack (the index workflow reads its header); add @noindex first if it must stay hidden. Later ideas: templates, key match, tags, mono check,
-  sub limit, a pink noise / sweep step, cue markers, Move with region.
-  Next: commit / release, or Find spots.
-  Later ideas: key match, templates.
+- Decisions: name SFX Drop; tabs Sounds, Spots, Soundcheck + Settings + Help; preview with SWS, hidden without;
+  1 track per type in an "FX" folder. Saved data (approved): ExtState "SFX Drop" keys (also fx_out, vary),
+  `Data\SFX Drop\library.txt`, ProjExtState "SFX Drop"/"soundcheck".
+- Built and tested by the user (13 November 2026, all manual tests passed): library, insert, Nearest bar line,
+  preview, learn; favourites; Riser length (a filter + a Bars column); Levels (LUFS / Peak per type); column sort;
+  Copy into the project (Warn above 500 MB, Clean up); scan Pause / Stop; Spots tab; Soundcheck tab (areas from quiet
+  to loud, impacts zone, Find areas plan); Check the show; FX output; Soundcheck from a folder; Vary. 2 debug rounds.
+- Known limit: a very long file can pause the window for a moment in the first scan (REAPER builds its peaks).
+- On hold: Find spots "does not really work well with what I had in mind" (ask what the user expects, when they
+  bring it up).
+- Later ideas: templates, key match, tags, mono check, sub limit, a pink noise / sweep step, cue markers, Move with
+  region.
 
 ## Session Prep 1.0 (new, 12 November 2026): committed (bcf85f1), not pushed or released
-- The 5th script (`Session Prep/`, tests `tests\sessionprep.lua`: 40 passed). A preparation tool for a client's
+- The 5th script (`Session Prep/`, tests `tests\sessionprep.lua`). A preparation tool for a client's
   multitrack: Scan / Scan all (in steps) and a preview table; Apply with 1 undo point and a prep mark per track.
 - Tabs: Prep (names, folders, note tags, gain, polarity, pan / width, M / S), Rules (rules grouped by folder, drag
   rules and folders; presets with Save, Save as, More: Rename, Export, Import, Revert, Reset, Delete; Undo per
@@ -78,171 +108,49 @@
   first" preset), client pans kept, disarm, Other folder off the master, file check, one-sided level, own returns
   and buses only (prep mark), loop guard, overdubs join their folder, a later return joins FX Returns.
 - Saved data (approved): ExtState "Session Prep" keys and presets (`preset_N`, `preset_orig_N`, `preset_saved_N`);
-  in the project only the track mark `P_EXT:SessionPrep`. The preset format changed during the work (no migration).
-- Tested in REAPER by the user: everything except the open tests below.
-- Open: the manual tests Mono, dual pan and file check; the full run on a real multitrack is on hold (the user brings
-  it up). Next: push and release 1.0 (tag `sessionprep-v1.0`).
+  in the project only the track mark `P_EXT:SessionPrep`.
+- Tested in REAPER by the user: everything except the open manual tests (Mono, dual pan, file check; the full run
+  on a real multitrack is on hold). Next: push and release 1.0 (tag `sessionprep-v1.0`).
 - Version 2 ideas: time alignment of close mics, a measured polarity check, routing / bus templates.
-- Dead code (12 November 2026): Session Prep's leftovers removed (UI.toggle_line, UI.fold_arrow, CFG.SETTINGS_BTN_W).
-  To remove with the next real change of each script (no version only for this): Chart Cue `UI.button_pair`,
-  MIDI Pilot `Dev.free_unit` and `Midi.next_song`, FX Link `CFG.FORM_MAX_W`; also the "all 4 scripts" comments.
 
-## Released on 11 November 2026 (2nd): Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1
-- x.x.1 (FX Link, Segue): the notice line is drawn after the panel (an ImGui error in a very small window).
-- Review round and uniform UI, tested by the user in REAPER; a debug round before the release.
-- FX Link (next 1.1): automation / LFO not copied; Pause per plugin (saved `fx_off`); new group from focused plugin
-  + selected tracks (menu and the new action "FX Link - Group focused plugin on selected tracks"); "+ Add" menus
-  (empty group asks which plugin); compact Snapshots with Compare; A/B recall fixed (order + check again);
-  F2 / Delete / row menu; notices at the bottom instead of OK windows.
-- Chart Cue (next 1.7): no PDF of another project (also removes a wrong active PDF); "+ Add" on the Add PDFs
-  heading; Ctrl+Z to REAPER; Delete on PDF / setlist / cue rows; grey hints; welcome screen fits a low page area.
-- Segue (next 1.3): Open automatically + Close with project (S `close_proj`); row menu, Delete, F2; notices.
-- MIDI Pilot (next 1.4): Songs heading "+ Add" (Create track / Use selected track); Ctrl+Z to REAPER; grey hints;
-  device row menu, F2, Delete.
-- Template for all scripts: "+ Add" = ghost button on the heading line, its menu drops down below it; empty lists
-  = 1 grey line "No ... yet. <what to do>."; yellow only for real warnings.
+## FX Link
+- Released: 1.0 (11 November 2026, the 4th script), 1.1 / 1.1.1 (11 November 2026).
+- Possible issue to watch: plugins that show meters as parameters (they would link and show "differ"); the
+  workaround is All except.
+- Known limit (as Chart Cue): File > New project in the same tab over a never-saved project is not seen.
 
-## Released on 11 November 2026: FX Link 1.0 (new), Segue 1.2.1
-- FX Link 1.0: the 4th script (tag fxlink-v1.0). Segue 1.2.1: the Settings menu drops down below the gear.
+## MIDI Pilot (MIDI editor for amp modelers: Quad Cortex, mini, Line 6 Helix / HX; since 6 November 2026)
+- Released: 0.1.1 and 0.1.2 (7 November), 1.0 (8 November), 1.0.1, 1.1 (9 November), 1.2, 1.3 (10 November),
+  1.4 (11 November 2026). The full history is in the git log and the @changelog lines.
+- Not checked: the full-size Quad Cortex's USB port name (no unit; it contains "Cortex"). The Line 6 profiles are
+  untested (no units).
+- Version 2: Record (a real pedal move into Lanes, from the unit's Preset MIDI Out expression messages) and Learn,
+  copy scenes between songs, a check report, a cue sheet, import / export of the names, Looper X (CC#48-61) in its
+  own section. Later, only if a user asks: "Scenes like..." (copy another song's scenes). Not planned: live /
+  show-time features (MIDI Pilot is a preparation tool).
 
-## Session handoff (10 November 2026, 3rd): FX Link 1.0
-- State: new 4th script FX Link (`FX Link/`): link groups of plugin instances, Exact / Relative, All / Picked
-  parameters (Pick... list, Learn), groups saved in the project. Small Chart Cue look (no tabs, no toolbar).
-  Added to the tools (check, test, deploy, release, docs check). The user tested it in REAPER: "works great".
-- Debug round done: a group turned on, a new Mode or new Parameters read the instances again (no late copy of old
-  changes); Learn stops when its group is not shown; better undo / redo detection; picked list cached; docs.
-- Committed, pushed and released (11 November 2026): FX Link 1.0 and Segue 1.2.1 (commit 9c2a504).
-- Tested in REAPER by the user: the debug fixes (off / on, Learn stop, undo); 1 Ctrl+Z undoes a linked change.
-- Round 2 (built, tested): toolbar (Show plugins, search, gear, Help topics), foldable sections, group drag / Sort,
-  plugin sort, Linked parameters rows with Learn flash, Pick... linked first, Match per plugin, Add all in project,
-  "Bypass plugins" (renamed from "Link bypass": it links the plugins' bypass, it does not pause the link), actions
-  "FX Link - Show plugins" and "FX Link - Toggle group", Ctrl+Z / redo passed on to REAPER from the window.
-  Rejected: a Pause links button and Alt to move alone (the group switch does it).
-- Round 3 (built): Show / Hide plugins, Track / Plugin labels, a group click selects its tracks, a plugin row
-  selects its track, the plugin name dropdown (other copies on the track + Open plugin window; "(slot N)" when a
-  track has 2+ copies), gear menu Automatic open and close (as Chart Cue) and Backup (folder row, Show, Change...),
-  "Link bypass" name back. All tested by the user in REAPER (passed).
-- FX Link and Segue: the Settings menu drops down below the gear (not movable, never covers the gear; a 2nd click
-  on the gear closes it). Tested (passed). Segue.lua changed: it needs a new version at the next release.
-- Debug round 2 (FX Link): Close with project stops at once; no undo step without a project; the last touched
-  plugin with a closed window is read every 10th frame; README, @about, @changelog and Help (automation) updated.
-  Known limit (as Chart Cue): File > New project in the same tab over a never-saved project is not seen.
-- Round 4 (mixing engineer review; tested: All except, Relative dB, snapshots, containers, Find, folder): All except, FX Containers, Relative in real
-  units (dB / ms / %), Find again, out-of-sync badge ("2 differ" + orange rows), Snapshots A / B (in the project),
-  activity dot, Add from folder. Possible issue to watch: plugins that show meters as parameters (they would link
-  and show "differ"); the workaround is All except.
-  "differ" showed during a drag (plugins report late): no check until 1 s after a copy, tolerance 1e-3, 2 checks
-  in a row. Then: 'differ' right after Match / a new Pro-Q band (a band turned on resets its knobs after the
-  copy): Exact copies and Match are checked again after 0.25 s and set again (up to 3 times); a knob that never
-  follows is left out of the check; the orange row tooltip names the different knobs. Retest passed.
-- Next: release FX Link 1.0 (tag fxlink-v1.0) when the user asks, or more features.
+## Segue (the setlist script, since 4 November 2026)
+- Released: 0.1 (5 November), 1.0 and 1.1 (7 November), 1.2 (10 November), 1.2.1, 1.3 / 1.3.1 (11 November 2026).
+- Ideas, not planned: a thin countdown bar, a UI test for Segue.
+- Ideas from the ReaSet changelog (not planned): repeat a song N times; region colours in the list; a note
+  per song; the next marker / section in the now playing area, with a 2nd thinner progress bar; an option
+  that forces an immediate jump when REAPER's smooth seek is on (Continue to a song that is not next on the
+  timeline).
 
-## Session handoff (10 November 2026, 2nd)
-- State: Chart Cue 1.6, Segue 1.2 and MIDI Pilot 1.3 released: uniform Settings order (Look, Tabs, Toolbar; Window,
-  Backup, Troubleshooting; About last), Back up / Restore / Reset all settings in all 3, right-click panel menus in
-  Segue and MIDI Pilot, friendlier Help in all 3 (Segue Help in topics). User tests 36-44 passed in REAPER.
-- Not run: the Chart Cue UI test (the user said "not now").
-- Next: a 4th script, mostly unrelated, in its own folder (plan: split the root CLAUDE.md into "All scripts" and
-  "ReaImGui scripts"; add the script to the tools); start it in a new session with the new-feature skill.
+## Chart Cue: history (short)
+- Pre-release (v4.6–4.8): async PDF engine and cache, Record cues, scroll mode per project, keep last page, Cues tab,
+  one Settings tab, inline confirmations, cue field validation, sticky messages, REAPER actions via ExtState "cmd_q".
+- 1.0 (2 November 2026): first public version (ReaPack and GitHub Release).
+- 1.1 (3 November): UI review, tests in the portable test REAPER, toolbar groups, cue list rework, own resize edges.
+- 1.2 (3 November): data in REAPER\Data\Chart Cue; repository renamed to thunderfork/reaper-scripts.
+- 1.3 (4 November): 2 PDFs per song (split view), page layouts, slide-in page turn, Library tools.
+- 1.4 / 1.4.1 (4 November): Setlist tab, notes on the pages, page-turn countdown, Settings in 5 sections, Shortcuts.
+- 1.5 / 1.5.1 / 1.5.2 / 1.5.3 (5-7 November): images, marker list, 3-band setlist view, armed exact stop, centred
+  questions, Light / Dark theme. From 1.5.2 on Segue and MIDI Pilot get their own GitHub Releases.
+- 1.6 (10 November): uniform Settings order, Window and Backup sections, friendlier Help (also Segue, MIDI Pilot).
+- 1.7 (11 November): no PDF of another project; "+ Add" template; Delete / F2 / row menus; Ctrl+Z to REAPER.
 
-## Released on 10 November 2026 (2nd): Chart Cue 1.6, Segue 1.2, MIDI Pilot 1.3
-- Uniform Settings / gear-menu order, Window and Backup sections, right-click panel menus, friendlier Help.
-
-## Session handoff (9 November 2026)
-- State: everything is committed and pushed; MIDI Pilot 1.1 is released. All MIDI Pilot changes were tested by the
-  user in REAPER.
-- Open test: the user's read of the rewritten MIDI Pilot Help and tooltips (pending-manual-tests memory).
-- Open: REAPER crashes inside reaper_imgui-x64.dll 0.10.0.5 (offset 0x9fd1c, access violation) when a docked script
-  window closes (middle-click on its dock tab) or its dock tab is switched; seen with Chart Cue and MIDI Pilot, 4 times
-  on 6-7 November 2026. Not in the scripts' code; no newer ReaImGui. Workaround: close with the toolbar button. A
-  report for the ReaImGui author can be written again from these facts.
-- Workflow (9 November 2026): quiet tools, tools\known-warnings.txt, tools\docs-check.ps1 (run by check.ps1), the
-  visible-change gate and short reports in CLAUDE.md, reworked skills.
-- Next decision: none pending; MIDI Pilot version 2 ideas are in the MIDI Pilot section.
-
-## Released on 10 November 2026: MIDI Pilot 1.2
-- Lanes: Add LFO (shapes with icons, rate in note values, Start / end, Peaks grow / shrink); LFO / swell / ramp as 1
-  row (found by pattern; move, nudge, remove, copy and paste); collapsible sections; slope icons; bend reset.
-- Toolbar (hideable items, Show toolbar), hideable tabs, Getting started, adds follow REAPER's Snap, Preset list
-  search and sort, Settings in 4 sections (Devices, Editing, Appearance, General) with Back up / Restore, Preset and
-  Scene capitalised in every visible text. Two debug-time rounds.
-
-## Released on 9 November 2026: MIDI Pilot 1.1
-- Faster input (9 November 2026): Scene keys (1-8 add a scene at the edit cursor; Settings > Playback; on by
-  default); Presets match Regions also reads a preset number in the name ("Song One [3B]"); Presets match Markers
-  ("P 3B" / "P <preset name>"); Markers from scenes; 1 preset for several songs (Ctrl+click / Shift+click on the
-  song names). Later, only if a user asks: "Scenes like..." (copy another song's scenes).
-- Tools: renamed and reordered (Presets from Regions, Presets from Markers, Scenes from Markers, Markers from
-  Scenes, Merge repeated Scenes; Show overview, Export MIDI; Collapse all scene lists); no scrollbar; song rows stay
-  quiet while a dropdown is open.
-- Settings > Playback: "Preset settings" (First preset, Other presets, By) and "Scene settings" (First scene: at /
-  before / after the region start or after the region's preset; Other scenes; By in ms or note values; Scene keys).
-  Keys pc_other, sc_first, sc_other, sc_unit, sc_ms, sc_note. Moves, nudges and the Scene test stay exact.
-
-## Released on 9 November 2026: MIDI Pilot 1.0.1
-- The scene strip is called the scene timeline in every text (the setting keeps its key show_strip).
-
-## Released on 8 November 2026: MIDI Pilot 1.0
-- Save fix: the settings of this computer keep their line breaks (REAPER keeps only the first line of a value):
-  preset, folder and scene names, the controls and the device list survive a restart.
-- Track and device names in both directions: a device rename renames its track; a track rename in REAPER renames
-  the device (without "MIDI "); a track with an older name gets the device name when a project opens.
-- "Reset MIDI devices" (Settings > Devices; "Reset MIDI" in the status bar when a device is NOT AVAILABLE).
-- Review (8 November 2026): a muted MIDI item is never written; the Scene test texts use the device's scene names;
-  texts (Presets help, the channel question); clean-ups.
-- Light theme: every scene block in its full colour; the block that plays has a blue outline (Dark: unchanged).
-- Device profiles (8 November 2026, toward 1.0): Line 6 Helix (Floor, LT, Rack), HX Stomp, HX Stomp XL, HX Effects
-  (untested, from the unofficial Helix MIDI guide): 8 setlists (CC#32) x 128 presets (Program Change, no CC#0),
-  snapshots on CC#69 (8 / 3 / 4 / 4), their reserved CCs, USB names. Per device "Preset numbers": Bank + letter
-  (01A) or Numbers (000), as the unit's Preset Numbering. Description: "MIDI editor for amp modelers".
-- Quad Cortex expression pedals (8 November 2026): CC#1 / CC#2 write the pedal position 0-100% (no Min / Max /
-  Unit); per preset (Presets tab, pedal icon; settings key exp_<device>) what each pedal moves: name, range in knob %
-  (backwards allowed), optional note, no limit; Lanes rows show "-> Hi Pass 22%, Low Pass 66%". (A "Target" to type a
-  knob % was built and removed: the user found it too complicated.) Other CCs keep Min / Max / Unit. Line 6 unchanged.
-- Quad Cortex functions (8 November 2026, from the Neural DSP manuals' Incoming MIDI CC List): Lanes > Control lists
-  Expression 1 / 2 (always there, CC fixed, names only), then Footswitch A-H (mini: A-D page I / II) and the mini's
-  footswitch page (CC#64), Tap tempo (1 tap, or 4 taps on the beat), Tuner, Gig View (Open / Close), Mode (slot 1-3).
-  Add by kind (press, tap, choice; no ramps). Only the pedals play on (Set up songs, Live chase). No "Add control" on
-  a Quad Cortex. Later: Looper X (CC#48-61) in its own section.
-- Lanes, used controls (8 November 2026): in the Control dropdown a blue dot and the count for each control with
-  values in the song at the edit cursor (or all songs). (A row of buttons was tried; the user did not like it.)
-- The device choice (2 or more devices) is at the right end of the tab's first heading: the name and a small arrow.
-- Add device is a dropdown (8 November 2026): "Connected" (free units found on USB, with output and model), then all
-  models (the Line 6 ones marked untested).
-- Presets: Factory Presets and My Presets cannot be renamed (Quad Cortex); mini scenes are A-I ... D-II.
-- Fixed: the send and remove buttons of a song row did nothing (the quiet row went away while the mouse was down).
-- Mini tests (8 November 2026): a preset change loads the preset's own pedal positions (so Set up songs writes the
-  pedal positions at the start scene time, after the song's preset change; Live chase sends them after the preset);
-  REAPER's own MIDI chase depends on the items (a preset changed with Live chase off).
-- Live chase removed (the user, 8 November 2026): MIDI Pilot does not send MIDI by itself during playback; REAPER
-  plays the track. Send state (status bar) stays.
-- Preset changes inside a song (8 November 2026): "Preset change..." in the Add scene list (Choose a preset window,
-  at the edit cursor); its own row in the scene list (position, time, nudge, preset, send, X); a thin line on the
-  strip. The song row keeps the song's own preset.
-- Songs > Tools (8 November 2026): "Show overview" (a table: song, start, preset, its scenes in order with inside
-  preset changes in brackets, its Lanes values; a click moves the edit cursor) and "Export MIDI" (standard MIDI file,
-  type 0, 960 ppq, tempo map; 1 file for the show, or 1 per song from 0:00 with its preset and start scene; slopes
-  as steps of a 1/32 note; MIDI Pilot's own writer, not REAPER's export). The folder: a field with Browse...
-  (js_ReaScriptAPI, else the Windows folder window) and Default; saved in the project (key export_dir, only when
-  chosen); default "MIDI Pilot export" next to the project file. A song event list was rejected (the
-  scene list is already full). MIDI Pilot is a preparation tool: no live features (the user).
-- "Set up songs" adds only presets (CC#0, CC#32, Program Change) and start scenes; no control values (the user).
-- 1.0 (the user, 8 November 2026): everything above, plus the tests on the mini (Hz/dB spread, pedal value after a
-  preset change, REAPER's own chase of PC/CC) and their fixes.
-- Open: REAPER crashes in reaper_imgui-x64.dll 0.10.0.5 when a docked script window closes or hides (middle-click
-  on its dock tab, or a dock tab switch); not in the scripts' code. A report for the ReaImGui author was written.
-
-## Released on 7 November 2026 (2nd release): Chart Cue 1.5.3, Segue 1.1, MIDI Pilot 0.1.2
-- All 3 scripts (7 November 2026): darker panels for more contrast: window #131518, tab strip #0F1114, panels /
-  menus / setlist and now playing views #1A1C21 (MIDI Pilot: its scene list card #22252B). Next push: Chart Cue 1.5.3,
-  Segue 1.1, MIDI Pilot 0.1.2.
-- (Fixed in MIDI Pilot 1.0: the scene colours in the Light theme.)
-- All 3 scripts (7 November 2026): Light / Dark theme, 1 option in each (Chart Cue: Settings > Appearance > Theme;
-  Segue: gear menu > Light theme; MIDI Pilot: Settings > General > Theme); Dark is the default. The colours that were
-  written in the code are named in COL; the style reads COL every frame (no restart); the window title bar follows
-  the theme. tools\shots.ps1 -Light takes Chart Cue's screenshots in the light theme.
-
-## Release checklist (do before sharing a new version)
+## Release checklist (Chart Cue; do before sharing a new version)
 1. Version: @version and CFG.VERSION are equal; @changelog has 1–3 user-facing lines.
 2. Start: Chart Cue starts without errors; the last tab and the open Settings section come back.
 3. Project data: set a mode, Seconds, "Turn pages", "Scroll", a PDF; close and open Chart Cue, then save, close and reopen the project: all values come back.
@@ -260,7 +168,7 @@
 15. Large set: a 300-page PDF and a project with 30 regions: start time, page cache size and limit, smooth playback.
 16. Automatic tests: `.\tools\test.ps1` ("0 failed") and `.\tools\ui-test.ps1` ("no errors").
 
-## Future consideration (not planned)
+## Chart Cue: future consideration (not planned)
 - Guitar Pro files: convert to PDF with MuseScore's command line (optional external program, like Poppler).
 - REAPER forum button in Help > About (disabled until there is a forum thread).
 - No way to show the mode hint again after "Not now".
@@ -269,59 +177,4 @@
 - Night mode: the page inverted (white notes on black) for very dark stages.
 - Undo for a deleted note.
 - PDF 2: a "(both)" view of the 2 cue lists in the Cues tab, and MIDI CCs for PDF 2 (not in 1.3).
-- UI scale 100 / 125 / 150 %: the drawn icons already use CFG.UI_SCALE, and the repeated sizes have names in CFG (since the code clean-up after 1.4). Still needed: the fonts rebuilt between frames, every pixel size in CFG times the scale, and a test of every screen at each scale. Ask the user first.
-
-## MIDI Pilot (MIDI editor for amp modelers: Quad Cortex, mini, Line 6 Helix / HX; since 6 November 2026)
-- 1.0 (released 8 November 2026): see "Released on 8 November 2026" above.
-- 0.1.1 (released 7 November 2026): the full version 1 (steps 1-7, below). 0.1 on ReaPack points to an early build:
-  ReaPack links a version to the commit where its number first appeared (the release skill now checks this).
-- Done (version 1, steps 1-4): devices (model, MIDI output / input, channel, latency, own or shared track,
-  a kept track brings its device back); presets at the song starts (timing in ms or note values, Fill songs,
-  Presets match Regions, names, folders, the .reabank file, Send now); scenes (strip, list with bar.beat and
-  time, start scene per song, gap after a preset, merge, colours, Scenes match Markers, clear); Lanes
-  (controls in real units, nearest CC value, slope between values, all songs).
-- Done (6 November 2026): scene edits are exact (no gap, no automatic start scene or merge; "Fill songs" and a
-  "Merge repeated scenes" button); Scene test; new MIDI items are checked (channel, a scene at each song start;
-  Settings > Devices > Check new MIDI items); only the MIDI that REAPER plays is read; the status bar.
-- Step 5 done (6 November 2026): latency = the track's playback offset; nudge buttons (rows, songs; Settings > Playback > Nudge).
-- Step 6 done (7 November 2026): ramps in Lanes (from / to, length in beats, bars or to the time selection end, slope).
-- Layout (7 November 2026): scene list and Lanes rows with column labels, icons (send, nudge, - +), editable
-  positions in bar.beat.hundredths (right-aligned), scrolling lists (Settings > Appearance > List sizes), Chart Cue's row look
-  (hover and the current row); swell with hold and its own way back; notices only in the status bar.
-- Step 7 done (7 November 2026): Fill songs writes the control values at the song starts; Live chase (window
-  open; Settings > Playback); Send state (status bar). Custom ramp lengths (bars.beats).
-- UI consistency (7 November 2026): Chart Cue's form rule (every control fills the control column; a row of 2 parts
-  splits it; small windows 1 width; table cells fit their content), Chart Cue's buttons (standard width, dialog width,
-  red outline, small buttons), Songs bar: Fill songs + Tools / Clear dropdowns, Help in formatted topics, Presets
-  list icons. Forms 280 wide. Settings in 5 sections (Devices, Tracks, Playback,
-  Lists, General), 1 open at a time, saved (as in Chart Cue).
-- 0.1.2 (released 7 November 2026): the scene colours (the unit's 8 colours; only the active block in full colour,
-  the others semi-transparent); double-click opens REAPER's MIDI editor at that place; the Pastel option is removed.
-- Next: version 2 (below).
-- Device profiles (planned as 0.2, done in 1.0): Line 6 Helix, HX Stomp, HX Stomp XL, HX Effects, from the
-  unofficial Helix MIDI guide; marked "untested" (no units).
-- Version 2: Record (a real pedal move into Lanes, from the unit's Preset MIDI Out expression messages) and Learn,
-  copy scenes between songs, a check report, a cue sheet, import / export of the names, Looper X (CC#48-61) in its
-  own section. Not planned: live / show-time features (MIDI Pilot is a preparation tool).
-- Unit tests done (8 November 2026): a preset change loads the preset's own pedal positions; REAPER's own chase
-  depends on the items. Not checked: the full-size Quad Cortex's USB port name (no unit; it contains "Cortex").
-
-## Segue (the setlist script, since 4 November 2026)
-
-- 1.0 (released 7 November 2026, with Chart Cue 1.5.2): a centred question, tooltips with a delay; its own GitHub
-  Release (segue-v1.0).
-- 0.1 (released 5 November 2026, with Chart Cue 1.5): setlists from the regions, Stop / Continue, pauses,
-  skip, drag and arrows, the play buttons, the "now playing" area with its grip, more than 1 setlist (More...), Lock setlist,
-  undo (Ctrl+Z), the "Segue - Next song" action, the gear menu (now playing options, docking, Help).
-- Done in both scripts (5 November 2026): the 3-band now playing view (status pill, current song with
-  progress bar, large list with Stop / Continue icons); the armed stop (loop points + REAPER's "stop at end
-  of loop", action 41834: no part of the next song is heard); outside the setlist songs the last song stays
-  current. Segue locks itself while Chart Cue plays in setlist order ("Use Segue" / "Use Chart Cue").
-- Tested in REAPER (5 November 2026): an armed stop does not mark the project as changed; a Continue jump
-  plays no part of the following region.
-- Tests: tests\segue.lua (10). Checks, deploy and the ReaPack package ("Segue") include Segue.
-- Ideas, not planned: a thin countdown bar, a right-click menu on the rows, a UI test for Segue.
-- Ideas from the ReaSet changelog (not planned): repeat a song N times; region colours in the list; a note
-  per song; the next marker / section in the now playing area, with a 2nd thinner progress bar; an option
-  that forces an immediate jump when REAPER's smooth seek is on (Continue to a song that is not next on the
-  timeline).
+- UI scale 100 / 125 / 150 %: the drawn icons already use CFG.UI_SCALE, and the repeated sizes have names in CFG. Still needed: the fonts rebuilt between frames, every pixel size in CFG times the scale, and a test of every screen at each scale. Ask the user first.

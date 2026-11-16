@@ -43,6 +43,8 @@ folder CLAUDE.md). The user does not read code: report in plain words, with what
   steps and side effects on the user's own MIDI and tracks.
 - FX Link and Session Prep (studio tools): what REAPER really does to the tracks (routing, sends, folders, gain,
   pans, polarity), undo steps, a client's project that is already mixed, and side effects on the user's own tracks.
+- SFX Drop (a preparation tool): does the hit point land on the beat, the FX folder and its outputs, the copies
+  in the project folder (size, Clean up), tails into the next song, the Soundcheck track, undo steps.
 
 ## 5. Cross-review and feedback
 
@@ -52,7 +54,8 @@ answer (CLAUDE.md visible-change gate); bugs, texts and clean-ups can be fixed a
 
 ## 6. Fix and check the fixes
 
-CLAUDE.md editing and patch rules; a test for each fixed bug when practical; deploy. Then check only the places
+CLAUDE.md editing and patch rules; a bug in committed code follows the `lessons` skill (a test that fails first,
+the other scripts, an entry in LESSONS.md); deploy. Then check only the places
 that the fixes touched (new names, missed callers, broken pairs), and run check and test again. Update PLAN.md
 (history, open items) and the folder CLAUDE.md when they are out of date.
 

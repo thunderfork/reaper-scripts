@@ -7,12 +7,12 @@
 #    in no script. A line that shows a rename ("->") is skipped.
 # Prints 1 line when everything matches; else each problem (information only: it never fails the checks).
 $root = Split-Path $PSScriptRoot -Parent
-$docs = @("CLAUDE.md", "README.md", "PLAN.md", "Chart Cue\CLAUDE.md", "Segue\CLAUDE.md", "MIDI Pilot\CLAUDE.md") |
+$names = @((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts | ForEach-Object { $_.Name }) # tools\scripts.psd1
+$docs = @("CLAUDE.md", "README.md", "PLAN.md", "LESSONS.md") + @($names | ForEach-Object { "$_\CLAUDE.md" }) |
   ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
 $docs += Get-ChildItem (Join-Path $root ".claude\skills") -Recurse -Filter "SKILL.md" | ForEach-Object { $_.FullName }
 $skills = Get-ChildItem (Join-Path $root ".claude\skills") -Directory | ForEach-Object { $_.Name }
-$code = @("Chart Cue\Chart Cue.lua", "Segue\Segue.lua", "MIDI Pilot\MIDI Pilot.lua", "FX Link\FX Link.lua",
-  "Session Prep\Session Prep.lua", "SFX Drop\SFX Drop.lua") |
+$code = @($names | ForEach-Object { "$_\$_.lua" }) |
   ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ -Raw }
 $allCode = $code -join "`n"
 # the Settings section names of the scripts (SETTINGS_SECTIONS = { { "Viewer", ... }, ... })
@@ -21,7 +21,7 @@ foreach ($c in $code) {
   $m = [regex]::Match($c, 'SETTINGS_SECTIONS\s*=\s*\{(.*?)\n\}', 'Singleline')
   if ($m.Success) { $sections += [regex]::Matches($m.Groups[1].Value, '\{\s*"([^"]+)"') | ForEach-Object { $_.Groups[1].Value } }
 }
-$tops = @("tools", "tests", "Chart Cue", "Segue", "MIDI Pilot", "FX Link", "Session Prep", "SFX Drop", ".claude", ".github")
+$tops = @("tools", "tests", ".claude", ".github") + $names
 $problems = @()
 foreach ($doc in $docs) {
   $rel = $doc.Substring($root.Length + 1)

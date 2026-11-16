@@ -1,0 +1,22 @@
+Chart Cue.lua col StyleColor 1
+Chart Cue.lua UI.menu_sub return
+Chart Cue.lua UI.menu_sub StyleVar 1
+Chart Cue.lua UI.menu_sub_end StyleVar -1
+Chart Cue.lua UI.pop_row_style StyleVar -1
+Chart Cue.lua UI.push_font Font 1
+Chart Cue.lua UI.push_kind return
+Chart Cue.lua UI.push_kind StyleColor 13
+Chart Cue.lua UI.push_kind StyleVar 1
+Chart Cue.lua UI.push_row_style StyleVar 1
+Chart Cue.lua var StyleVar 2
+FX Link.lua UI.push_style StyleColor 1
+FX Link.lua UI.push_style StyleVar 2
+MIDI Pilot.lua UI.draw_scene_list ID -1
+MIDI Pilot.lua UI.push_style StyleColor 1
+MIDI Pilot.lua UI.push_style StyleVar 2
+Segue.lua UI.push_style StyleColor 1
+Segue.lua UI.push_style StyleVar 2
+Session Prep.lua UI.push_style StyleColor 1
+Session Prep.lua UI.push_style StyleVar 2
+SFX Drop.lua UI.push_style StyleColor 1
+SFX Drop.lua UI.push_style StyleVar 2

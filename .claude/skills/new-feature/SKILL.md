@@ -27,6 +27,9 @@ whole round, so the visible decisions come first (CLAUDE.md visible-change gate)
   PDF 2, hidden panel or tabs; MIDI Pilot: 2 or more devices, Line 6 or Quad Cortex, muted items.
 - Technical limits that the user will notice: say them plainly. Too large: suggest a smaller first step.
 
+- A name field (a preset, bus, return, device...): when you finish typing, an empty name or a name that another
+  item of the same list has goes back to the old name (LESSONS.md, saved-data).
+
 ## 2. Mockup and behaviour (always, for anything visible)
 
 A small text mockup in the question window's preview, and the exact behaviour (what a click does, what is
@@ -40,6 +43,8 @@ details yourself.
 ## 4. Build
 
 CLAUDE.md editing and patch rules; `help-sync` for every new or changed name; tests for the logic; deploy.
+A new script: first its own branch (`script/<name>`, CLAUDE.md "Git and releases") and its line in
+`tools\scripts.psd1` (`Released = $false`, `@noindex` in its header).
 
 ## 5. Report
 

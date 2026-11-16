@@ -17,3 +17,6 @@ tests/result_midipilot.txt
 tests/result_fxlink.txt
 tests/result_sessionprep.txt
 tests/result_sfxdrop.txt
+# coverage (test.ps1 -Coverage) and its temporary wrapper
+tests/coverage_*.txt
+tests/_cov_*.lua

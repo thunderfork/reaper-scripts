@@ -22,8 +22,8 @@ Get-ChildItem -Path $srcdir -Filter "Chart Cue*.lua" | ForEach-Object {
 }
 $done += "Chart Cue ($n)"
 
-# Segue, MIDI Pilot, FX Link, Session Prep and SFX Drop: the ReaPack folder when installed with ReaPack, else Scripts\<name>
-foreach ($s in "Segue", "MIDI Pilot", "FX Link", "Session Prep", "SFX Drop") {
+# the other scripts (tools\scripts.psd1): the ReaPack folder when installed with ReaPack, else Scripts\<name>
+foreach ($s in ((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts | ForEach-Object { $_.Name } | Where-Object { $_ -ne "Chart Cue" })) {
   $setsrc = Join-Path $root $s
   if (-not (Test-Path $setsrc)) { continue }
   $base = Join-Path $env:APPDATA "REAPER\Scripts"

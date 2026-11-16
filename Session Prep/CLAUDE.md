@@ -3,7 +3,7 @@
 Cleans up the tracks of a multitrack import in one step: Scan / Scan all (changes nothing) shows a preview table
 (old name, new name, folder, notes, gain, Pan, M, S); Apply makes the ticked changes with 1 undo point
 ("Session Prep: apply"). A preparation tool: no project data, no live features. Chart Cue look with a tab strip:
-Prep, Rules, FX, Buses, Settings (gear), Help ("?"); the sections of Rules, FX and Buses fold (arrows, `S.closed`;
+Prep, Rules, FX Chains, Buses, Settings (gear), Help ("?"); the sections of Rules, FX Chains and Buses fold (arrows, `S.closed`;
 the Rules list also folds each folder group, ids "rf_<folder>"); Settings has
 collapsing sections, 1 open at a time (`S.settings_open`), with a bold label column as in MIDI Pilot (`UI.form_label`,
 `UI.form_toggle`).
@@ -50,7 +50,7 @@ collapsing sections, 1 open at a time (`S.settings_open`), with a bold label col
 - Modules: `Util` (also the settings), `Rules` (presets, compile the match words, `Rules.folders` = the folder
   order), `Prep` (clean, match, plan, folders, returns, Apply), `Audio` (the audio check of Scan), `UI`.
 - Names: `Prep.base_clean` (extension, "Audio N_", track numbers), `Prep.strip_common` (shared prefix / suffix: 4+
-  letters or digits, never a rule word), `Prep.match` (the first rule wins; terms of 3 letters or less match only a
+  letters or digits, never a rule word), `Prep.match` (2 passes: a match of 2+ words first, then 1 word; in each the first rule wins; terms of 3 letters or less match only a
   whole word), `QUAL` (the extra words that stay: In, Out, L, R, numbers...). Equal new names get " 1", " 2".
   The built-in rules follow the common studio names (Kick In / Out, Kick Sub, Snare Top / Btm, Hi-Hat, Floor Tom,
   OH, Room, Bass DI / Amp, Gtr, Piano, Organ, Synth, Lead Vox, BV, Click, Guide...).
@@ -74,7 +74,8 @@ collapsing sections, 1 open at a time (`S.settings_open`), with a bold label col
   after its items); bus members as chips (`UI.chip`, x removes); "+ Add" menu (`UI.bus_menu`): folders, then the
   tracks in a submenu per folder.
 - Folder depths: the last track of a folder gets -1 per folder that it closes; no spacer right below a parent.
-- Audio check (`Audio.check`): a track audio accessor, at most 120 reads of 2048 frames at 11025 Hz per track;
+- Audio check (`Audio.check`): a track audio accessor, at most 120 reads of 4096 frames at 44100 Hz per track (a lower
+  rate cuts the highs: a hi-hat read silent); a track without items but with receives or FX is not "empty";
   `Audio.verdict` -> empty / silent / fake / only_l / only_r; also the RMS of the reads above -50 dBFS and the peak.
   The Mono fix is the take channel mode (3 left, 4 right), off until its row's "Mono" button is on (orange).
 - FX chains (FX Chains tab): `Prep.add_chain` writes the .RfxChain text at the end of the track's FX chain block (found by
@@ -92,7 +93,8 @@ collapsing sections, 1 open at a time (`S.settings_open`), with a bold label col
   undo): "rules" (rules + folder order), "buses", "returns" (returns, sends, send level); the preset text before each
   change of that section, the last 30; changes within 0.7 s are 1 step; another preset clears it; a setting is no
   step. The button (`UI.undo_button`) sits on the Rules, Buses and FX Returns headings (not in FX Chains).
-- Gain staging: `Prep.gain_for` (RMS target limited by the peak limit, or Target: Peak; 0.1 dB); Apply multiplies
+- Gain staging: `Prep.gain_for` (RMS target limited by the peak limit, or Target: Peak; 0.1 dB); the peak is exact
+  (`Audio.true_peak`: REAPER's peak files, built first when missing; `CFG.PEAK_MARGIN` 0); Apply multiplies
   each item's `D_VOL`. Per row: `row.gain` (editable; 0 = no change), `row.gain_meas` (right-click resets).
 - Prep table: Pan button per row (`row.pan` "L" / "C" / "R" / nil = leave; the name sets the start when `S.pairs`),
   M / S = the track's real mute / solo at once (`CSurf_On...ChangeEx`, own undo point), not at Apply.

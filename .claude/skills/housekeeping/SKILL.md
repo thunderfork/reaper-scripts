@@ -7,14 +7,14 @@ description: Read-only audit of the repository (everything except the scripts) -
 
 ## Scope
 
-- In scope (may be changed after approval): README.md, PLAN.md, the root and folder CLAUDE.md files,
+- In scope (may be changed after approval): README.md, PLAN.md, LESSONS.md, the root and folder CLAUDE.md files,
   `.claude/skills/`, `tests/*.lua`, `tools/ui-test.lua`, `tools/known-warnings.txt`, `.luarc.json`, `.gitignore`.
   A change to a test, ui-test.lua or .luarc.json: run check.ps1 and the tests after it.
-- Inspect only: the scripts (`Chart Cue/*.lua`, `Segue/*.lua`, `MIDI Pilot/*.lua`, `FX Link/*.lua`,
-  `Session Prep/*.lua`), `tools/*.ps1`,
-  `.github/workflows/`, `index.xml` (generated: never edit it).
-- Report only, never change: anything outside the repository (the deployed copies in `%APPDATA%\REAPER\Scripts\`,
-  Chart Cue's data folder, the user's REAPER) and Claude's memory folder.
+- Change only after an explicit yes for each file: the scripts (`Chart Cue/*.lua`, `Segue/*.lua`, `MIDI Pilot/*.lua`, `FX Link/*.lua`,
+  `Session Prep/*.lua`, `SFX Drop/*.lua`), `tools/*.ps1`,
+  `.github/workflows/`, and Claude's memory folder. A script change follows CLAUDE.md (check, tests, deploy).
+- Never change: `index.xml` (generated) and anything outside the repository (the deployed copies in
+  `%APPDATA%\REAPER\Scripts\`, Chart Cue's data folder, the user's REAPER).
 
 ## What to find
 
@@ -26,6 +26,12 @@ description: Read-only audit of the repository (everything except the scripts) -
    (the `help-sync` search), rules that contradict CLAUDE.md, a rule written in 2 places (CLAUDE.md, a folder
    CLAUDE.md, a skill, the memory: 1 place per rule).
 4. Structure: files in the wrong folder, unclear names.
+5. LESSONS.md: "Rules from lessons" that no longer help (`lessons` skill, step 5).
+6. Release safety (highest risk): an unreleased script without `@noindex` in its header; commits that are not
+   pushed (`git status -sb`); the README describing a script that is not released.
+7. The docs check: every doc, skill and folder CLAUDE.md is in the list of `tools\docs-check.ps1`.
+8. PLAN.md: the "state on" date and the version table are current; old handoffs are short; the test counts
+   match `test.ps1`.
 
 ## Report (plain words, exact paths)
 
@@ -35,9 +41,10 @@ description: Read-only audit of the repository (everything except the scripts) -
 - Deletions apart: each path, why it is unused, what was searched.
 - A short plan: safe clean-ups, document updates, the user's decisions, things to leave.
 
-Change nothing before the user approves. A tracked file is deleted only after an explicit yes for that file.
+Ask for the approval in a question window, with the findings in groups. Change nothing before the user approves. A tracked file is deleted only after an explicit yes for that file.
 
 ## After the approval
 
-Only the approved changes; LF line endings; check.ps1 and the tests when a test or a tool reference changed. A commit
+Only the approved changes; LF line endings; check.ps1 and the tests when a test or a tool reference changed;
+check, tests and deploy after a script change. A commit
 with no `.lua` change is not a new version.

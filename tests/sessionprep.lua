@@ -227,7 +227,7 @@ test("gain staging: the change to the target, limited by the peak", function()
   S.gain_rms, S.gain_peak = -18, -6
   local function lin(db) return 10 ^ (db / 20) end
   eq(Prep.gain_for(lin(-24), lin(-14)), 6, "RMS -24 -> +6 dB")
-  eq(Prep.gain_for(lin(-24), lin(-3)), -4, "the peak limit wins (1 dB room): peak -3 -> -4 dB")
+  eq(Prep.gain_for(lin(-24), lin(-3)), -3, "the peak limit wins (the exact peak: no extra room): peak -3 -> -3 dB")
   eq(Prep.gain_for(nil, nil), nil, "no audio")
   eq(Prep.gain_for(lin(-18), lin(-10)), 0)
 end)
@@ -785,6 +785,114 @@ test("Apply leaves existing folders alone", function()
   Prep.apply(R.rows)
   eq(r.CountTracks(0), n, "no new folder tracks")
   r.Main_OnCommand(40029, 0)
+end)
+
+-- a 16-bit stereo WAV of a sine (hz, peak amplitude), 2 s at 44.1 kHz; returns its path
+local function sine_wav(name, hz, amp)
+  local sr, n = 44100, 88200
+  local path = tmp .. "\\" .. name
+  local f = io.open(path, "wb")
+  local data = {}
+  for i = 0, n - 1 do
+    local v = math.floor(amp * 32767 * math.sin(2 * math.pi * hz * i / sr) + 0.5)
+    data[#data + 1] = string.pack("<i2<i2", v, v)
+  end
+  local body = table.concat(data)
+  f:write("RIFF", string.pack("<I4", 36 + #body), "WAVEfmt ", string.pack("<I4I2I2I4I4I2I2", 16, 1, 2, sr, sr * 4, 4, 16),
+    "data", string.pack("<I4", #body), body)
+  f:close()
+  return path
+end
+local function track_with(path)
+  r.InsertTrackAtIndex(r.CountTracks(0), false)
+  local tr = r.GetTrack(0, r.CountTracks(0) - 1)
+  local it = r.AddMediaItemToTrack(tr)
+  local tk = r.AddTakeToMediaItem(it)
+  r.SetMediaItemTake_Source(tk, r.PCM_Source_CreateFromFile(path))
+  r.SetMediaItemInfo_Value(it, "D_LENGTH", 2)
+  return tr
+end
+
+test("gain staging: a bright track (8 kHz, a hi-hat) is measured at its real level", function()
+  defaults()
+  local tr = track_with(sine_wav("hat8k.wav", 8000, 0.1)) -- (a sine of peak 0.1: RMS -23 dBFS)
+  local verdict, rms = Audio.check(tr)
+  ok(verdict ~= "silent", "not silent (got " .. tostring(verdict) .. ")")
+  ok(rms, "a level")
+  local db = 20 * math.log(rms, 10)
+  ok(math.abs(db - (-23)) < 1, string.format("RMS about -23 dBFS (got %.1f)", db))
+  r.DeleteTrack(tr)
+end)
+
+test("an empty track with a receive or FX (a client's return) is not 'empty'", function()
+  defaults()
+  local src = track_with(sine_wav("low100.wav", 100, 0.1))
+  r.InsertTrackAtIndex(r.CountTracks(0), false)
+  local ret = r.GetTrack(0, r.CountTracks(0) - 1)
+  r.CreateTrackSend(src, ret)
+  eq(Audio.check(ret), nil, "a track with a receive")
+  r.InsertTrackAtIndex(r.CountTracks(0), false)
+  local fx = r.GetTrack(0, r.CountTracks(0) - 1)
+  r.TrackFX_AddByName(fx, "ReaEQ", false, -1)
+  eq(Audio.check(fx), nil, "a track with FX")
+  r.InsertTrackAtIndex(r.CountTracks(0), false)
+  local empty = r.GetTrack(0, r.CountTracks(0) - 1)
+  eq(Audio.check(empty), "empty", "a really empty track")
+  for _, t in ipairs({ src, ret, fx, empty }) do r.DeleteTrack(t) end
+end)
+
+test("Apply does nothing when the scanned tracks are gone (another project in the same tab)", function()
+  defaults()
+  S.returns = true
+  for i = r.CountTracks(0) - 1, 0, -1 do r.DeleteTrack(r.GetTrack(0, i)) end
+  for i, n in ipairs({ "Kik", "Vox" }) do
+    r.InsertTrackAtIndex(i - 1, false)
+    r.GetSetMediaTrackInfo_String(r.GetTrack(0, i - 1), "P_NAME", n, true)
+  end
+  Prep.scan(true)
+  for i = r.CountTracks(0) - 1, 0, -1 do r.DeleteTrack(r.GetTrack(0, i)) end
+  local msg = Prep.apply(R.rows)
+  eq(r.CountTracks(0), 0, "no returns or folders made")
+  ok(msg:find("Scan again", 1, true), "the notice says Scan again (got: " .. msg .. ")")
+  S.returns = false
+end)
+
+test("a 2-word match wins: Electric Piano is Keys, Acoustic Piano is Piano (not Gtr / Ac Gtr)", function()
+  local rows = plan({ "Electric Piano", "Acoustic Piano", "Acoustic Gtr", "Electric Gtr", "Guide Vox" })
+  eq(rows[1].new, "Keys", "Electric Piano")
+  eq(rows[2].new, "Piano", "Acoustic Piano")
+  eq(rows[3].new, "Ac Gtr", "Acoustic Gtr")
+  eq(rows[4].new, "Gtr", "Electric Gtr")
+  eq(rows[5].new, "Guide", "Guide Vox")
+  eq(plan({ "Ac Piano" })[1].new, "Piano", "Ac Piano")
+end)
+
+test("gain staging: the peak is exact (a short hit between 2 reads is found)", function()
+  defaults()
+  S.gain = true
+  -- 20 s quiet (peak 0.01) with a 10 ms hit of 0.9 at 10.12 s: between the reads of the fast audio check
+  local sr, n = 44100, 20 * 44100
+  local path = tmp .. "\\hit.wav"
+  local f = io.open(path, "wb")
+  local data = {}
+  local h0, h1 = math.floor(10.12 * sr), math.floor(10.13 * sr)
+  for i = 0, n - 1 do
+    local amp = (i >= h0 and i < h1) and 0.9 or 0.01
+    local v = math.floor(amp * 32767 * math.sin(2 * math.pi * 440 * i / sr) + 0.5)
+    data[#data + 1] = string.pack("<i2<i2", v, v)
+  end
+  local body = table.concat(data)
+  f:write("RIFF", string.pack("<I4", 36 + #body), "WAVEfmt ", string.pack("<I4I2I2I4I4I2I2", 16, 1, 2, sr, sr * 4, 4, 16),
+    "data", string.pack("<I4", #body), body)
+  f:close()
+  for i = r.CountTracks(0) - 1, 0, -1 do r.DeleteTrack(r.GetTrack(0, i)) end
+  local tr = track_with(path)
+  r.SetMediaItemInfo_Value(r.GetTrackMediaItem(tr, 0), "D_LENGTH", 20)
+  Prep.scan(true)
+  local pk = R.scan.tracks[1].peak or 0
+  ok(math.abs(pk - 0.9) < 0.02, string.format("peak 0.9 (got %.3f)", pk))
+  r.DeleteTrack(tr)
+  S.gain = false
 end)
 
 for _, t in ipairs(tests) do

@@ -1,0 +1,15 @@
+# The scripts of the repository: the 1 list that the tools read (check, test, deploy, release, docs check,
+# publish check, session start). A new script: 1 line here (and its folder, its test file).
+# Name = the folder and the main file (<Name>\<Name>.lua); Test / Result = in tests\; Tag = the GitHub Release tag
+# prefix (+ X.Y); Released = $false until its first release: then the publish check wants @noindex in each of its
+# .lua files and no README part about it (inside <!-- --> is hidden), so a push does not publish it on ReaPack.
+@{
+  Scripts = @(
+    @{ Name = "Chart Cue";    Test = "run.lua";         Result = "result.txt";             Tag = "v";             Released = $true }
+    @{ Name = "Segue";        Test = "segue.lua";       Result = "result_segue.txt";       Tag = "segue-v";       Released = $true }
+    @{ Name = "MIDI Pilot";   Test = "midipilot.lua";   Result = "result_midipilot.txt";   Tag = "midipilot-v";   Released = $true }
+    @{ Name = "FX Link";      Test = "fxlink.lua";      Result = "result_fxlink.txt";      Tag = "fxlink-v";      Released = $true }
+    @{ Name = "Session Prep"; Test = "sessionprep.lua"; Result = "result_sessionprep.txt"; Tag = "sessionprep-v"; Released = $false }
+    @{ Name = "SFX Drop";     Test = "sfxdrop.lua";     Result = "result_sfxdrop.txt";     Tag = "sfxdrop-v";     Released = $false }
+  )
+}

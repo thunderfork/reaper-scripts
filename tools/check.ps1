@@ -26,7 +26,8 @@ $known = @('reaper', 'string', 'math', 'table', 'utf8', 'io', 'os', 'package', '
   'tostring', 'tonumber', 'type', 'pcall', 'xpcall', 'setmetatable', 'getmetatable', 'dofile',
   'next', 'select', 'error', 'print', 'assert', 'rawget', 'rawset', 'require', '_G')
 
-$files = @("Chart Cue", "Segue", "MIDI Pilot", "FX Link", "Session Prep", "SFX Drop") | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } |
+$scriptNames = @((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts | ForEach-Object { $_.Name }) # tools\scripts.psd1
+$files = $scriptNames | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } |
   ForEach-Object { Get-ChildItem -Path $_ -Filter "*.lua" }
 Say "== 1. Syntax ==" Cyan
 foreach ($f in $files) {
@@ -56,7 +57,7 @@ if ($exe -and (Test-Path $exe)) {
   $log = Join-Path $env:TEMP "chartcue_luals"
   New-Item -ItemType Directory -Force $log | Out-Null
   # each script folder; the warnings come from the JSON file of the tool (its screen format changes between versions)
-  foreach ($dir in @("Chart Cue", "Segue", "MIDI Pilot", "FX Link", "Session Prep", "SFX Drop")) {
+  foreach ($dir in $scriptNames) {
     $src = Join-Path $root $dir
     if (-not (Test-Path $src)) { continue }
     $json = Join-Path $log "result.json"
@@ -102,6 +103,11 @@ if ($new.Count -gt 0) {
 
 # 4. the documents match the repository (information only; 1 line when they do)
 & (Join-Path $PSScriptRoot "docs-check.ps1")
+# the ImGui Push / Pop balance per function (information only; 1 line when nothing is new)
+& (Join-Path $PSScriptRoot "imgui-check.ps1")
+# 5. the publish check (information here; the pre-push hook stops a push when it fails)
+& (Join-Path $PSScriptRoot "publish-check.ps1") | Out-Null
+if ($LASTEXITCODE -ne 0) { Write-Host "  (a push stops until this is fixed: release the script or hide it)" -ForegroundColor Yellow }
 
 if ($failed) { Write-Host "CHECKS FAILED" -ForegroundColor Red; exit 1 }
 $w = if ($summary.Count) { "; warnings: " + ($summary -join ", ") + $(if ($new.Count) { " ($($new.Count) new)" } else { " (none new)" }) } else { "" }

@@ -1,7 +1,7 @@
 # Chart Cue
 
 A Windows-only REAPER Lua / ReaImGui script that shows and scrolls PDF charts during playback. The UI style guide
-of all 5 scripts (see the root CLAUDE.md).
+of all 6 scripts (see the root CLAUDE.md).
 
 ## Files
 

@@ -1,3 +1,4 @@
+-- @noindex (not released yet: remove this line for the release)
 -- @description SFX Drop: put impacts, risers, drops and atmospheres exactly on the beat
 -- @version 1.0
 -- @author Nick Gkogkomitros

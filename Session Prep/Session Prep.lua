@@ -68,15 +68,18 @@ CFG.PRESET_W = 200             -- the preset dropdown
 CFG.MORE_W = 110               -- the "More..." dropdown of the preset (as Chart Cue's setlist "More...")
 CFG.NOTICE_SEC = 4             -- a notice at the bottom of the window shows this long
 CFG.STRIP_MIN = 4              -- a shared prefix / suffix is removed only when it has 4 or more letters or digits
-CFG.AUDIO_SR = 11025           -- the audio check reads the tracks at this sample rate
-CFG.AUDIO_BLOCK = 2048         -- frames per read
+CFG.AUDIO_SR = 44100           -- the audio check reads the tracks at this sample rate (the full audio range: a
+                               -- lower rate cuts the highs, and a hi-hat or cymbal track reads too quiet or silent)
+CFG.AUDIO_BLOCK = 4096         -- frames per read (93 ms)
 CFG.AUDIO_MAX_BLOCKS = 120     -- at most this many reads per track (spread over the whole track)
 CFG.SILENT = 0.001             -- a peak below -60 dBFS is silence
 CFG.FAKE_DIFF = 0.001          -- L and R differ less than 0.1 % of the peak: fake stereo
 CFG.GATE = 0.00316             -- gain staging: a read below -50 dBFS RMS is a pause (not in the average)
 CFG.UNDO_STEPS = 30            -- the Undo buttons (Rules, Buses, FX Returns): the last 30 changes of each section
 CFG.UNDO_MERGE = 0.7           -- changes closer than 0.7 s (a color drag, typing) are 1 step
-CFG.PEAK_MARGIN = 1            -- gain staging: 1 dB more room under the peak limit (the fast read can miss a peak)
+CFG.PEAK_MARGIN = 0            -- gain staging: room under the peak limit (0: the peak is exact, Audio.true_peak)
+CFG.PEAK_RATE = 1000           -- the exact peak: peaks per second read from REAPER's peak files
+CFG.PEAK_MAX = 200000          -- at most this many peaks per item (a long item: fewer, wider; the max stays exact)
 CFG.SCAN_BUDGET = 0.03         -- Scan: at most 30 ms of audio reading per frame (the window stays responsive)
 CFG.GAIN_W = 84                -- the Gain column of the Prep table
 CFG.DATA_DIR = r.GetResourcePath() .. "/Data/Session Prep" -- the exported presets
@@ -275,11 +278,11 @@ function Rules.default_presets()
         "Lead Gtr", "Guitars", GT),
       rule("gtr, guitar, guitars, gt, egtr, elec, electric, el gtr, eg, rhythm, rhy, rtm, gtr rtm, gtr rhythm, "
         .. "rhythm gtr, crunch, clean gtr, dist gtr", "Gtr", "Guitars", GT),
-      rule("piano, pianos, pno, grand, upright, upright piano", "Piano", "Keys", KY),
+      rule("piano, pianos, pno, grand, upright, upright piano, acoustic piano, ac piano, grand piano", "Piano", "Keys", KY),
       rule("organ, hammond, org, leslie", "Organ", "Keys", KY),
       rule("lead synth, synth lead, synth solo, ld synth", "Lead Synth", "Keys", KY),
       rule("synth, synths, syn, pad, pads, arp, poly", "Synth", "Keys", KY),
-      rule("keys, key, rhodes, wurli, wurlitzer, ep, e piano, epiano, clav, mellotron", "Keys", "Keys", KY),
+      rule("keys, key, rhodes, wurli, wurlitzer, ep, e piano, epiano, electric piano, clav, mellotron", "Keys", "Keys", KY),
       rule("strings, string, str, violin, violins, vln, vlns, viola, vla, cello, cellos, vc, quartet", "Strings",
         "Strings", ST),
       rule("brass, horns, horn, trumpet, trumpets, tpt, trp, trombone, tbn, tbone, sax, saxophone", "Brass",
@@ -654,15 +657,20 @@ function Prep.tokens(s)
   for w in s:gmatch("%w+") do t[#t + 1] = w end
   return t
 end
--- The first rule that matches the words (the order of the rules): its compiled rule and the matched word(s).
--- A word of 4 or more letters also matches inside a longer word ("kick" in "subkick"); shorter ones only alone.
+-- The rule that matches the words: first the rules with a match of 2 or more words ("electric piano" wins over
+-- the 1 word "electric" of a higher rule), then the 1-word matches; in each pass the order of the rules. Returns its
+-- compiled rule and the matched word(s). A word of 4 or more letters also matches inside a longer word ("kick" in
+-- "subkick"); shorter ones only alone.
 function Prep.match(toks, comp)
   local norm = " " .. table.concat(toks, " ") .. " "
   for _, c in ipairs(comp) do
     for _, term in ipairs(c.terms) do
-      if term:find(" ", 1, true) then
-        if norm:find(" " .. term .. " ", 1, true) then return c, term end
-      else
+      if term:find(" ", 1, true) and norm:find(" " .. term .. " ", 1, true) then return c, term end
+    end
+  end
+  for _, c in ipairs(comp) do
+    for _, term in ipairs(c.terms) do
+      if not term:find(" ", 1, true) then
         for _, tk in ipairs(toks) do
           if tk == term or (#term >= 4 and tk:find(term, 1, true)) then return c, term end
         end
@@ -787,6 +795,7 @@ function Prep.scan_step(budget)
         local verdict, rms, peak = Audio.check(t.tr)
         if sc.audio then t.audio = verdict end
         t.rms, t.peak = rms, peak
+        if sc.gain and rms then t.peak = Audio.true_peak(t.tr) or peak end -- (the exact peak, from the peak files)
       end
       if depth ~= 0 or r.GetParentTrack(t.tr) then sc.folders_ok = false end
       Prep.file_check(t, sc.srate)
@@ -1298,6 +1307,9 @@ end
 -- Apply: the ticked rows get their new name, color and pan (L / R); the ticked fixes; then the folders.
 -- 1 undo point. Returns the text of the notice.
 function Prep.apply(rows)
+  local any = false -- (the project in this tab can be another one now: File > Open)
+  for _, row in ipairs(rows) do if r.ValidatePtr2(0, row.t.tr, "MediaTrack*") then any = true; break end end
+  if not any then return "The scanned tracks are not in this project any more. Scan again." end
   r.Undo_BeginBlock()
   r.PreventUIRefresh(1)
   local ok, res = pcall(Prep.apply_rows, rows)
@@ -1421,7 +1433,10 @@ end
 -- (RMS, linear; only the reads that are not a pause) and the peak (linear; nil: no audio).
 function Audio.check(tr)
   local n = r.CountTrackMediaItems(tr)
-  if n == 0 then return "empty" end
+  if n == 0 then -- (a track with receives or FX is a return, a bus or an instrument: not an empty track)
+    if r.GetTrackNumSends(tr, -1) > 0 or r.TrackFX_GetCount(tr) > 0 then return nil end
+    return "empty"
+  end
   local stereo = true
   for i = 0, n - 1 do
     local tk = r.GetActiveTake(r.GetTrackMediaItem(tr, i))
@@ -1461,6 +1476,44 @@ function Audio.check(tr)
   r.DestroyAudioAccessor(acc)
   local verdict = Audio.verdict(pl, pr, diff, stereo)
   return verdict, Audio.rms(ms_l, ms_r, ms_n, verdict), math.max(pl, pr)
+end
+-- The exact peak of a track (linear): the largest sample of its items, from REAPER's peak files (built first when
+-- a file has none), times the item and take volume (fades and envelopes are not counted: the peak is never lower
+-- than the real one). nil: no audio item.
+function Audio.true_peak(tr)
+  local top
+  for i = 0, r.CountTrackMediaItems(tr) - 1 do
+    local it = r.GetTrackMediaItem(tr, i)
+    local tk = r.GetActiveTake(it)
+    if tk and not r.TakeIsMIDI(tk) then
+      local src = r.GetMediaItemTake_Source(tk)
+      local slen = r.GetMediaSourceLength(src)
+      if slen and slen > 0 then
+        if r.PCM_Source_BuildPeaks(src, 0) ~= 0 then
+          local guard = 0
+          while r.PCM_Source_BuildPeaks(src, 1) ~= 0 and guard < 1000000 do guard = guard + 1 end
+          r.PCM_Source_BuildPeaks(src, 2)
+        end
+        -- the part of the file that plays (a loop or a longer item: the whole file)
+        local offs = math.max(0, r.GetMediaItemTakeInfo_Value(tk, "D_STARTOFFS"))
+        local len = r.GetMediaItemInfo_Value(it, "D_LENGTH") * r.GetMediaItemTakeInfo_Value(tk, "D_PLAYRATE")
+        if offs + len > slen then offs, len = 0, slen end
+        local nch = Util.clamp(r.GetMediaSourceNumChannels(src), 1, 2)
+        local rate = math.min(CFG.PEAK_RATE, CFG.PEAK_MAX / math.max(len, 0.001)) -- (a bin's max is exact at any rate)
+        local n = math.max(1, math.floor(len * rate) + 1)
+        local buf = r.new_array(n * nch * 2)
+        local got = math.floor(r.PCM_Source_GetPeaks(src, rate, offs, nch, n, 0, buf) or 0) & 0xFFFFF
+        if got > 0 then
+          local a, v = buf.table(), 0
+          local abs = math.abs
+          for k = 1, got * nch * 2 do local x = abs(a[k] or 0); if x > v then v = x end end
+          v = v * r.GetMediaItemInfo_Value(it, "D_VOL") * abs(r.GetMediaItemTakeInfo_Value(tk, "D_VOL"))
+          if not top or v > top then top = v end
+        end
+      end
+    end
+  end
+  return top
 end
 -- The average level (RMS) from the sums of the reads of L and R: both sides, or only the live side of a one-sided
 -- file (with the silent side in it, the level would be 3 dB low, and the gain 3 dB too high after Mono).
@@ -1622,7 +1675,7 @@ local HELP_TOPICS = {
 4. Untick the rows that you want to leave alone. Click a new name to change it.
 5. Click Apply. One Ctrl+Z undoes all of it.]] },
   { title = "How the names work", text = [[
-Each rule has match words, for example "kik, kick, bd". The first rule (from the top) that matches a track wins.
+Each rule has match words, for example "kik, kick, bd". The first rule (from the top) that matches a track wins. A match of 2 words ("electric piano") wins over a single word of a higher rule ("electric" of Gtr).
 
 Short words (3 letters or less, like "sn" or "oh") match only a whole word. Longer words also match inside a word: "kick" finds "SubKick".
 
@@ -1647,8 +1700,6 @@ Mono changes only how the item plays (its channel mode), not the file.
 
 Turn folders, the pans or the audio check off in the Settings tab.
 
-Buses (Buses tab, each off by default): Instrument Bus (the instrument folders, drums too), Vocal Bus (Lead Vox, BV) and Lead Bus (Lead Gtr, Lead Synth). Apply makes a bus track at the bottom for each bus that is on; its members send to it (0 dB, post-fader) and their own output to the folder / master is turned off, so the bus fader controls them. Put FX on the buses in the FX Chains tab (Folder FX).
-
 Spacer (Settings > Appearance): a small gap above each new folder. Colors (Settings > Appearance) are off by default; when SWS Auto Color is on, SWS colors the tracks (or turn on "Colors win over SWS").]] },
   { title = "FX, buses and returns", text = [[
 The FX Chains tab (saved in the preset):
@@ -1656,7 +1707,7 @@ The FX Chains tab (saved in the preset):
 - Track FX: an FX chain for each track name (Kick, Lead Vox...), added to tracks that have no FX yet.
 
 The Buses tab (saved in the preset):
-- Buses: Instrument Bus, Vocal Bus, Lead Bus. Each has a switch (off by default), a color and its members (+ Add: a folder or a track name; a member goes to 1 bus only).
+- Buses: Instrument Bus (the instrument folders, drums too), Vocal Bus (Lead Vox, BV), Lead Bus (Lead Gtr, Lead Synth). Each has a switch (off by default), a color and its members (+ Add: a folder or a track name; a member goes to 1 bus only). Apply makes a bus track at the bottom for each bus that is on; its members send to it (0 dB, post-fader) and their own output to the folder / master is turned off, so the bus fader controls them. Put FX on a bus in the FX Chains tab (Folder FX).
 - FX Returns: Room Verb, Hall Verb, Delay, Drum Crush, each with a color and an FX chain, and which folders send to them (post-fader). Off until you turn on "Make FX returns and sends".]] },
   { title = "Gain staging", text = [[
 Off by default: turn it on in Settings > Gain staging.
@@ -1669,7 +1720,7 @@ Apply changes the item gain (clip gain) of the items on the track. The faders st
 
 Change one value: drag it, or double-click and type. 0 dB = no change for that track. Right-click: the measured value again.
 
-The level is measured fast (parts of the audio at a low sample rate): the average is good, the peak is close but not exact (Session Prep keeps 1 dB more room under the peak limit). Item and take envelopes are not measured, and every item of the track gets the same gain: made for raw client files.]] },
+The average level is measured fast (parts of the audio); the peak is exact (from REAPER's peak files: a first Scan of new files can take a moment while REAPER builds them). Item and take envelopes are not measured, and every item of the track gets the same gain: made for raw client files.]] },
   { title = "Rules and presets", text = [[
 Rules tab: the rules are grouped by folder. Each line shows the name and the match words; click it to change its color, folder, name and match words (with commas). The color square of a folder colors all its rules. Drag the 3 lines of a folder header to move the folder (top to bottom = the order in the project).
 
@@ -1682,9 +1733,8 @@ The default folder order is the one most engineers use: drums first, then percus
 Your changes are kept, but they wait for Save: the preset name shows a dot and the disk icon turns blue; click the disk to save them. "Save as..." saves them as a new preset (the old one keeps its last saved version).
 More...: Rename, Export (a file in REAPER's Data\Session Prep folder), Import; Revert to saved (back to the last Save), Reset to original (a built-in preset: its built-in settings; your own preset: as you made it), Delete preset. The red ones ask first. Export writes the preset to a file in REAPER's Data\Session Prep folder; Import reads one.]] },
   { title = "Where your stuff is saved", text = [[
-In the project: only a mark on each prepped track, so a 2nd Scan leaves it out (Ctrl+Z of the Apply removes the mark).
-On this computer: the presets (with their folder FX chains), the Light theme, the window dock and the Settings (also the gain staging targets).
-Session Prep saves nothing in the project: Apply only changes the tracks (and Ctrl+Z undoes it).]] },
+In the project: only a mark on each prepped track, so a 2nd Scan leaves it out (Ctrl+Z of the Apply removes the mark). Apply changes the tracks themselves (and Ctrl+Z undoes it).
+On this computer: the presets (with their FX chains, buses and returns), the Light theme, the window dock and the Settings (also the gain staging targets).]] },
 }
 local HELP_PREP = [[Scan reads the selected tracks (or all tracks when none is selected) and shows what Apply will do. Nothing changes until you click Apply.
 
@@ -1722,7 +1772,7 @@ local HELP_FOLDER_FX = [[An FX chain for each folder. When Apply makes a folder 
 Make a chain in REAPER: put the plugins on a track, then in its FX window: FX > Save chain (REAPER's FXChains folder). From one of your track templates: insert it, open its FX window, FX > Save chain.
 
 The FX chains are saved in the preset.]]
-local HELP_RULES = [[The first rule from the top that matches a track name wins.
+local HELP_RULES = [[The first rule from the top that matches a track name wins (a match of 2 words, like "electric piano", wins over a single word of a higher rule).
 
 The rules are grouped by folder. Click a rule to change it: Color, Folder (empty: no folder), Name (the new track name), Match (words with commas, "kik, kick, bd"; 3 letters or less match only a whole word).
 
@@ -2217,7 +2267,7 @@ function UI.draw_prep()
       ImGui.TableNextColumn(ctx)
       local ch, v = ImGui.Checkbox(ctx, "##on", row.on)
       if ch then row.on = v; R.summary = nil end
-      UI.tip("Apply changes this track (name, color, folder, pan).")
+      UI.tip("Apply changes this track (name, folder, pan, polarity, gain, FX; color when it is on). Untick: Apply leaves it alone.")
       ImGui.TableNextColumn(ctx)
       local cw = ImGui.GetContentRegionAvail(ctx)
       local dim = not row.on and COL.TEXT_DIM or nil
@@ -2671,9 +2721,9 @@ function UI.rule_group(p, f, label, gi)
         if lhov then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand()) end
         local name_w = math.min(150, lw * 0.35)
         ImGui.PushFont(ctx, bold)
-        ImGui.DrawList_AddText(dl, lx + 8, UI.text_y(ly), COL.TEXT_MAIN, UI.trunc(ru.name ~= "" and ru.name or "(no name)", name_w - 12))
+        ImGui.DrawList_AddText(dl, lx + 8, UI.text_y(ly), COL.TEXT_MAIN, UI.trunc_c(ru.name ~= "" and ru.name or "(no name)", name_w - 12))
         ImGui.PopFont(ctx)
-        ImGui.DrawList_AddText(dl, lx + name_w, UI.text_y(ly), COL.TEXT_DIM, UI.trunc(ru.match, lw - name_w - 8))
+        ImGui.DrawList_AddText(dl, lx + name_w, UI.text_y(ly), COL.TEXT_DIM, UI.trunc_c(ru.match, lw - name_w - 8))
         ImGui.SameLine(ctx, 0, 6)
         if UI.remove_x_button("##x", CFG.X_BTN) then R.rule_remove = i end
         UI.tip("Deletes this rule.")
@@ -2999,7 +3049,7 @@ function UI.draw_bus(p, i, b)
   ImGui.PopStyleColor(ctx, 2)
   ImGui.PopFont(ctx)
   if ImGui.IsItemHovered(ctx) and not ImGui.IsItemActive(ctx) then -- (it looks editable: an underline, a text cursor)
-    local ix1, iy1 = ImGui.GetItemRectMin(ctx)
+    local ix1 = ImGui.GetItemRectMin(ctx)
     local _, iy2 = ImGui.GetItemRectMax(ctx)
     ImGui.PushFont(ctx, bold)
     local nw = ImGui.CalcTextSize(ctx, b.name)
@@ -3007,7 +3057,6 @@ function UI.draw_bus(p, i, b)
     local ux = ix1 + 10 -- (the field's left padding)
     ImGui.DrawList_AddLine(ImGui.GetWindowDrawList(ctx), ux, iy2 - 4, ux + nw, iy2 - 4, COL.TEXT_DIM, 1)
     ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_TextInput())
-    local _ = iy1
   end
   if ImGui.IsItemActivated(ctx) then R.bus_old = b.name end
   if chn then b.name = (txt:gsub("[|;~%^]", "")) end
@@ -3138,19 +3187,25 @@ function UI.draw_returns(p)
     ImGui.SameLine(ctx, 0, 8)
     ImGui.SetNextItemWidth(ctx, 110)
     local chn, txt = ImGui.InputText(ctx, "##name", rt.name)
-    if chn then
-      local new = (txt:gsub("[|;~%^]", ""))
+    if ImGui.IsItemActivated(ctx) then R.ret_old = rt.name end
+    local function rename(new) -- (the sends follow the name)
       for _, set in pairs(p.sends) do
         if set[rt.name] then set[rt.name] = nil; set[new] = true end
       end
-      rt.name = new; Util.mark_sdirty()
+      rt.name = new
     end
-    if ImGui.IsItemDeactivatedAfterEdit(ctx) then Rules.changed() end
+    if chn then rename((txt:gsub("[|;~%^]", ""))); Util.mark_sdirty() end
+    if ImGui.IsItemDeactivatedAfterEdit(ctx) then -- (an empty name, or the name of another return: back to the old one)
+      local new, taken = Util.clean(rt.name), false
+      for _, o in ipairs(p.returns) do if o ~= rt and o.name:upper() == new:upper() then taken = true end end
+      rename((new == "" or taken) and (R.ret_old or new) or new)
+      Rules.changed()
+    end
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
     local file = rt.chain ~= "" and rt.chain:match("([^/\\]+)$") or "(no FX chain)"
     local pick_w = UI.btn_w("...")
     local pick_x = right - CFG.X_BTN - 4 - pick_w
-    UI.row_text(UI.trunc(file, math.max(40, pick_x - ImGui.GetCursorPosX(ctx) - 8)),
+    UI.row_text(UI.trunc_c(file, math.max(40, pick_x - ImGui.GetCursorPosX(ctx) - 8)),
       (rt.chain ~= "" and r.file_exists(rt.chain)) and COL.TEXT_MAIN or COL.TEXT_DIM)
     if rt.chain ~= "" then UI.tip(rt.chain) end
     ImGui.SameLine(ctx, 0, 0)
@@ -3197,7 +3252,7 @@ function UI.draw_returns(p)
       ImGui.TextColored(ctx, COL.TEXT_DIM, "Sends")
       for _, rt in ipairs(p.returns) do
         ImGui.TableNextColumn(ctx)
-        ImGui.TextColored(ctx, COL.TEXT_DIM, UI.trunc(rt.name, ImGui.GetContentRegionAvail(ctx)))
+        ImGui.TextColored(ctx, COL.TEXT_DIM, UI.trunc_c(rt.name, ImGui.GetContentRegionAvail(ctx)))
       end
       for i, f in ipairs(folders) do
         ImGui.PushID(ctx, "sd" .. i)
@@ -3213,7 +3268,7 @@ function UI.draw_returns(p)
             p.sends[f][rt.name] = nv or nil
             Rules.changed()
           end
-          UI.tip("Every " .. f .. " track sends to " .. rt.name .. " (post-fader).")
+          UI.tipf("Every %s track sends to %s (post-fader).", f, rt.name)
         end
         ImGui.PopID(ctx)
       end
@@ -3425,12 +3480,12 @@ function UI.draw_settings_gain()
   end
   if S.gain_by_peak then
     db_field("Target peak", "gain_ptarget", -30, 0, "The peak of each track after Apply (default -10 dBFS). "
-      .. "The peaks are measured fast, so the real peak can be a little higher. Drag, or double-click to type.")
+      .. "The peak is exact (from REAPER's peak files). Drag, or double-click to type.")
   else
     db_field("Target RMS", "gain_rms", -40, -6, "The average level of each track after Apply (default -18 dBFS). "
       .. "Pauses are not in the average. Drag, or double-click to type.")
     db_field("Peak limit", "gain_peak", -24, 0, "The gain never takes a peak above this level (default -6 dBFS). "
-      .. "The peaks are measured fast and can be missed, so Session Prep keeps 1 dB more room under this limit.")
+      .. "The peak is exact (from REAPER's peak files).")
   end
   ImGui.EndDisabled(ctx)
 end

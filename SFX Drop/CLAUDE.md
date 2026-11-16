@@ -1,8 +1,8 @@
 # SFX Drop
 
 Puts sound effects from a library (impacts, risers, drops, atmospheres) on the beat of the backing tracks: it finds
-the hit point of each sound, so the user never nudges an item. A preparation tool: no project data, no live
-features. Chart Cue look with a tab strip: Sounds, Spots, Soundcheck, Settings (gear), Help ("?"); Settings has collapsing sections,
+the hit point of each sound, so the user never nudges an item. A preparation tool: no live features; in the
+project only the Soundcheck settings (P, below). Chart Cue look with a tab strip: Sounds, Spots, Soundcheck, Settings (gear), Help ("?"); Settings has collapsing sections,
 1 open at a time (`S.settings_open`): Appearance, Library, Insert (headings Items, Files, Tracks, Levels), Window, with the bold
 label column (`UI.form_label`, `UI.form_toggle`), as in Session Prep.
 

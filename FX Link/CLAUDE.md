@@ -7,7 +7,7 @@ one panel with foldable sections (Link groups, Link settings, Linked parameters,
 ## Files
 
 - `FX Link.lua`; the actions `FX Link - Show plugins.lua`, `FX Link - Toggle group.lua` and
-  `FX Link - Group focused plugin on selected tracks.lua` (ExtState "cmd_q": show, toggle, quick). Version: `@version` and `CFG.VERSION` together (1.0 released). Release: tag
+  `FX Link - Group focused plugin on selected tracks.lua` (ExtState "cmd_q": show, toggle, quick). Version: `@version` and `CFG.VERSION` together. Release: tag
   `fxlink-vX.Y`, title "FX Link X.Y" (the `release` skill).
 
 ## Architecture and data
