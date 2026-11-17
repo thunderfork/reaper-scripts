@@ -10,9 +10,7 @@ Scripts for playing live and for studio work with REAPER, installed and updated 
 <!-- SFX Drop: hidden until its release
 - **SFX Drop:** puts impacts, risers, drops and atmospheres from your library exactly on the beat of your backing tracks.
 -->
-<!-- Mono Merge: hidden until its release
 - **Mono Merge:** joins 2 mono items (for example Kick In and Kick Out) into 1 stereo file.
--->
 
 # Chart Cue
 
@@ -200,7 +198,6 @@ Install with ReaPack (search "SFX Drop"), then run "Script: SFX Drop.lua". Needs
 SFX Drop saves only its Soundcheck list in the project; its settings and its library index are saved on this computer.
 -->
 
-<!-- Mono Merge: hidden until its release
 # Mono Merge
 
 Mono Merge joins 2 mono items into 1 stereo file. Select the 2 items and run the action. No window.
@@ -213,7 +210,6 @@ Mono Merge joins 2 mono items into 1 stereo file. Select the 2 items and run the
 Install with ReaPack (search "Mono Merge"), then run "Script: Mono Merge.lua". No extensions needed.
 
 Mono Merge saves nothing in the project or on this computer.
--->
 
 ## Zips
 

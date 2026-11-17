@@ -1,5 +1,5 @@
 -- @description Session Prep: clean up a multitrack import (names, colors, folders)
--- @version 1.0
+-- @version 1.0.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -11,7 +11,8 @@
 --   Rule presets are saved on this computer (export and import them as files).
 --   Requires: the free ReaImGui extension (ReaPack).
 -- @changelog
---   First release: Prep (Scan, preview, Apply) and Rules (presets, rules with match words, name, color, folder).
+--   First release: Prep (Scan, preview, Apply), Rules (presets, match words, name, color, folder),
+--   FX Chains, Buses (FX returns) and Gain staging. One Ctrl+Z undoes an Apply.
 
 -- MIT License
 --
@@ -39,7 +40,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Session Prep"     -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.0"            -- keep equal to @version in the header
+CFG.VERSION = "1.0.1"          -- keep equal to @version in the header
 CFG.EXT = "Session Prep"       -- ExtState section (this computer)
 CFG.DEFAULT_W, CFG.DEFAULT_H = 620, 560
 CFG.WIN_EDGE = 6               -- floating window: width of the resize edges (inside the window), as in Chart Cue

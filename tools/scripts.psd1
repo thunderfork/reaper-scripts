@@ -9,8 +9,8 @@
     @{ Name = "Segue";        Test = "segue.lua";       Result = "result_segue.txt";       Tag = "segue-v";       Released = $true }
     @{ Name = "MIDI Pilot";   Test = "midipilot.lua";   Result = "result_midipilot.txt";   Tag = "midipilot-v";   Released = $true }
     @{ Name = "FX Link";      Test = "fxlink.lua";      Result = "result_fxlink.txt";      Tag = "fxlink-v";      Released = $true }
-    @{ Name = "Session Prep"; Test = "sessionprep.lua"; Result = "result_sessionprep.txt"; Tag = "sessionprep-v"; Released = $false }
+    @{ Name = "Session Prep"; Test = "sessionprep.lua"; Result = "result_sessionprep.txt"; Tag = "sessionprep-v"; Released = $true }
     @{ Name = "SFX Drop";     Test = "sfxdrop.lua";     Result = "result_sfxdrop.txt";     Tag = "sfxdrop-v";     Released = $false }
-    @{ Name = "Mono Merge";   Test = "monomerge.lua";   Result = "result_monomerge.txt";   Tag = "monomerge-v";   Released = $false }
+    @{ Name = "Mono Merge";   Test = "monomerge.lua";   Result = "result_monomerge.txt";   Tag = "monomerge-v";   Released = $true }
   )
 }

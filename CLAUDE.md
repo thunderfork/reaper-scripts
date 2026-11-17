@@ -13,7 +13,7 @@ script's files there). Each folder has its own CLAUDE.md with its modules, data,
 - **SFX Drop** (`SFX Drop/`): puts impacts, risers, drops and atmospheres from a library on the beat (hit points).
   A preparation tool; Chart Cue look with tabs; in the project only its Soundcheck list (its library index is in Data\SFX Drop).
 - **Mono Merge** (`Mono Merge/`): joins 2 mono items into 1 stereo file. 2 actions, no window (no ReaImGui),
-  no saved data. On its branch `script/mono-merge` until its first release.
+  no saved data.
 
 The rules below apply to all 7 scripts ("the script" = the script being changed).
 

@@ -2,7 +2,6 @@
 -- @version 1.0
 -- @author Nick Gkogkomitros
 -- @license MIT
--- @noindex
 -- @about
 --   Mono Merge - select 2 mono items and run the action: 1 new stereo file, the top item left, the other right.
 --   "With edits" uses what you hear (trims, fades, item and take volume, take FX, rate); "raw files" uses the

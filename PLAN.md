@@ -9,8 +9,9 @@
   | Segue | 1.3.1 | released 11 November 2026 |
   | MIDI Pilot | 1.4 | released 11 November 2026 |
   | FX Link | 1.1.1 | released 11 November 2026 |
-  | Session Prep | 1.0 | committed, not pushed or released |
+  | Session Prep | 1.0.1 | released 17 November 2026 |
   | SFX Drop | 1.0 | committed, not released (hidden with @noindex) |
+  | Mono Merge | 1.0 | released 17 November 2026 |
 
 - REAPER 7 ReaScript, Lua 5.4, ReaImGui pinned to 0.9.3 (the shim). Chart Cue is Windows only.
 
@@ -23,13 +24,12 @@
 - 17 November 2026: Session Prep full review (engineer, debug, programmer, UI/UX): 7 fixes (hi-hat read silent,
   exact peak, client return not "empty", Apply after File > Open, return names, Electric / Acoustic Piano, Rules tab
   speed) with 5 new tests (45 passed); the coverage map and the ImGui balance check. Committed (commit only).
-- Not pushed: 5 earlier commits (Session Prep 1.0, SFX Drop 1.0 and docs). Note for the Session Prep release:
-  Session Prep.lua changed after the commit where 1.0 first appears, so ReaPack would link 1.0 to the old file: the
-  release needs a new number (1.0.1, or 1.1) (the release skill, step 0). The publish check stops a push until
-  Session Prep is released (Released = $true, the release skill) or hidden. Next decision: commit, and push with the
-  Session Prep 1.0 release?
+- 17 November 2026: Mono Merge 1.0 (new, from a user request; branch merged) and Session Prep 1.0.1 released
+  together and pushed; SFX Drop stays hidden. `test.ps1` checks the syntax of a test file before the test REAPER.
+  Next decision: the SFX Drop work, or the Mono Merge drop window (an idea).
 
-## Mono Merge 1.0 (new, 17 November 2026): on branch `script/mono-merge`, not committed, not released
+## Mono Merge (since 17 November 2026)
+- Released: 1.0 (17 November 2026).
 - The 7th script, from a user request: 2 selected mono items -> 1 stereo file. Option 1 of 3 (2 actions, no
   window); a ReaImGui version with drop areas only if this is not practical. Decisions: new track below with the
   2 mono items muted; 2 actions (with edits / raw files); name "Mono Merge"; file name = common part of the names.
@@ -37,8 +37,8 @@
   with the Yes / No question, no freeze. Then the speed: the Lua file writer and the tooltip steps were replaced by
   REAPER's glue on the new track (about 5 times faster; the file name and format from the glue settings): the open
   test passed. Debug round (17 November 2026): 4 fixes (folder, take pan envelope, locked item, missing
-  file) with 1 test (9 passed); folder and lock tested by the user. Committed on the branch (commit only).
-  Next: the release, after Session Prep is released or hidden (the publish check).
+  file) with 1 test (9 passed); folder and lock tested by the user. Released 1.0 with Session Prep 1.0.1.
+  Idea (not decided): a drop window (REAPER gfx, no ReaImGui) for 2 files from Explorer.
 
 ## Open manual tests
 Give them in question windows, 1 question per test (Passed / Failed / Skip for now); a skipped or failed test stays
@@ -108,7 +108,8 @@ On hold (do NOT ask until the user brings it up):
 - Later ideas: templates, key match, tags, mono check, sub limit, a pink noise / sweep step, cue markers, Move with
   region.
 
-## Session Prep 1.0 (new, 12 November 2026): committed (bcf85f1), not pushed or released
+## Session Prep (since 12 November 2026)
+- Released: 1.0.1 (17 November 2026, the first public version; 1.0 was never on ReaPack).
 - The 5th script (`Session Prep/`, tests `tests\sessionprep.lua`). A preparation tool for a client's
   multitrack: Scan / Scan all (in steps) and a preview table; Apply with 1 undo point and a prep mark per track.
 - Tabs: Prep (names, folders, note tags, gain, polarity, pan / width, M / S), Rules (rules grouped by folder, drag
@@ -121,7 +122,7 @@ On hold (do NOT ask until the user brings it up):
 - Saved data (approved): ExtState "Session Prep" keys and presets (`preset_N`, `preset_orig_N`, `preset_saved_N`);
   in the project only the track mark `P_EXT:SessionPrep`.
 - Tested in REAPER by the user: everything except the open manual tests (Mono, dual pan, file check; the full run
-  on a real multitrack is on hold). Next: push and release 1.0 (tag `sessionprep-v1.0`).
+  on a real multitrack is on hold).
 - Version 2 ideas: time alignment of close mics, a measured polarity check, routing / bus templates.
 
 ## FX Link
