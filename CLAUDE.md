@@ -1,7 +1,7 @@
 # Thunderfork REAPER scripts: development
 
 Repository `thunderfork/reaper-scripts` (https://github.com/thunderfork/reaper-scripts), shown in ReaPack as
-"Thunderfork Scripts". 6 separate scripts, each in its own folder (the folder is the ReaPack category; keep each
+"Thunderfork Scripts". 7 separate scripts, each in its own folder (the folder is the ReaPack category; keep each
 script's files there). Each folder has its own CLAUDE.md with its modules, data, tests and release details:
 
 - **Chart Cue** (`Chart Cue/`): Windows-only; shows and scrolls PDF charts during playback. The UI style guide.
@@ -12,8 +12,10 @@ script's files there). Each folder has its own CLAUDE.md with its modules, data,
   A preparation tool; Chart Cue look with tabs; in the project only a mark on each prepped track.
 - **SFX Drop** (`SFX Drop/`): puts impacts, risers, drops and atmospheres from a library on the beat (hit points).
   A preparation tool; Chart Cue look with tabs; in the project only its Soundcheck list (its library index is in Data\SFX Drop).
+- **Mono Merge** (`Mono Merge/`): joins 2 mono items into 1 stereo file. 2 actions, no window (no ReaImGui),
+  no saved data. On its branch `script/mono-merge` until its first release.
 
-The rules below apply to all 6 scripts ("the script" = the script being changed).
+The rules below apply to all 7 scripts ("the script" = the script being changed).
 
 ## Working with me
 
@@ -78,7 +80,7 @@ The rules below apply to all 6 scripts ("the script" = the script being changed)
 - Call End / EndChild / EndPopup only when its Begin returned true; keep pushes and pops paired; keep ReaImGui
   calls in their UI / deferred-loop context.
 - Do not move state between `CFG`, `S`, `R` and `P` without asking (`CFG` constants, `COL` colours, `S` settings
-  of this computer, `R` runtime, `P` project data: the same in all 6 scripts; Session Prep has no `P`, only its track mark).
+  of this computer, `R` runtime, `P` project data: the same in the 6 scripts with a window (Mono Merge has none of them); Session Prep has no `P`, only its track mark).
 
 ## Performance
 

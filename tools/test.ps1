@@ -23,6 +23,13 @@ foreach ($s in $all) {
   $result = Join-Path $root "tests\$($t[1])"
   Remove-Item $result -ErrorAction SilentlyContinue
   $run = Join-Path $root "tests\$($t[0])"
+  # a syntax error in the test file: say so here, not as a ReaScript error window in the test REAPER
+  $luacp = (Get-Command luac -ErrorAction SilentlyContinue).Source
+  if (-not $luacp) { $luacp = Join-Path $env:LOCALAPPDATA "Programs\Lua\bin\luac.exe" }
+  if (Test-Path $luacp) {
+    $syn = & $luacp -p $run 2>&1
+    if ($LASTEXITCODE -ne 0) { Write-Host "$($s[0]): syntax error in tests\$($t[0]): $syn" -ForegroundColor Red; $bad = $true; continue }
+  }
   if ($Coverage) {
     # a wrapper in tests\ (the tests find their folder from the started script): a call hook notes the first line
     # of each function of the script that runs; written just before the tests quit REAPER (action 40004)

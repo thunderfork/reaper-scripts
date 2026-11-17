@@ -29,6 +29,17 @@
   Session Prep is released (Released = $true, the release skill) or hidden. Next decision: commit, and push with the
   Session Prep 1.0 release?
 
+## Mono Merge 1.0 (new, 17 November 2026): on branch `script/mono-merge`, not committed, not released
+- The 7th script, from a user request: 2 selected mono items -> 1 stereo file. Option 1 of 3 (2 actions, no
+  window); a ReaImGui version with drop areas only if this is not practical. Decisions: new track below with the
+  2 mono items muted; 2 actions (with edits / raw files); name "Mono Merge"; file name = common part of the names.
+- Tests: `tests\monomerge.lua` (8 passed). Manual tests passed (17 November 2026): with edits, messages, raw files
+  with the Yes / No question, no freeze. Then the speed: the Lua file writer and the tooltip steps were replaced by
+  REAPER's glue on the new track (about 5 times faster; the file name and format from the glue settings): the open
+  test passed. Debug round (17 November 2026): 4 fixes (folder, take pan envelope, locked item, missing
+  file) with 1 test (9 passed); folder and lock tested by the user. Committed on the branch (commit only).
+  Next: the release, after Session Prep is released or hidden (the publish check).
+
 ## Open manual tests
 Give them in question windows, 1 question per test (Passed / Failed / Skip for now); a skipped or failed test stays
 here; remove a test when the user reports it passed.
