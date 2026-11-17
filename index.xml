@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Thunderfork Scripts" commit="b42b2c00640064d8694bc7c91ef4fab91da53f37">
+<index version="1" name="Thunderfork Scripts" commit="ab083bc80a2f59c10616eed40eb5facf1b8b5d20">
   <category name="Chart Cue">
     <reapack name="Chart Cue.lua" type="script" desc="Chart Cue: Open PDF Viewer">
       <metadata>
@@ -225,6 +225,24 @@ Grey hints instead of yellow.]]></changelog>
       </version>
     </reapack>
   </category>
+  <category name="Mono Merge">
+    <reapack name="Mono Merge.lua" type="script" desc="Mono Merge: make stereo (with edits)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Mono Merge - select 2 mono items and run the action: 1 new stereo file, the top item left, the other right. "With edits" uses what you hear (trims, fades, item and take volume, take FX, rate); "raw files" uses the full original files with only their start aligned. The shorter side gets silence. The new stereo item goes on a new track below (REAPER's glue makes the file), and the 2 mono items are muted. 1 undo step. No extensions needed.\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0" author="Nick Gkogkomitros" time="2026-11-17T01:01:59Z">
+        <changelog><![CDATA[First version.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/ab083bc80a2f59c10616eed40eb5facf1b8b5d20/Mono%20Merge/Mono%20Merge.lua</source>
+        <source main="main" file="Mono Merge - Make stereo (raw files).lua">https://github.com/thunderfork/reaper-scripts/raw/ab083bc80a2f59c10616eed40eb5facf1b8b5d20/Mono%20Merge/Mono%20Merge%20-%20Make%20stereo%20(raw%20files).lua</source>
+      </version>
+    </reapack>
+  </category>
   <category name="Segue">
     <reapack name="Segue.lua" type="script" desc="Segue: Setlist player">
       <metadata>
@@ -278,6 +296,28 @@ Right-click a setlist row (Go to song, Skip, Move, Remove); Delete removes a row
 Short notices at the bottom of the window instead of OK windows.]]></changelog>
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/b42b2c00640064d8694bc7c91ef4fab91da53f37/Segue/Segue.lua</source>
         <source main="main" file="Segue - Next song.lua">https://github.com/thunderfork/reaper-scripts/raw/b42b2c00640064d8694bc7c91ef4fab91da53f37/Segue/Segue%20-%20Next%20song.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Session Prep">
+    <reapack name="Session Prep.lua" type="script" desc="Session Prep: clean up a multitrack import (names, colors, folders)">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Session Prep - clean up the tracks of a multitrack that you got from a client, in one step. Scan reads the track names (and the audio) and shows a preview: the new name, the folder, the color and notes. Nothing changes until you click Apply; one Ctrl+Z undoes everything. Rename from rules (a built-in list of short names: kik, sn, oh, gtr, vox...), remove a shared prefix or suffix, color, put the tracks in folders and in order, pan L / R tracks, find fake stereo and silent tracks. Rule presets are saved on this computer (export and import them as files). Requires: the free ReaImGui extension (ReaPack).\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0" author="Nick Gkogkomitros" time="2026-11-12T05:12:26Z">
+        <changelog><![CDATA[First release: Prep (Scan, preview, Apply) and Rules (presets, rules with match words, name, color, folder).]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/bcf85f1be8d916f60e8c29e332b23f01d0055383/Session%20Prep/Session%20Prep.lua</source>
+      </version>
+      <version name="1.0.1" author="Nick Gkogkomitros" time="2026-11-17T01:01:59Z">
+        <changelog><![CDATA[First release: Prep (Scan, preview, Apply), Rules (presets, match words, name, color, folder),
+FX Chains, Buses (FX returns) and Gain staging. One Ctrl+Z undoes an Apply.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/ab083bc80a2f59c10616eed40eb5facf1b8b5d20/Session%20Prep/Session%20Prep.lua</source>
       </version>
     </reapack>
   </category>
