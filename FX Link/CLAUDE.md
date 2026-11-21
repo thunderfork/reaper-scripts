@@ -30,6 +30,8 @@ one panel with foldable sections (Link groups, Link settings, Linked parameters,
 - Relative uses real units (dB, ms / s, %) from `TrackFX_FormatParamValueNormalized` and a search for the knob
   position (`Link.find_unit`); else the knob's range. Hz stays on the knob's range (already logarithmic).
 - Out of sync (`Link.check_sync`): 1 Exact group every 0.5 s against the plugin moved last.
+- Known limit (as Chart Cue): File > New project in the same tab over a never-saved project is not seen.
+- To watch: plugins that show meters as parameters would link and show "differ"; the workaround is All except.
 
 ## Deployment and tests
 

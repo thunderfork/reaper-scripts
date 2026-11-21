@@ -110,6 +110,9 @@ label column (`UI.form_label`, `UI.form_toggle`), as in Session Prep.
 - Sort: a click on a column title (`UI.sort_header`, `SORT_HEADS`) sets `S.sort` (name / type / len / bars / hit; bars
   sorts as len) and `S.sort_desc`; `Lib.sort` in `Lib.view` (the cache follows the sort). A Riser length other than
   Off sets the sort to Length, short to long; the fitting risers stay first.
+- Known limit: a very long file can pause the window for a moment in the first scan (REAPER builds its peaks).
+- Saved data approved by the user (13 November 2026): the ExtState "SFX Drop" keys, `Data\SFX Drop\library.txt`,
+  ProjExtState "SFX Drop"/"soundcheck".
 
 ## Deployment and tests
 

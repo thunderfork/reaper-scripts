@@ -1,6 +1,9 @@
 # Local Claude preferences
 CLAUDE.local.md
 
+# Local editor workspace files
+*.code-workspace
+
 # zips made by release.ps1
 /release/
 

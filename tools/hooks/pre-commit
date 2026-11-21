@@ -1,0 +1,18 @@
+#!/bin/sh
+# Git pre-commit hook (git config core.hooksPath tools/hooks): when .lua files of a script folder are staged, it
+# runs the code checker and the tests of those scripts (tools/scripts.psd1 names them; the folder = the script).
+# A failure stops the commit. Only docs, tools or tests staged: no run.
+root="$(git rev-parse --show-toplevel)"
+scripts="$(git diff --cached --name-only --diff-filter=ACMR -- '*.lua' | grep '/' | grep -v '^tests/' | grep -v '^tools/' | cut -d/ -f1 | sort -u)"
+[ -z "$scripts" ] && exit 0
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root/tools/check.ps1" || {
+  echo "Commit stopped: the code checker failed (tools/check.ps1)."
+  exit 1
+}
+# 1 name per line ("Chart Cue" has a space): 'Chart Cue','Segue'
+args="$(printf '%s\n' "$scripts" | sed "s/.*/'&'/" | paste -sd, -)"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& '$root/tools/test.ps1' -Script $args; exit \$LASTEXITCODE" || {
+  echo "Commit stopped: a test failed (tools/test.ps1 -Script $args)."
+  exit 1
+}
+exit 0

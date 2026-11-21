@@ -37,18 +37,24 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
 - A first release: merge its branch into main (when it has one); `Released = $true` in `tools\scripts.psd1`;
   remove `@noindex` from its .lua files; show its README part (remove the `<!-- -->` around it). In the same commit,
   so the publish check passes.
-- PLAN.md: the version in the Context table, and its line in the script's section (Chart Cue: History; the
-  others: "Released:").
+- PLAN.md: the version and the date in the Handoff table; remove the "Open now" items that this release finished.
 - Each other script: the same steps in its own file (its own version), each with its own GitHub Release.
 
 ## 2. Checks
 
 - `.\tools\check.ps1` ("Syntax and globals OK", no new warnings), `.\tools\test.ps1` (all scripts, "0 failed").
-- Before a major release (x.0): the `housekeeping` audit (docs, skills, folder CLAUDE.md files) and a full
-  `debug-time` round of that script.
+- This step replaces the global `checkup` before a push (decided 19 November 2026):
+  - every release with script changes: a normal `debug-time` round on the changes since the last release, unless
+    one already ran after the last script change;
+  - a major release (x.0): the full `checkup` instead (step 1 = a full `debug-time` round; step 2 = `simplify`
+    + `check.ps1`; then `review` and `housekeeping`).
+  - A push with only docs, tools or skills: no round.
 - The escaped-bug count since the last release (`lessons` skill, step 5), in 1 line.
 - When menus, popups, tabs or views changed since the last UI test: ask for the UI test (`ui-test` skill).
 - `.\tools\deploy.ps1`.
+- The global security-review skill on the changes since the last release (the scripts are public on ReaPack): file
+  paths, process calls (`os.execute`, `io.popen`, `ExecProcess`), downloads, text from outside used in a command.
+  A finding: fix it before the push, or ask the user.
 
 ## 3. Commit and push
 

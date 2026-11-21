@@ -24,8 +24,9 @@ old and new place ("Settings > Display > ..." -> "Settings > Viewer > ...").
 - `SFX Drop/SFX Drop.lua`: HELP_INTRO and HELP_TOPICS, INSERT_HELP, PLACE_TIP, tooltips, notices
 - `Session Prep/Session Prep.lua`: HELP_INTRO and HELP_TOPICS, the HELP_* and PREP_HELP_* "?" texts, tooltips
   (UI.tip / UI.tipf), the notices (UI.notice) and questions (UI.ask), the notice of Apply.
-- The action scripts' comments, the root and folder CLAUDE.md files, the skills, PLAN.md (history and
-  checklist), README.md.
+- `Mono Merge/Mono Merge.lua`: the messages and questions (`r.MB`) and the undo names (`Undo_EndBlock`).
+- The action scripts' comments, the root and folder CLAUDE.md files (also the Chart Cue release checklist), the
+  skills, PLAN.md, LESSONS-RULES.md, README.md.
 - Every "Settings > A > B" path: A must be a section name, B a heading in that section.
   `grep -o 'Settings > [A-Z][A-Za-z]*\( > [A-Z][A-Za-z ]*\)\?'`, then compare with SETTINGS_SECTIONS
   and the UI.heading names.

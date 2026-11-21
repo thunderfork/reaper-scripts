@@ -18,16 +18,7 @@ failed manual test, or a `debug-time` finding in committed code. Newest first.
 - `per-frame`: work in the UI loop that should be cached (text cuts, string building, scans).
 - `naming`: a name rule or match that gives the wrong new name.
 
-## Rules from lessons
-
-- 2026-11-17, stale-state (accepted): each script that keeps data from a project (a scan, a list, a cache) has a test
-  "another project": the data is cleared or not used after a project switch or File > Open in the same tab.
-  Done: Session Prep, SFX Drop (spots). To add: Chart Cue, Segue, MIDI Pilot, FX Link (PLAN.md).
-- 2026-11-17, saved-data (accepted): every name field checks an empty or a taken name when you finish typing (a step
-  in the new-feature skill).
-- 2026-11-17, audio-measure (accepted): every audio measurement (a level, a peak, a verdict, a hit point) has a test
-  with a generated WAV file, not only with numbers. Done: Session Prep (sine_wav in tests\sessionprep.lua). To add:
-  SFX Drop (before its release, PLAN.md).
+The rules that came from these entries are in `LESSONS-RULES.md` (loaded in every session).
 
 ## Entries
 

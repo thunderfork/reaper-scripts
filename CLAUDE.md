@@ -17,29 +17,53 @@ script's files there). Each folder has its own CLAUDE.md with its modules, data,
 
 The rules below apply to all 7 scripts ("the script" = the script being changed).
 
+- Size: full (decided 21 November 2026). Platforms: REAPER (Lua ReaScript and ReaImGui); no global platform file
+  yet: the REAPER knowledge is in "REAPER, Lua and ReaImGui" below.
+- @LESSONS-RULES.md
+
+## Users
+
+- A musician on stage (Chart Cue, Segue): little time, low light, must see the next thing at a glance; a wrong
+  click must not stop the show.
+- A studio or live engineer preparing a session (MIDI Pilot, FX Link, Session Prep, SFX Drop, Mono Merge): speed of
+  preparation, what REAPER really does to the tracks, undo.
+- Experts (besides the senior developer and the UI/UX designer): QA tester (empty projects, playing / stopped,
+  project switch), REAPER and ReaImGui specialist, a ReaPack user who installs the scripts for the first time.
+
 ## Working with me
 
-- I do not read code. I decide what the scripts look like and how they behave (GUI and taste); you decide the
-  technical details.
-- Before a change on your own initiative, explain in plain words what I will see or notice, and ask me only about
-  visible behaviour, layout and wording. Do not show diffs or code unless I ask.
-- Visible-change gate: before you build a new control, view, layout, interaction or visual behaviour (also one that
-  I asked for in a few words), show a small text mockup (the question window's preview) and the exact behaviour,
-  and wait for my answer.
+My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or changes these:
+
+- The mockup rule also covers a new control, view, layout, interaction or visual behaviour that I asked for in a
+  few words.
 - Chart Cue is the UI style guide: the other scripts copy its look and behaviour (theme, title bar, docked-tab
   triangle, resize edges and grip, spacing, headings, toggles, rows, buttons). After a change to Chart Cue's UI,
   list the same change for each other script and ask me before you make it.
-- Ask me before any change to saved data (see "Saved data") and before you remove a feature or a control.
-- After a change, report only: what I will see (or how the behaviour changed), the check / test result in 1 line,
-  and the manual test for me (in a question window: Passed / Failed / Skip for now). The changed functions and files
-  go into the commit message, not into the chat.
-- Ask "what next?" only after a larger piece of work or when there is a real choice (commit, push, release); not
-  after routine steps.
-- Deploy is automatic: after every change to a script, run the checks, then `.\tools\deploy.ps1`.
-  Commit, push and release only when I ask.
+- Saved data: see "Saved data" below for what counts.
+- Deploy is automatic (instead of waiting for "build"): after every change to a script, run the checks, then
+  `.\tools\deploy.ps1`.
+- Commit, push and release only when I ask (instead of 1 commit after each change).
 - Ask first, in one line, before screenshots (`.\tools\shots.ps1`) or the UI test (it takes the focus).
-- At the end of a session (or a large task): a short handoff in PLAN.md: the state, what is not committed, the open
-  tests, the next decision. Prefer 1 session per topic (a feature or a release).
+- Prefer 1 session per topic (a feature or a release).
+- Code checker: `.\tools\check.ps1` (Lua Language Server, globals, ImGui balance).
+- The checks of the global rules, in this project: `debug-time` is the `debug-round` (bugs); "before a build" means
+  before a deploy that I will test in REAPER; the checks before a push are in the `release` skill (they replace
+  the global `checkup` before a push). `checkup` before a large change and every 30 days ("Last checkup" in PLAN.md).
+- Manual tests in REAPER: remind me to close and start the script again first (it loads the new version).
+- Open the repository folder (`Chart Cue`), not its parent `Reaper Scripts`: else this file, the session-start hook
+  and the project skills do not load.
+
+## Look and words (all scripts with a window)
+
+- Every optional feature (a visual aid, a warning, a note, an overlay) has an off switch in Settings; say its
+  default. A section that I can fold (its closed state saved) needs no extra switch (decided 9 November 2026).
+- Short choices (2-3) stay dropdowns or toggles, never joined (segmented) buttons. Blue is the colour of the main
+  action buttons ("press me"), never the colour of a selected state (decided 2 November 2026).
+- Help texts are friendly and casual: short leading questions ("Made a mistake?"), "you", the benefit first and the
+  technical detail after it in brackets. Facts and "Settings > ..." paths stay exact (decided 10 November 2026).
+  New labels, tooltips and notices use the existing word style of the script.
+- Template: "+ Add" is a ghost button on the heading line, and its menu drops down below it; an empty list is 1 grey
+  line "No ... yet. <what to do>."; yellow only for real warnings.
 
 ## Commands
 
@@ -54,10 +78,9 @@ The rules below apply to all 7 scripts ("the script" = the script being changed)
 - Make the smallest focused change. Keep the architecture, the naming style and the user-facing behaviour.
 - No external dependencies (Lua libraries, programs) without asking.
 - Keep the LF line endings (core.autocrlf can turn them into CRLF); check for CRLF after a PowerShell write.
-- A small change: the Edit tool. A large change: a Python patch script (exact old text -> new text, each must match
-  exactly once, else stop without writing), written with the Write tool into the scratchpad, then run. Never inline
-  it in a shell heredoc or `python -c`: the shell changes `\n`, `\t` and backslashes. Use raw strings
-  (r'''...''') for Lua text with backslashes or `\0`. Copy the old text from a fresh Read.
+- Use the Edit tool (the global "Do not" rules). A patch script only for many identical changes: written with the
+  Write tool into the scratchpad, exact old text -> new text, each must match exactly once, else stop without
+  writing. Use raw strings (r'''...''') for Lua text with backslashes or `\0`. Copy the old text from a fresh Read.
 
 ## Saved data
 
@@ -104,8 +127,9 @@ The rules below apply to all 7 scripts ("the script" = the script being changed)
   (a test that fails first, the fix, a search of the other scripts, an entry in `LESSONS.md`). The tests run in the portable test
   REAPER `C:\REAPERtest`, in the background; never use, close or save my normal REAPER.
 - For UI code that the tests do not reach: the UI test (`ui-test` skill; Chart Cue only), after asking.
-- These checks do not replace a test in REAPER. Do not claim a change is tested unless I tested it in REAPER.
-  State the manual test when a change affects rendering, scrolling, MIDI, caching or project state.
+- State the manual test when a change affects rendering, scrolling, MIDI, caching or project state.
+- Pre-commit hook (`tools\hooks\pre-commit`): when `.lua` files of a script are staged, it runs `check.ps1` and the
+  tests of those scripts, and stops the commit on a failure.
 
 ## Git and releases
 
@@ -125,8 +149,10 @@ The rules below apply to all 7 scripts ("the script" = the script being changed)
 
 ## Other files
 
-- `PLAN.md`: done work, open items, the roadmap of each script and the release checklist.
-- `LESSONS.md`: the escaped bugs, their cause tags and the rules that came from them (`lessons` skill).
+- `PLAN.md`: Handoff (with "Last checkup"), Open now (numbered; the open manual tests too), Later (ideas and the
+  roadmap of each script). No done work: git records it.
+- `LESSONS.md`: the escaped bugs and their cause tags (`lessons` skill). `LESSONS-RULES.md`: the rules that came
+  from them (loaded above).
 - `README.md`: for users. `LICENSE`: MIT.
 - `.claude/skills/`: `release`, `debug-time` (the review round), `ui-test`, `housekeeping` (read-only audit, changes
   only after my approval), `new-feature` (plan and questions before code), `help-sync` (every text that names a
@@ -134,7 +160,7 @@ The rules below apply to all 7 scripts ("the script" = the script being changed)
 - `tools\scripts.psd1`: the 1 list of the scripts (name, test file, tag, released); every tool reads it.
 - `tools\`: check.ps1 (with `.luarc.json` and `known-warnings.txt`; it also runs publish-check.ps1 and imgui-check.ps1), test.ps1 (`-Coverage`), deploy.ps1, release.ps1 (`-Script "<name>"`: the zips in
   the git-ignored `release\`), shots.ps1, ui-test.ps1 / ui-test.lua, background.ps1, session-start.ps1 (the state
-  at each session start: the SessionStart hook in `.claude\settings.json`), `hooks\pre-push`.
+  at each session start: the SessionStart hook in `.claude\settings.json`), `hooks\pre-push`, `hooks\pre-commit`.
 - `tests\`: run.lua (Chart Cue), segue.lua, midipilot.lua, fxlink.lua, sessionprep.lua, sfxdrop.lua, shots.lua, test.pdf (make_pdf.lua makes it; run it with
   the normal Lua, not REAPER).
 - Temporary files (test logs, helper scripts): in the scratchpad folder, never in the repository.

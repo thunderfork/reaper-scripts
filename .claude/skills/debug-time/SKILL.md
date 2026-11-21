@@ -57,7 +57,7 @@ answer (CLAUDE.md visible-change gate); bugs, texts and clean-ups can be fixed a
 CLAUDE.md editing and patch rules; a bug in committed code follows the `lessons` skill (a test that fails first,
 the other scripts, an entry in LESSONS.md); deploy. Then check only the places
 that the fixes touched (new names, missed callers, broken pairs), and run check and test again. Update PLAN.md
-(history, open items) and the folder CLAUDE.md when they are out of date.
+("Open now", the handoff) and the folder CLAUDE.md when they are out of date.
 
 ## 7. Report
 

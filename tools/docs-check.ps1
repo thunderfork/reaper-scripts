@@ -8,7 +8,7 @@
 # Prints 1 line when everything matches; else each problem (information only: it never fails the checks).
 $root = Split-Path $PSScriptRoot -Parent
 $names = @((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts | ForEach-Object { $_.Name }) # tools\scripts.psd1
-$docs = @("CLAUDE.md", "README.md", "PLAN.md", "LESSONS.md") + @($names | ForEach-Object { "$_\CLAUDE.md" }) |
+$docs = @("CLAUDE.md", "README.md", "PLAN.md", "LESSONS.md", "LESSONS-RULES.md") + @($names | ForEach-Object { "$_\CLAUDE.md" }) |
   ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
 $docs += Get-ChildItem (Join-Path $root ".claude\skills") -Recurse -Filter "SKILL.md" | ForEach-Object { $_.FullName }
 $skills = Get-ChildItem (Join-Path $root ".claude\skills") -Directory | ForEach-Object { $_.Name }

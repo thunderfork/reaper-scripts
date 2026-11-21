@@ -6,7 +6,8 @@ description: Turn a new idea for Chart Cue, Segue, MIDI Pilot, FX Link, Session 
 # New feature
 
 The user decides the look and the behaviour and does not read code. A rename or a move after the build costs a
-whole round, so the visible decisions come first (CLAUDE.md visible-change gate).
+whole round, so the visible decisions come first (the global mockup rule). More than 3 open manual tests in
+PLAN.md: no new feature until they are tested (global rule); say so and offer the tests first.
 
 ## 1. Fit it into what exists (look, do not guess)
 
@@ -28,12 +29,17 @@ whole round, so the visible decisions come first (CLAUDE.md visible-change gate)
 - Technical limits that the user will notice: say them plainly. Too large: suggest a smaller first step.
 
 - A name field (a preset, bus, return, device...): when you finish typing, an empty name or a name that another
-  item of the same list has goes back to the old name (LESSONS.md, saved-data).
+  item of the same list has goes back to the old name (LESSONS-RULES.md, saved-data).
+- The global `new-feature` skill's checks apply too (an outside source, a small trial of what is not checked yet).
 
 ## 2. Mockup and behaviour (always, for anything visible)
 
 A small text mockup in the question window's preview, and the exact behaviour (what a click does, what is
 saved, what Ctrl+Z does). Also when the user asked for it in a few words.
+
+Scripts with a window (all except Mono Merge): before the mockup, write every new text (labels, tooltips, "?"
+texts, notices, questions, empty states) in the existing word style of the script (CLAUDE.md "Look and words");
+the mockup shows these texts.
 
 ## 3. Ask
 

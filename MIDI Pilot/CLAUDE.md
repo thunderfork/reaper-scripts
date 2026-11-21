@@ -6,14 +6,20 @@ Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are untested). No relation
 ## Rules
 
 - The MIDI is normal REAPER MIDI on the device tracks; the show never needs the window.
-- A preparation tool: no live features (no automatic sending during playback, no stage actions, no MIDI clock).
+- A preparation tool: no live features (no automatic sending during playback, no stage actions, no MIDI clock;
+  live chase was removed for this reason, decided 8 November 2026). Suggest only editing, checking, viewing and
+  export features.
 - Changes to the Quad Cortex controls stay Quad Cortex only, unless I say otherwise.
+- Every visible text (labels, menus, buttons, headings, Help, tooltips, messages, undo names) writes "Preset",
+  "Presets", "Scene", "Scenes" with a capital, also mid-sentence ("Clear all Scenes..."); not in code comments or
+  internal ids (decided 10 November 2026: the unit's own terms).
 
 ## Files
 
 - `MIDI Pilot.lua`. Version: `@version` and `CFG.VERSION` together. Release: tag
   `midipilot-vX.Y`, title "MIDI Pilot X.Y" (the `release` skill).
-- Roadmap (version 2) and history: PLAN.md, section "MIDI Pilot".
+- Roadmap (version 2): PLAN.md, "Later". The history: the git log and the `@changelog` lines.
+- Not checked: the full-size Quad Cortex's USB port name (no unit; it contains "Cortex").
 
 ## Architecture and data
 
