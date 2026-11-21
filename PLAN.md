@@ -17,7 +17,8 @@
 - 21 November 2026: the project follows the newest global process (from the Athens Bus project): Size full,
   `LESSONS-RULES.md` loaded by CLAUDE.md, this PLAN.md format, the rules from Claude's memory moved into the
   CLAUDE.md files, a pre-commit hook with the checks and tests. Together with the 19 November 2026 process changes
-  (Users section, release checks instead of the global checkup, security review before a push): not committed yet.
+  (Users section, release checks instead of the global checkup, security review before a push): committed
+  21 November 2026, not pushed. The duplicate rules in Claude's memory were deleted (the user's choice).
 - Last checkup: none as 1 full run (17 November 2026: housekeeping and a full Session Prep review).
 - More than 3 manual tests are open: no new feature until they are tested (global rule).
 - Next decision: the manual tests (Open now 1-9), then the SFX Drop work or the Mono Merge drop window.
