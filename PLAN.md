@@ -64,7 +64,8 @@
   read once, Tabs.show / Tabs.keep(from) (no 2nd read after a save), Util.read_all / write_all as in FX Link, the Note
   Detective tests hand over the shared reader, release.ps1 copies like deploy.ps1. Skipped: 1 shape for the bars of
   all formats (more parse time at open), reading @provides instead of `Uses`, a cache for project tab switches.
-  Committed 23 November 2026 (2 commits). The open question of the round: Open now 29. Next (ask
+  Committed 23 November 2026 (2 commits). Decided 23 November 2026: after the 1st save or Save as of a project with
+  a tab, the project shows as changed once more (the tab's new place); kept as it is. Next (ask
   first): step 2 (the window: List and Tab tabs, the tab drawing, the track dropdown, the tab on the bars; with the
   new-feature skill and a mockup).
 - Step 0 done 23 November 2026: Note Detective committed as it was (the user's choice, without the debug-time round
@@ -207,9 +208,6 @@ skipped or failed test stays here; remove it when it passed.
     long backing track did not; one Ctrl+Z takes back the grid and the move. With a list: it moved too. In the tab: select the 2nd piece of a split note, press J.
 28. Manual test (Tab Viewer, real files that were never checked, 23 November 2026): when you get a .gpx, .gp4 or
     .gp3 tab, open it in Tab Viewer: the tracks, tunings and the line below right? (Only made-up files were tested.)
-29. Question (Tab Viewer, debug round 23 November 2026): after the 1st save (or Save as) of a project with a tab,
-    REAPER shows the project as changed again (the tab's new place in the Tabs folder is project data). Keep it, or
-    write it without marking the project changed (then it is saved with the next save)?
 
 ## Later
 

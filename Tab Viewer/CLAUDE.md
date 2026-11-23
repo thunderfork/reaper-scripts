@@ -60,7 +60,8 @@ dropdown, the tab on the bars of the song (step 2).
 - `Tabs.keep`: a saved project keeps a copy of its tab in `<project folder>\Tabs` (the same name with other content:
   " (2)"; the same tab again: no copy). `Tabs.moved`: the 1st save and Save as (the project file changes, the project
   data stays) copy it into the new folder (`Tabs.keep(from)`: a relative path from the old folder); the window keeps
-  the list (no 2nd read). `Tabs.show` puts a tab (or why not) into the window. A missing file: a grey line in the window (`R.err`); a file that can not be
+  the list (no 2nd read). The project then shows as changed once more (the new place): kept so, decided 23 November
+  2026. `Tabs.show` puts a tab (or why not) into the window. A missing file: a grey line in the window (`R.err`); a file that can not be
   read at Open tab...: an orange notice, the project does not change.
 - `S` (ExtState "Tab Viewer"): `light`, `dock`.
 - `R.rows` / `R.info` (`Tabs.rows`): the lines of the list, made once per tab (not every frame). Another project tab:
