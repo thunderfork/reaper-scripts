@@ -1,7 +1,7 @@
 # Thunderfork REAPER scripts: development
 
 Repository `thunderfork/reaper-scripts` (https://github.com/thunderfork/reaper-scripts), shown in ReaPack as
-"Thunderfork Scripts". 8 separate scripts, each in its own folder (the folder is the ReaPack category; keep each
+"Thunderfork Scripts". 9 separate scripts, each in its own folder (the folder is the ReaPack category; keep each
 script's files there). Each folder has its own CLAUDE.md with its modules, data, tests and release details:
 
 - **Chart Cue** (`Chart Cue/`): Windows-only; shows and scrolls PDF charts during playback. The UI style guide.
@@ -16,8 +16,11 @@ script's files there). Each folder has its own CLAUDE.md with its modules, data,
   no saved data.
 - **Note Detective** (`Note Detective/`): finds the notes of a separated bass item and writes them as markers or text
   items. A preparation tool; Chart Cue look, no tabs; in the project only its list, until Finish.
+- **Tab Viewer** (`Tab Viewer/`): Guitar Pro tabs in the project (guitar, bass, drums). Chart Cue look. Its
+  `Guitar Pro.lua` is the 1 shared Guitar Pro reader: Note Detective uses it too (and later Chart Cue);
+  `tools\scripts.psd1` (Uses) and each `@provides` put a copy next to each script.
 
-The rules below apply to all 8 scripts ("the script" = the script being changed).
+The rules below apply to all 9 scripts ("the script" = the script being changed).
 
 - Size: full (decided 21 November 2026). Platforms: REAPER (Lua ReaScript and ReaImGui); no global platform file
   yet: the REAPER knowledge is in "REAPER, Lua and ReaImGui" below.
@@ -28,7 +31,7 @@ The rules below apply to all 8 scripts ("the script" = the script being changed)
 - A musician on stage (Chart Cue, Segue): little time, low light, must see the next thing at a glance; a wrong
   click must not stop the show.
 - A studio or live engineer preparing a session (MIDI Pilot, FX Link, Session Prep, SFX Drop, Mono Merge, Note
-  Detective): speed of preparation, what REAPER really does to the tracks, undo.
+  Detective, Tab Viewer): speed of preparation, what REAPER really does to the tracks, undo.
 - A bass player who learns a part in REAPER (Note Detective's markers): easy songs, reads the note names on the screen.
 - Experts (besides the senior developer and the UI/UX designer): QA tester (empty projects, playing / stopped,
   project switch), REAPER and ReaImGui specialist, a ReaPack user who installs the scripts for the first time.
@@ -90,8 +93,9 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
 ## Saved data
 
 - What counts as saved data: the project data (ProjExtState "ChartCue"/"cfg", "Segue"/"cfg", "MIDI Pilot"/"cfg", "FX Link"/"cfg",
-  "Note Detective"/"cfg"; Session Prep's track mark `P_EXT:SessionPrep`; Note Detective's mark `P_EXT:NoteDetective`),
-  the settings (Chart Cue's `settings.ini`, the ExtState "Segue", "MIDI Pilot", "FX Link", "Session Prep", "SFX Drop" and "Note Detective" keys; SFX Drop's `library.txt` and ProjExtState "SFX Drop"/"soundcheck"), their defaults, and the
+  "Note Detective"/"cfg", "Tab Viewer"/"cfg" and its copies in the "Tabs" folder next to the project file; Session
+  Prep's track mark `P_EXT:SessionPrep`; Note Detective's mark `P_EXT:NoteDetective`),
+  the settings (Chart Cue's `settings.ini`, the ExtState "Segue", "MIDI Pilot", "FX Link", "Session Prep", "SFX Drop", "Note Detective" and "Tab Viewer" keys; SFX Drop's `library.txt` and ProjExtState "SFX Drop"/"soundcheck"), their defaults, and the
   files in Chart Cue's data folder (including the autostart block). Ask me before you change any of them.
 - Current decision (November 2026; the scripts are public on ReaPack, but I treat them as without other users):
   no migration code, no old keys, no fallback to old names or folders. Write clean code for a new user. Ask me
@@ -109,7 +113,7 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
 - Call End / EndChild / EndPopup only when its Begin returned true; keep pushes and pops paired; keep ReaImGui
   calls in their UI / deferred-loop context.
 - Do not move state between `CFG`, `S`, `R` and `P` without asking (`CFG` constants, `COL` colours, `S` settings
-  of this computer, `R` runtime, `P` project data: the same in the 7 scripts with a window (Mono Merge has none of them); Session Prep has no `P`, only its track mark).
+  of this computer, `R` runtime, `P` project data: the same in the 8 scripts with a window (Mono Merge has none of them); Session Prep has no `P`, only its track mark).
 
 ## Performance
 
@@ -167,6 +171,6 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
 - `tools\`: check.ps1 (with `.luarc.json` and `known-warnings.txt`; it also runs publish-check.ps1 and imgui-check.ps1), test.ps1 (`-Coverage`), deploy.ps1, release.ps1 (`-Script "<name>"`: the zips in
   the git-ignored `release\`), shots.ps1, ui-test.ps1 / ui-test.lua, background.ps1, session-start.ps1 (the state
   at each session start: the SessionStart hook in `.claude\settings.json`), `hooks\pre-push`, `hooks\pre-commit`.
-- `tests\`: run.lua (Chart Cue), segue.lua, midipilot.lua, fxlink.lua, sessionprep.lua, sfxdrop.lua, notedetective.lua, shots.lua, test.pdf (make_pdf.lua makes it; run it with
+- `tests\`: run.lua (Chart Cue), segue.lua, midipilot.lua, fxlink.lua, sessionprep.lua, sfxdrop.lua, notedetective.lua, tabviewer.lua (with its made-up data tabviewer_data.lua), shots.lua, test.pdf (make_pdf.lua makes it; run it with
   the normal Lua, not REAPER).
 - Temporary files (test logs, helper scripts): in the scratchpad folder, never in the repository.

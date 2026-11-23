@@ -34,7 +34,7 @@ local function finish()
   r.defer(function() r.Main_OnCommand(40004, 0) end) -- File: Quit REAPER
 end
 
-NoteDetectiveTest = {}
+NoteDetectiveTest = { GP = dofile(here .. "\\..\\Tab Viewer\\Guitar Pro.lua") } -- (the shared reader: in the repository)
 local loaded, err = pcall(dofile, here .. "\\..\\Note Detective\\Note Detective.lua")
 local C = NoteDetectiveTest
 if not loaded or not C.Project then
@@ -964,69 +964,13 @@ test("tab: what is under the mouse (a note, an empty 16th of a string, nothing)"
   eq(C.Tab.hit(tab, x, y_a + C.CFG.TAB_LINE * 3), nil, "below the low string")
 end)
 
--- a small Guitar Pro 7/8 score (made up): bar 1 a C tied over the bar (2 halves), bar 2 (repeated: played twice) a
--- dotted quarter E and a muted note, bar 3 (3/4) an 8th triplet G
-local GPIF = [==[<GPIF>
-<Tracks><Track id="0"><Name><![CDATA[Bass]]></Name><Staves><Staff><Properties><Property name="Tuning">
-<Pitches>28 33 38 43</Pitches></Property></Properties></Staff></Staves></Track></Tracks>
-<MasterBars>
-<MasterBar><Time>4/4</Time><Bars>0</Bars></MasterBar>
-<MasterBar><Time>4/4</Time><Bars>1</Bars><Repeat start="true" end="true" count="2" /></MasterBar>
-<MasterBar><Time>3/4</Time><Bars>2</Bars></MasterBar>
-</MasterBars>
-<Bars><Bar id="0"><Voices>0 -1 -1 -1</Voices></Bar><Bar id="1"><Voices>1 -1 -1 -1</Voices></Bar><Bar id="2"><Voices>2 -1 -1 -1</Voices></Bar></Bars>
-<Voices><Voice id="0"><Beats>0 1</Beats></Voice><Voice id="1"><Beats>6 2 3</Beats></Voice><Voice id="2"><Beats>4</Beats></Voice></Voices>
-<Beats>
-<Beat id="0"><Rhythm ref="0" /><Notes>0</Notes></Beat>
-<Beat id="1"><Rhythm ref="0" /><Notes>1</Notes></Beat>
-<Beat id="2"><Rhythm ref="1" /><Notes>2</Notes></Beat>
-<Beat id="3"><Rhythm ref="0" /><Notes>3</Notes></Beat>
-<Beat id="4"><Rhythm ref="2" /><Notes>4</Notes></Beat>
-<Beat id="6"><GraceNotes>BeforeBeat</GraceNotes><Rhythm ref="0" /><Notes>4</Notes></Beat>
-</Beats>
-<Notes>
-<Note id="0"><Properties><Property name="Fret"><Fret>3</Fret></Property><Property name="Midi"><Number>36</Number></Property><Property name="String"><String>1</String></Property></Properties></Note>
-<Note id="1"><Tie origin="false" destination="true" /><Properties><Property name="Fret"><Fret>3</Fret></Property><Property name="Midi"><Number>36</Number></Property><Property name="String"><String>1</String></Property></Properties></Note>
-<Note id="2"><Properties><Property name="Fret"><Fret>2</Fret></Property><Property name="Midi"><Number>40</Number></Property><Property name="String"><String>2</String></Property></Properties></Note>
-<Note id="3"><Properties><Property name="Fret"><Fret>5</Fret></Property><Property name="Midi"><Number>43</Number></Property><Property name="Muted"><Enable /></Property><Property name="String"><String>2</String></Property></Properties></Note>
-<Note id="4"><Properties><Property name="Fret"><Fret>0</Fret></Property><Property name="Midi"><Number>43</Number></Property><Property name="String"><String>3</String></Property></Properties></Note>
-</Notes>
-<Rhythms><Rhythm id="0"><NoteValue>Half</NoteValue></Rhythm><Rhythm id="1"><NoteValue>Quarter</NoteValue><AugmentationDot count="1" /></Rhythm>
-<Rhythm id="2"><NoteValue>Eighth</NoteValue><PrimaryTuplet num="3" den="2" /></Rhythm></Rhythms>
-</GPIF>]==]
-
-test("import tab: the notes of a Guitar Pro score (ties, dots, triplets, muted notes, repeats, 3/4)", function()
+-- (the Guitar Pro reader itself: tests\tabviewer.lua)
+test("import tab: the bass track of a tab; the tunings of the list", function()
   local Imp = C.Imp
-  local doc = Imp.parse(GPIF)
-  eq(#doc.tracks, 1); eq(doc.tracks[1].name, "Bass"); eq(table.concat(doc.tracks[1].open, " "), "28 33 38 43")
-  eq(Imp.bass_track(doc), 1)
-  eq(table.concat(Imp.order(doc.mbars), " "), "1 2 2 3", "bar 2 twice")
-  local t = {}
-  for k, x in ipairs(Imp.notes(doc, 1)) do t[k] = string.format("%.2f+%.2f %d s%d f%d", x.q, x.len, x.midi, x.s, x.fret) end
-  eq(table.concat(t, " | "), "0.00+4.00 36 s2 f3 | 4.00+1.50 40 s3 f2 | 8.00+1.50 40 s3 f2 | 12.00+0.33 43 s4 f0",
-    "the tie joins, the muted note is left out, the grace note takes no time (bar 2), the repeat plays twice, the triplet")
+  eq(Imp.bass_track({ tracks = { { kind = "guitar" }, { kind = "drums" }, { kind = "bass" } } }), 3)
+  eq(Imp.bass_track({ tracks = { { kind = "guitar" } } }), 1, "no bass track: the 1st")
   eq(Imp.tuning({ 24, 31, 36, 41 }).id, "dropc"); eq(Imp.tuning({ 1, 2, 3 }), nil)
-end)
-
-test("import tab: the repeat bar marks (%) play the bar before, or the 2 bars before", function()
-  local Imp = C.Imp
-  local doc = Imp.parse(GPIF)
-  -- after the 3/4 bar (G): a bar with a 1-bar repeat mark, then a 4/4 bar with an A, then a 2-bar repeat mark
-  doc.bars["3"] = "<Clef>F4</Clef><SimileMark>Simple</SimileMark><Voices>-1 -1 -1 -1</Voices>"
-  doc.bars["4"] = "<Clef>F4</Clef><Voices>3 -1 -1 -1</Voices>"
-  doc.voices["3"] = "<Beats>5</Beats>"
-  doc.beats["5"] = '<Rhythm ref="3" /><Notes>5</Notes>'
-  doc.rhythms["3"] = "<NoteValue>Whole</NoteValue>"
-  doc.notes["5"] = '<Properties><Property name="Fret"><Fret>0</Fret></Property><Property name="Midi"><Number>33</Number></Property><Property name="String"><String>1</String></Property></Properties>'
-  doc.bars["5"] = "<Clef>F4</Clef><SimileMark>FirstOfDouble</SimileMark><Voices>-1 -1 -1 -1</Voices>"
-  doc.bars["6"] = "<Clef>F4</Clef><SimileMark>SecondOfDouble</SimileMark><Voices>-1 -1 -1 -1</Voices>"
-  for _, b in ipairs({ { 3, "3" }, { 4, "4" }, { 3, "5" }, { 4, "6" } }) do
-    doc.mbars[#doc.mbars + 1] = { num = b[1], den = 4, bars = { b[2] }, count = 0 }
-  end
-  local t = {}
-  for _, x in ipairs(Imp.notes(doc, 1)) do if x.q >= 12 then t[#t + 1] = string.format("%.2f %d", x.q, x.midi) end end
-  eq(table.concat(t, " | "), "12.00 43 | 15.00 43 | 18.00 33 | 22.00 43 | 25.00 33",
-    "the G bar again, the A bar, then the G and A bars again")
+  ok(C.GP and C.GP.read, "the shared Guitar Pro reader is loaded")
 end)
 
 test("import tab: the first note of the tab exactly on the first found note (lessons, 23 November 2026)", function()
@@ -1063,10 +1007,12 @@ test("import tab: the notes replace the found ones from bar 1 of the song; strin
   p.notes = notes({ { 5, 2, 2.5 } })
   p.notes[1].midi = 41
   p.tuning = "dropc"
-  local doc = C.Imp.parse(GPIF)
-  local q0 = C.Imp.start(C.Imp.notes(doc, 1))
+  -- the small made-up tab of the reader's tests: a held C, an E twice, a G
+  local doc = C.GP.parse(dofile(here .. "\\tabviewer_data.lua").GPIF)
+  local list = C.GP.notes(doc, 1)
+  local q0 = C.Imp.start(list)
   near(q0, 4, 1e-6, "the first tab note (bar 1) on the found note at 2 s")
-  local n = C.Imp.apply(C.Imp.notes(doc, 1), doc.tracks[1].open, q0)
+  local n = C.Imp.apply(list, doc.tracks[1].open, q0)
   eq(n, 4)
   local P2 = C.get_P()
   eq(P2.tuning, "std", "the tuning of the tab")

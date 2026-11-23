@@ -8,6 +8,8 @@ look, 1 window, no tabs. Plan and answers: decided 23 November 2026.
 
 - `Note Detective.lua`; no actions. Version: `@version` and `CFG.VERSION` together. Release: tag
   `notedetective-vX.Y`, title "Note Detective X.Y" (the `release` skill). Not released: `@noindex`.
+- `Guitar Pro.lua`: the shared Guitar Pro reader (`GP`), from `Tab Viewer\` (see Tab Viewer/CLAUDE.md); ReaPack and
+  `deploy.ps1` put a copy next to the script.
 
 ## Architecture and data
 
@@ -76,16 +78,15 @@ look, 1 window, no tabs. Plan and answers: decided 23 November 2026.
   field (slide). `List.opt()` always gives a table now.
 - Decided 23 November 2026 ("1 2 3"): `S.splits` (Settings > Notes > Split repeated notes, full mode, default on:
   `Det.repeats` only when on). J in the tab: `List.note_join` (the selected note joins the note before it, same pitch;
-  Undo of the list). Import tab (`Imp`, full mode, "Import tab..." next to Find notes): `Imp.read` (a .gp is a zip:
-  PowerShell's System.IO.Compression unpacks Content/score.gpif to %TEMP%), `Imp.parse` (tracks with the tuning,
-  master bars, bars, voices, beats, notes, rhythms), `Imp.order` (repeats and alternate endings played out),
-  `Imp.notes` (ties joined, muted notes left out; a repeat bar mark "%" (SimileMark) plays the bar 1 or 2 bars before; `s` 1 = the lowest string), `Imp.start` (the quarter note
+  Undo of the list). Import tab (`Imp`, full mode, "Import tab..." next to Find notes): the shared reader reads the file
+  (`GP.read`, `GP.notes`; Tab Viewer/CLAUDE.md; since 23 November 2026 no PowerShell), `Imp.bass_track` (the first
+  track of kind "bass"), `Imp.start` (the quarter note
   where the tab starts: its first note exactly on the very first found note, only Find's notes, never `man` (decided
   23 November 2026 by the user; a best-matching bar on the grid did not line up); no found notes: bar 1 of Set tempo,
   else the edit cursor; again for each track of the window; grace notes take no time), `Imp.apply` (replaces
   `P.notes` with `man = true` and the string of the tab, the tuning, then the rows; Undo of the list). The import
   window: `UI.draw_import` (`R.import`). Checked on the user's tab of song 2: 981 notes, the same as the earlier
-  extraction. Guitar Pro 7 / 8 only (no .gp5 / .gpx, no MusicXML yet).
+  extraction. Guitar Pro 3 to 8 (the shared reader; no MusicXML yet).
 - The detection review (a pro sound engineer, 23 November 2026; Dev 1-5 and UX 1 done, trial 9: song 2 against its
   tab, the notes found within half a 16th 66.6% -> 79.7%, with the 16th grid 78.8% -> 86.3%; false splits of held notes
   without the grid 10 -> 28, with it 70 -> 69; the octave right 96% -> 98.9%). `Det.onsets_of`: the band flux (9

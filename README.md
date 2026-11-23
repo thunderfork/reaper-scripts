@@ -14,6 +14,9 @@ Scripts for playing live and for studio work with REAPER, installed and updated 
 <!-- Note Detective: hidden until its release
 - **Note Detective:** finds the notes of a separated bass track and writes them as markers, for a player who learns the part in REAPER.
 -->
+<!-- Tab Viewer: hidden until its release
+- **Tab Viewer:** opens a Guitar Pro tab in your project and shows its guitar, bass and drum tracks.
+-->
 
 # Chart Cue
 

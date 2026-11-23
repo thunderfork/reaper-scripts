@@ -12,6 +12,8 @@
 --   this song only. High notes get their string and fret ("E (A 7)"), fast runs the fingering with the fewest hand
 --   moves (Standard, Drop D, Drop C, 5-string...). Export: a MIDI item and a .mid file (for Guitar Pro).
 --   Requires: the free ReaImGui extension (ReaPack).
+-- @provides
+--   [nomain] ../Tab Viewer/Guitar Pro.lua > Guitar Pro.lua
 -- @changelog
 --   First version.
 
@@ -35,6 +37,17 @@
 -- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 local r = reaper
+
+-- The shared Guitar Pro reader, next to this script (ReaPack installs a copy; the tests hand it over).
+local GP = (rawget(_G, "NoteDetectiveTest") or {}).GP
+do
+  local dir = debug.getinfo(1, "S").source:match("^@?(.*[/\\])") or ""
+  if not GP and r.file_exists(dir .. "Guitar Pro.lua") then GP = dofile(dir .. "Guitar Pro.lua") end
+  if not GP then
+    r.ShowMessageBox("Note Detective needs its file \"Guitar Pro.lua\" next to it. Install Note Detective again with ReaPack.", "Note Detective", 0)
+    return
+  end
+end
 
 ---------------------------------------------------------------------------
 -- CONFIG
@@ -198,7 +211,7 @@ local R = {
   src_name = nil,    -- the name of the bass item (cached until the project changes)
   finish = nil,      -- the open Finish window
   export = nil,      -- the open Export window: { item, file, step (Rhythm), open }
-  import = nil,      -- the open Import tab window: { doc (Imp.parse), name, track, q0 (Imp.start), matched, bar (QN of
+  import = nil,      -- the open Import tab window: { doc (GP.read), name, track, q0 (Imp.start), matched, bar (QN of
                      -- the tab's 1st bar: the step of "< 1 bar"), lbl, list, open }
   tempo = nil,       -- Tempo and bars: { song = { guid, t0, t1 }, run (Find tempo running), env, f0, bpm, beats,
                      --   i0 (the beat of bar 1), short = { [beat index] = true }, style, steady, try (Play with click) }
@@ -2293,144 +2306,14 @@ function Tab.layout(tab, w)
 end
 
 ---------------------------------------------------------------------------
--- IMP (Import tab: the notes of a Guitar Pro tab, .gp (a zip: Windows unpacks its Content/score.gpif) or .gpif)
+-- IMP (Import tab: the notes of a Guitar Pro tab; the shared reader GP reads the file)
 ---------------------------------------------------------------------------
--- The text of the score of a .gp or .gpif file; nil and why.
-function Imp.read(path)
-  local low = path:lower()
-  local file = path
-  if low:match("%.gp$") then
-    if not r.GetOS():match("^Win") then return nil, "A .gp file needs Windows here. Save it as .gpif in Guitar Pro." end
-    file = (os.getenv("TEMP") or r.GetResourcePath()) .. "\\NoteDetective_score.gpif"
-    os.remove(file)
-    local q = function(s) return (s:gsub("'", "''")) end
-    local h = io.popen('powershell -NoProfile -WindowStyle Hidden -Command "Add-Type -AssemblyName System.IO.Compression.FileSystem; '
-      .. "$z = [IO.Compression.ZipFile]::OpenRead('" .. q(path) .. "'); $e = $z.GetEntry('Content/score.gpif'); "
-      .. "if ($e) { [IO.Compression.ZipFileExtensions]::ExtractToFile($e, '" .. q(file) .. "', $true) }; $z.Dispose()" .. '"')
-    if h then
-      local _ = h:read("a") -- (wait until Windows has unpacked it)
-      h:close()
-    end
-  elseif not low:match("%.gpif$") then
-    return nil, "Pick a Guitar Pro 7 or 8 file (.gp). Older ones (.gp5, .gpx): save them again in Guitar Pro 7 or 8."
-  end
-  local f = io.open(file, "rb")
-  if not f then return nil, "Could not read the tab (is it a Guitar Pro 7 or 8 file?)." end
-  local txt = f:read("a")
-  f:close()
-  if file ~= path then os.remove(file) end
-  if not txt:find("<GPIF", 1, true) then return nil, "This is not a Guitar Pro 7 or 8 tab." end
-  return txt
-end
-
-local NOTE_VALUE = { Zero = 0, Whole = 4, Half = 2, Quarter = 1, Eighth = 0.5, ["16th"] = 0.25, ["32nd"] = 0.125, ["64th"] = 0.0625 }
--- The parts of a score (the text of a .gpif): { tracks = { { name, open = { MIDI from the lowest string } } },
--- mbars = { { num, den, bars = { the bar of each track }, rstart, rend, count, alt = { [pass] = true } } }, and the
--- tables bars, voices, beats, notes, rhythms (by id) }.
-function Imp.parse(xml)
-  local function tbl(tag)
-    local t = {}
-    for id, body in xml:gmatch("<" .. tag .. ' id="(%d+)">(.-)</' .. tag .. ">") do t[id] = body end
-    return t
-  end
-  local doc = { tracks = {}, mbars = {}, bars = tbl("Bar"), voices = tbl("Voice"), beats = tbl("Beat"), notes = tbl("Note"),
-    rhythms = tbl("Rhythm") }
-  for body in xml:gmatch('<Track id="%d+">(.-)</Track>') do
-    local open = {}
-    for p in (body:match('<Property name="Tuning">%s*<Pitches>([%d%s]+)</Pitches>') or ""):gmatch("%d+") do open[#open + 1] = tonumber(p) end
-    doc.tracks[#doc.tracks + 1] = { name = body:match("<Name><!%[CDATA%[(.-)%]%]></Name>") or "Track", open = open }
-  end
-  for body in xml:gmatch("<MasterBar>(.-)</MasterBar>") do
-    local num, den = body:match("<Time>(%d+)/(%d+)</Time>")
-    local mb = { num = tonumber(num) or 4, den = tonumber(den) or 4, bars = {} }
-    for id in (body:match("<Bars>([%d%s%-]+)</Bars>") or ""):gmatch("%-?%d+") do mb.bars[#mb.bars + 1] = id end
-    local rs, re, cnt = body:match('<Repeat start="(%a+)" end="(%a+)" count="(%d+)"')
-    mb.rstart, mb.rend, mb.count = rs == "true", re == "true", tonumber(cnt) or 0
-    local alt = body:match("<AlternateEndings>([%d%s]+)</AlternateEndings>")
-    if alt then
-      mb.alt = {}
-      for p in alt:gmatch("%d+") do mb.alt[tonumber(p)] = true end
-    end
-    doc.mbars[#doc.mbars + 1] = mb
-  end
-  return doc
-end
--- The bass track: the first one with a bass tuning (its lowest string below E2) or "bass" in its name, else the 1st.
+-- The bass track: the first bass track of the file (GP.kind), else the 1st track.
 function Imp.bass_track(doc)
   for k, t in ipairs(doc.tracks) do
-    if (t.open[1] and t.open[1] < 40) or t.name:lower():find("bass", 1, true) then return k end
+    if t.kind == "bass" then return k end
   end
   return 1
-end
--- The order in which the master bars play: the repeats played out (count = how often), alternate endings on their pass.
-function Imp.order(mbars)
-  local order, i, start, pass = {}, 1, 1, {}
-  while i <= #mbars and #order < 20000 do
-    local mb = mbars[i]
-    if mb.rstart then start = i end
-    local p = pass[start] or 1
-    if mb.alt and not mb.alt[p] then
-      i = i + 1
-    else
-      order[#order + 1] = i
-      if mb.rend and p < math.max(1, mb.count) then
-        pass[start] = p + 1
-        i = start
-      else
-        if mb.rend then pass[start] = nil end
-        i = i + 1
-      end
-    end
-  end
-  return order
-end
--- The notes of a track in the order they play: { { q, len (quarter notes from the start of bar 1), midi, s (1 = the
--- lowest string), fret } }; ties join the note before, muted (dead) notes are left out. A repeat bar mark (%, the
--- SimileMark of a bar) plays the bar that played 1 bar before (Simple) or 2 bars before (FirstOfDouble, SecondOfDouble).
-local SIMILE_BACK = { Simple = 1, FirstOfDouble = 2, SecondOfDouble = 2 }
-function Imp.notes(doc, track)
-  local out, q, last, played = {}, 0, {}, {}
-  for j, k in ipairs(Imp.order(doc.mbars)) do
-    local mb = doc.mbars[k]
-    local bar = doc.bars[mb.bars[track] or "-1"]
-    local back = bar and SIMILE_BACK[bar:match("<SimileMark>(%a+)</SimileMark>") or ""]
-    if back then bar = played[j - back] end
-    played[j] = bar
-    for vid in ((bar and bar:match("<Voices>([%d%s%-]+)</Voices>")) or ""):gmatch("%-?%d+") do
-      local voice = doc.voices[vid]
-      local pos = q
-      for bid in ((voice and voice:match("<Beats>([%d%s]+)</Beats>")) or ""):gmatch("%d+") do
-        local beat = doc.beats[bid] or ""
-        if beat:find("<GraceNotes>", 1, true) then beat = "" end -- (a grace note takes no time of the bar: left out)
-        local rh = beat == "" and "<NoteValue>Zero</NoteValue>" or doc.rhythms[beat:match('<Rhythm ref="(%d+)"') or ""] or ""
-        local len = NOTE_VALUE[rh:match("<NoteValue>(.-)</NoteValue>") or ""] or 1
-        local dots = tonumber(rh:match('<AugmentationDot count="(%d+)"') or 0)
-        if dots > 0 then len = len * (2 - 0.5 ^ dots) end
-        local tn, td = rh:match("<PrimaryTuplet num=\"(%d+)\" den=\"(%d+)\"")
-        if tn then len = len * tonumber(td) / tonumber(tn) end
-        for nid in (beat:match("<Notes>([%d%s]+)</Notes>") or ""):gmatch("%d+") do
-          local n = doc.notes[nid] or ""
-          local midi = tonumber(n:match('<Property name="Midi">%s*<Number>(%d+)</Number>') or "")
-          local s = tonumber(n:match('<Property name="String">%s*<String>(%d+)</String>') or "")
-          local fret = tonumber(n:match('<Property name="Fret">%s*<Fret>(%d+)</Fret>') or "")
-          local tie = n:match('<Tie origin="%a+" destination="true"')
-          if midi and not n:find('<Property name="Muted"', 1, true) then
-            local prev = last[midi]
-            if tie and prev then prev.len = pos + len - prev.q -- (a tie: the note goes on)
-            else
-              local x = { q = pos, len = len, midi = midi, s = s and s + 1, fret = fret }
-              out[#out + 1] = x
-              last[midi] = x
-            end
-          end
-        end
-        pos = pos + len
-      end
-    end
-    q = q + 4 * mb.num / mb.den
-  end
-  table.sort(out, function(a, b) return a.q < b.q end)
-  return out
 end
 -- The tuning of CFG.TUNINGS with these open strings (nil: none).
 function Imp.tuning(open)
@@ -2442,7 +2325,7 @@ function Imp.tuning(open)
     end
   end
 end
--- Where the tab goes: the quarter note of the project where the tab starts (list = Imp.notes), and true when it was
+-- Where the tab goes: the quarter note of the project where the tab starts (list = GP.notes), and true when it was
 -- lined up with a found note. With found notes (only Find's: never the notes of an import or of the tab, man; a 2nd
 -- import must not line up with a wrong 1st one): the first note of the tab exactly on the very first found note
 -- (decided 23 November 2026 by the user; before: the bar where the most notes matched, on the grid: it did not line
@@ -3056,7 +2939,7 @@ if TESTING then
   local test = rawget(_G, "NoteDetectiveTest")
   test.CFG, test.S, test.R, test.Util, test.Key, test.Det, test.Group = CFG, S, R, Util, Key, Det, Group
   test.List, test.Project, test.Find, test.Out, test.Beat, test.Tempo, test.Export = List, Project, Find, Out, Beat, Tempo, Export
-  test.Tab, test.Imp = Tab, Imp
+  test.Tab, test.Imp, test.GP = Tab, Imp, GP
   test.get_P = function() return P end
   test.set_P = function(p) P = p end
   return
@@ -3144,7 +3027,7 @@ Pick the "Tuning" of the bass for the song (Standard, Half step down, Drop D, Dr
 Have the tab of the song? Then you do not need the detection: the tab gives the exact notes, strings and frets.
 
 1. Do "Set tempo" first, so the bars of REAPER are the bars of the song. Then "Find notes".
-2. Click "Import tab..." (next to Find notes; Simple mode off) and pick the .gp file (Guitar Pro 7 or 8).
+2. Click "Import tab..." (next to Find notes; Simple mode off) and pick the tab file (.gp, .gpx, .gp5, .gp4 or .gp3).
 3. Pick the bass track. Note Detective puts the first note of the tab exactly on the first found note (empty bars at the start of the tab are fine). Wrong bar? Use "< 1 bar" or "1 bar >". Importing again? Undo the earlier import first, so the found notes are back to line up with.
 4. Click "Import". The repeats are played out, and the tab replaces the found notes and the list. Undo brings them back.]] },
   { title = "Markers or a Notes track", text = [[
@@ -3747,7 +3630,7 @@ function UI.draw_toolbar()
       ImGui.BeginDisabled(ctx, busy)
       if UI.button("Import tab...", iw, H) then UI.import_begin() end
       ImGui.EndDisabled(ctx)
-      UI.tip("Have a Guitar Pro tab of the song (.gp)? Its notes, strings and frets replace the found notes, on the bars of the song (Set tempo first). It shows the choices first.")
+      UI.tip("Have a Guitar Pro tab of the song (.gp, .gpx, .gp5, .gp4, .gp3)? Its notes, strings and frets replace the found notes, on the bars of the song (Set tempo first). It shows the choices first.")
       ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
       room = math.max(40, room - iw - CFG.CTRL_GAP)
     end
@@ -4103,10 +3986,8 @@ end
 function UI.import_begin()
   local ok, path = r.GetUserFileNameForRead("", "Import a Guitar Pro tab", "gp")
   if not ok or not path or path == "" then return end
-  local xml, why = Imp.read(path)
-  if not xml then UI.notice(why, true); return end
-  local doc = Imp.parse(xml)
-  if #doc.tracks == 0 or #doc.mbars == 0 then UI.notice("No tracks or bars in this tab.", true); return end
+  local doc, why = GP.read(path)
+  if not doc then UI.notice(why, true); return end
   local mb = doc.mbars[1]
   R.import = { doc = doc, name = path:match("([^/\\]*)$"), track = Imp.bass_track(doc), q0 = 0, matched = true,
     bar = 4 * mb.num / mb.den, open = true }
@@ -4122,7 +4003,7 @@ function UI.draw_import()
   if not im then return end
   if im.open then ImGui.OpenPopup(ctx, "Import tab##import"); im.open = false end
   if im.list_of ~= im.track then -- (the notes of the chosen track, again when the track changes)
-    im.list, im.list_of = Imp.notes(im.doc, im.track), im.track
+    im.list, im.list_of = GP.notes(im.doc, im.track), im.track
     im.q0, im.matched = Imp.start(im.list)
     im.lbl = UI.import_label(im.q0)
     local tun = Imp.tuning(im.doc.tracks[im.track].open)

@@ -46,6 +46,27 @@
   1 undo step; the list moves with `List.shift`). Manual test 27 FAILED ("moved to the wrong place"): cause found
   and fixed (the first note was found in the bleed before the bass; lessons entry), deployed, 73 tests pass. NOT
   yet retested by the user: Open now 27.
+- Segment 1a built 23 November 2026 on the branch `script/tab-viewer` (from `script/note-detective`): Tab Viewer 1.0
+  (new script, not released: Open tab..., the track list, the Tabs copy), the shared reader `Tab Viewer\Guitar Pro.lua`
+  (own zip / deflate unpacker; Note Detective's import uses it, no PowerShell any more), `Uses` in
+  `tools\scripts.psd1` (deploy and release copy the shared file). Checks and tests pass (Tab Viewer 12, Note
+  Detective 72); deployed; manual test PASSED (the user, 23 November 2026); NOT COMMITTED (the user: commit later).
+- Segment 1c built 23 November 2026: the shared reader reads .gp5, .gp4, .gp3 (`GP.read_old`); Tab Viewer and Note
+  Detective's import take them. Checked on the user's real .gp5 (to the last byte); .gp3 / .gp4 only with made-up
+  files. Tests pass (Tab Viewer 13, Note Detective 72); deployed; manual test PASSED (the user, 23 November 2026);
+  NOT COMMITTED. A real .gp3 / .gp4 file is still unchecked.
+- Segment 1b built 23 November 2026: .gpx (Guitar Pro 6, packed and not). Only made-up files: no real .gpx on this
+  computer. Tests pass (Tab Viewer 14, Note Detective 72); deployed; NOT COMMITTED. Step 1 is complete.
+- Debug round (debug-time) 23 November 2026 on step 1: 3 bugs with damaged files fixed (a .gpx sector list that
+  points back looped forever; a damaged .gp zip index stopped the script with a Lua error; a negative text length in
+  a .gp3/4/5 moved the reader back), 2 tests added (Tab Viewer 15). Simplify (4 agents) the same day: 1 byte-to-text
+  helper, 1 track-kind name match, padding instead of the "end + 3" rule, the unzip without a copy, a repeated bar
+  read once, Tabs.show / Tabs.keep(from) (no 2nd read after a save), Util.read_all / write_all as in FX Link, the Note
+  Detective tests hand over the shared reader, release.ps1 copies like deploy.ps1. Skipped: 1 shape for the bars of
+  all formats (more parse time at open), reading @provides instead of `Uses`, a cache for project tab switches.
+  Committed 23 November 2026 (2 commits). The open question of the round: Open now 29. Next (ask
+  first): step 2 (the window: List and Tab tabs, the tab drawing, the track dropdown, the tab on the bars; with the
+  new-feature skill and a mockup).
 - Step 0 done 23 November 2026: Note Detective committed as it was (the user's choice, without the debug-time round
   first: it is the rollback point before the Guitar Pro work). The debug-time round comes before its release.
 - 23 November 2026, new direction (decided by the user): the Guitar Pro tab becomes the main feature, the detection
@@ -184,6 +205,11 @@ skipped or failed test stays here; remove it when it passed.
 27. Manual test (Note Detective, Set tempo aligns, 23 November 2026): Find tempo, Set tempo: the notice says how far
     the audio moved; the first bass note sits on a beat (zoom in); the other stems moved with it, other songs and a
     long backing track did not; one Ctrl+Z takes back the grid and the move. With a list: it moved too. In the tab: select the 2nd piece of a split note, press J.
+28. Manual test (Tab Viewer, real files that were never checked, 23 November 2026): when you get a .gpx, .gp4 or
+    .gp3 tab, open it in Tab Viewer: the tracks, tunings and the line below right? (Only made-up files were tested.)
+29. Question (Tab Viewer, debug round 23 November 2026): after the 1st save (or Save as) of a project with a tab,
+    REAPER shows the project as changed again (the tab's new place in the Tabs folder is project data). Keep it, or
+    write it without marking the project changed (then it is saved with the next save)?
 
 ## Later
 

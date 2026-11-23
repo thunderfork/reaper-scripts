@@ -24,6 +24,7 @@ PLAN.md: no new feature until they are tested (global rule); say so and offer th
     A preparation tool (SFX Drop/CLAUDE.md).
   - Note Detective: the toolbar, the Key and Markers dropdowns, the list, the foot (Join ... Undo, Write, Finish...),
     the gear menu (Look, Window). A preparation tool (Note Detective/CLAUDE.md).
+  - Tab Viewer: the toolbar (Open tab...), the track list, the gear menu (Look, Window) (Tab Viewer/CLAUDE.md).
 - Its on/off switch and default (every optional feature can be turned off).
 - What is saved: in the project (P) or on this computer (S); the "?" text says where. A new key: ask first.
 - The special states: playing, paused, stopped, an empty list or project; Chart Cue: locked, performance mode,
