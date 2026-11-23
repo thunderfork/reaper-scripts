@@ -12,5 +12,6 @@
     @{ Name = "Session Prep"; Test = "sessionprep.lua"; Result = "result_sessionprep.txt"; Tag = "sessionprep-v"; Released = $true }
     @{ Name = "SFX Drop";     Test = "sfxdrop.lua";     Result = "result_sfxdrop.txt";     Tag = "sfxdrop-v";     Released = $false }
     @{ Name = "Mono Merge";   Test = "monomerge.lua";   Result = "result_monomerge.txt";   Tag = "monomerge-v";   Released = $true }
+    @{ Name = "Note Detective"; Test = "notedetective.lua"; Result = "result_notedetective.txt"; Tag = "notedetective-v"; Released = $false }
   )
 }

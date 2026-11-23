@@ -22,7 +22,7 @@ if (-not $luac) { $luac = Join-Path $env:LOCALAPPDATA "Programs\Lua\bin\luac.exe
 if (-not (Test-Path $luac)) { Write-Host "luac.exe not found. Install Lua 5.4: winget install DEVCOM.Lua" -ForegroundColor Red; exit 2 }
 
 # globals that are allowed: standard Lua and REAPER
-$known = @('reaper', 'string', 'math', 'table', 'utf8', 'io', 'os', 'package', 'ipairs', 'pairs',
+$known = @('reaper', 'string', 'math', 'table', 'utf8', 'io', 'os', 'package', 'coroutine', 'ipairs', 'pairs',
   'tostring', 'tonumber', 'type', 'pcall', 'xpcall', 'setmetatable', 'getmetatable', 'dofile',
   'next', 'select', 'error', 'print', 'assert', 'rawget', 'rawset', 'require', '_G')
 

@@ -14,6 +14,8 @@ FX Link.lua UI.push_style StyleVar 2
 MIDI Pilot.lua UI.draw_scene_list ID -1
 MIDI Pilot.lua UI.push_style StyleColor 1
 MIDI Pilot.lua UI.push_style StyleVar 2
+Note Detective.lua UI.push_style StyleColor 1
+Note Detective.lua UI.push_style StyleVar 2
 Segue.lua UI.push_style StyleColor 1
 Segue.lua UI.push_style StyleVar 2
 Session Prep.lua UI.push_style StyleColor 1
