@@ -54,6 +54,8 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
 - Prefer 1 session per topic (a feature or a release).
 - A change with many parts or many tests: build it in segments and ask me before each segment (decided
   23 November 2026, after the Note Detective detection change was too large at once).
+- The limit of open manual tests (more than 3: no new feature) counts only the tests of the script being developed
+  (decided 23 November 2026).
 - Code checker: `.\tools\check.ps1` (Lua Language Server, globals, ImGui balance).
 - The checks of the global rules, in this project: `debug-time` is the `debug-round` (bugs); "before a build" means
   before a deploy that I will test in REAPER; the checks before a push are in the `release` skill (they replace
