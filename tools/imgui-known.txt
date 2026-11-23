@@ -22,3 +22,5 @@ Session Prep.lua UI.push_style StyleColor 1
 Session Prep.lua UI.push_style StyleVar 2
 SFX Drop.lua UI.push_style StyleColor 1
 SFX Drop.lua UI.push_style StyleVar 2
+Tab Viewer.lua UI.push_style StyleColor 1
+Tab Viewer.lua UI.push_style StyleVar 2

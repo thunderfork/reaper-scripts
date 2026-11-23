@@ -22,7 +22,8 @@ foreach ($name in $Script) {
   $stage = Join-Path $out "$name $ver"
   if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
   New-Item -ItemType Directory -Force $stage | Out-Null
-  Copy-Item (Join-Path $src "*.lua") $stage
+  Copy-Item (Join-Path $src "$name*.lua") $stage # (the scripts of the folder; shared files: Uses, as deploy.ps1)
+  foreach ($u in @(($list | Where-Object { $_.Name -eq $name }).Uses)) { if ($u) { Copy-Item (Join-Path $root $u) $stage } } # (shared files)
   Copy-Item (Join-Path $root "README.md"), (Join-Path $root "LICENSE") $stage
 
   $zip = Join-Path $out ("{0}-{1}.zip" -f ($name -replace ' ', '-'), $ver)

@@ -23,7 +23,8 @@ Get-ChildItem -Path $srcdir -Filter "Chart Cue*.lua" | ForEach-Object {
 $done += "Chart Cue ($n)"
 
 # the other scripts (tools\scripts.psd1): the ReaPack folder when installed with ReaPack, else Scripts\<name>
-foreach ($s in ((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts | ForEach-Object { $_.Name } | Where-Object { $_ -ne "Chart Cue" })) {
+foreach ($entry in ((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts | Where-Object { $_.Name -ne "Chart Cue" })) {
+  $s = $entry.Name
   $setsrc = Join-Path $root $s
   if (-not (Test-Path $setsrc)) { continue }
   $base = Join-Path $env:APPDATA "REAPER\Scripts"
@@ -37,6 +38,12 @@ foreach ($s in ((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd
   Get-ChildItem -Path $setsrc -Filter "$s*.lua" | ForEach-Object {
     Copy-Item $_.FullName (Join-Path $dest $_.Name) -Force
     if ($Full) { Write-Host "Deployed $($_.Name) to $dest" }
+    $n++
+  }
+  foreach ($u in @($entry.Uses)) { # the shared files it needs next to it (tools\scripts.psd1: Uses)
+    if (-not $u) { continue }
+    Copy-Item (Join-Path $root $u) (Join-Path $dest (Split-Path $u -Leaf)) -Force
+    if ($Full) { Write-Host "Deployed $u to $dest" }
     $n++
   }
   $done += "$s ($n)"
