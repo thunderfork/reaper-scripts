@@ -211,7 +211,7 @@ local function old_file(v)
     if o.tup then i32(o.tup) end
     if o.chord then
       if v >= 500 then zeros(17); bstr("D5", 21); zeros(4); i32(0); for _ = 1, 7 do i32(-1) end zeros(32)
-      elseif v >= 400 then u8(1); zeros(106) -- (the new chord format)
+      elseif v >= 400 then u8(1); zeros(16); bstr("D5", 22); zeros(67) -- (the new chord format: the name at 16)
       else u8(0); ibstr("D5"); i32(1); for _ = 1, 6 do i32(-1) end end -- (the old one)
     end
     if o.text then ibstr(o.text) end
@@ -307,6 +307,65 @@ test("older files (.gp3, .gp4, .gp5 of Guitar Pro 5.0 and 5.1): tracks, bars, re
     local d2, w2 = GP.read(path)
     eq(d2, nil, v .. ": cut short"); ok(w2:find("damaged", 1, true), v .. ": " .. tostring(w2))
   end
+end)
+
+test("Tempo and bars from the tab: the tempo changes and time signatures in the order they play, the markers", function()
+  local Beat = C.TP.Beat
+  local path = tmp .. "\\src\\old510.gp5"
+  write(path, old_file(510))
+  local doc = GP.read(path)
+  local tl = GP.timeline(doc)
+  local t = {}
+  for k, b in ipairs(tl) do
+    local tp = {}
+    for i, x in ipairs(b.tempos) do tp[i] = string.format("%g@%g", x.q, x.bpm) end
+    t[k] = string.format("%g %d/%d [%s]", b.len, b.num, b.den, table.concat(tp, " "))
+  end
+  eq(table.concat(t, " | "), "4 4/4 [0@100] | 4 4/4 [2@120] | 4 4/4 [] | 4 4/4 [] | 3 3/4 []",
+    "the first tempo, the change in bar 2 (the 2nd played bar only), 3/4 at the end")
+  local m, t_after, nbars = Beat.tab_plan(tl, 10)
+  t = {}
+  for k, x in ipairs(m) do t[k] = string.format("%.2f %g %d/%d bar %d beat %g", x.t, x.bpm, x.num, x.den, x.bar, x.beat) end
+  eq(table.concat(t, " | "), "10.00 100 4/4 bar 0 beat 0 | 13.60 120 0/4 bar 1 beat 2 | 18.60 120 3/4 bar 4 beat 0",
+    "a marker only where the tempo or the time signature changes")
+  near(t_after, 20.1, 1e-6, "the end"); eq(nbars, 5)
+  near(Beat.tab_time(tl, 6), 3.6, 1e-6, "a place after the tempo change")
+  near(Beat.tab_time(tl, 7), 4.1, 1e-6, "1 beat later at the new tempo")
+  near(Beat.tab_time(tl, 1), 0.6, 1e-6, "in bar 1")
+  -- a .gp file: the tempo at its bar (master bar 3: 140; bar 2 repeats, so it is the 4th bar that plays)
+  tl = GP.timeline(GP.read(src))
+  eq(#tl, 4); eq(tl[1].tempos[1].bpm, 120, ".gp: bar 1"); eq(#tl[3].tempos, 0, ".gp: the repeat")
+  eq(tl[4].tempos[1] and tl[4].tempos[1].bpm, 140, ".gp: master bar 3")
+end)
+
+test("Set tempo from a track: the tab's empty bars before its first note come before bar 1 of the song", function()
+  local keep = R.tab
+  R.tab = { bars = { { notes = {} }, { notes = {} }, { notes = {} }, { notes = {} }, { notes = {} },
+    { notes = { { q = 0 } } } } } -- (5 empty bars, the first note in bar 6)
+  eq(Tabs.start_bar(9, false), 5, "bar 1 of the song is bar 10: the tab starts 5 bars earlier, on bar 5")
+  eq(Tabs.start_bar(9, true), 10, "from the tab: bar 1 is already the tab's bar 1")
+  eq(Tabs.start_bar(2, false), 1, "no room before the song: bar 1 (the notice says why)")
+  R.tab = keep
+end)
+
+test("Set tempo from the tab: REAPER's tempo map (the change inside a bar, 3/4), 1 undo step", function()
+  local proj = R.proj
+  local path = tmp .. "\\src\\old510.gp5"
+  local tl = GP.timeline(GP.read(path))
+  local keep = R.tempo
+  R.tempo = { song = { t0 = 0, t1 = 30 }, short = {}, tab = tl, beats = { 2 }, i0 = 1, bpm = 100 }
+  C.Tempo.write("Tab Viewer test: set the tempo")
+  near(r.TimeMap2_QNToTime(proj, r.TimeMap2_timeToQN(proj, 2)), 2, 1e-3, "bar 1 at 2 s")
+  local function bpm_at(t) return 60 / (r.TimeMap2_QNToTime(proj, r.TimeMap2_timeToQN(proj, t) + 0.01) - t) * 0.01 end
+  near(bpm_at(3), 100, 0.01, "bar 1: 100")
+  near(bpm_at(5.7), 120, 0.01, "after the change in bar 2: 120")
+  local num = r.TimeMap_GetTimeSigAtTime(proj, 10.7)
+  eq(num, 3, "the last bar in 3/4")
+  local _, m1 = r.TimeMap2_timeToBeats(proj, 2.001)
+  local _, m5 = r.TimeMap2_timeToBeats(proj, 10.601)
+  eq(m5 - m1, 4, "the 3/4 bar is the 5th bar from bar 1")
+  r.Undo_DoUndo2(proj)
+  R.tempo = keep
 end)
 
 -- A made-up .gpx (Guitar Pro 6) file system: sector 0 empty (4096 bytes), then for each file its entry sector (type 2,
@@ -449,6 +508,42 @@ end)
 
 -- TAB VIEWER -------------------------------------------------------------
 
+test("chord names: from the notes (root, kind, a slash bass), from the file (.gp diagrams, .gp3/4/5), only where they change", function()
+  local function name(t) return tostring(GP.chord_name(t)) end
+  eq(name({ 45, 52, 57, 60, 64 }), "Am", "A minor, open")
+  eq(name({ 40, 47, 52, 56, 59, 64 }), "E", "E major")
+  eq(name({ 43, 47, 50, 53 }), "G7"); eq(name({ 38, 45, 50 }), "D5", "a power chord")
+  eq(name({ 52, 55, 60 }), "C/E", "the lowest note is not the root")
+  eq(name({ 50, 55, 57 }), "Dsus4"); eq(name({ 48, 52, 55, 59 }), "Cmaj7")
+  eq(name({ 40 }), "nil", "1 note"); eq(name({ 40, 52 }), "nil", "an octave"); eq(name({ 40, 41 }), "nil", "not a chord")
+  -- a .gp: a chord diagram of the bass track, named on its first beat
+  local x = D.GPIF:gsub('<Track id="0">', '<Track id="0"><Properties><Property name="DiagramCollection"><Items><Item id="0" name="Am7"></Item></Items></Property></Properties>', 1)
+  x = x:gsub('<Beat id="0">', '<Beat id="0"><Chord>0</Chord>', 1)
+  local tab = GP.tab(GP.parse(x), 1)
+  eq(tab.bars[1].chords[1] and tab.bars[1].chords[1].name, "Am7", ".gp: the file's name"); eq(tab.has_chords, true)
+  eq(GP.tab(GP.parse(D.GPIF), 1).has_chords, nil, "single notes, no names: no chord row")
+  -- held chords get a name, a fast riff (16ths) does not; the same chord again: no 2nd name
+  local function n(pos, len, midi, s) return { pos = pos, len = len, midi = midi, s = s, fret = 0 } end
+  local riff = { tracks = { { open = { 40, 45, 50, 55, 59, 64 } } }, mbars = { { num = 4, den = 4, bars = { "b" } } }, bars = { b = {
+    n(0, 1.5, 45, 2), n(0, 1.5, 52, 3), n(0, 1.5, 57, 4), n(0, 1.5, 60, 5), -- Am, held
+    n(1.5, 0.25, 38, 1), n(1.5, 0.25, 45, 2),                       -- D5, a 16th
+    n(2, 1, 45, 2), n(2, 1, 52, 3), n(2, 1, 57, 4), n(2, 1, 60, 5), -- Am again
+    n(3, 1, 43, 1), n(3, 1, 47, 2), n(3, 1, 50, 3) } } }            -- G, 1 beat
+  local names = {}
+  for _, c in ipairs(GP.tab(riff, 1).bars[1].chords) do names[#names + 1] = c.q .. ":" .. c.name end
+  eq(table.concat(names, " "), "0:Am 3:G")
+  for _, v in ipairs({ 300, 400, 500, 510 }) do
+    local path = tmp .. "\\src\\chords" .. v .. ".gp" .. math.min(5, v // 100)
+    write(path, old_file(v))
+    local doc, why = GP.read(path)
+    ok(doc, v .. ": " .. tostring(why))
+    local t = GP.tab(doc, 1)
+    local all = {}
+    for bi, b in ipairs(t.bars) do for _, c in ipairs(b.chords) do all[#all + 1] = bi .. ":" .. c.name end end
+    eq(table.concat(all, " "), "1:D5", v .. ": the name of the file, once (the repeat plays the same chord)")
+  end
+end)
+
 test("the track list: instrument and strings, tuning; the line below it", function()
   local rows, info = Tabs.rows(GP.read(src))
   local t = {}
@@ -464,17 +559,17 @@ test("open a tab in a saved project: a copy in its Tabs folder, the project data
   eq(R.projfn, proj_a, "the test project")
   local done, copied = Tabs.open(src)
   eq(done, true); eq(copied, true)
-  eq(C.get_P().file, "Tabs/Song.gp", "relative to the project")
+  eq(Tabs.cur().file, "Tabs/Song.gp", "relative to the project")
   ok(exists(tmp .. "\\a\\Tabs\\Song.gp"), "the copy")
   eq(#R.rows, 4, "the track list")
   Project.save()
   local _, txt = r.GetProjExtState(0, "Tab Viewer", "cfg")
-  eq(txt, "file=Tabs/Song.gp\n", "the project data")
+  eq(txt, "tab=Tabs/Song.gp\n", "the project data")
   Tabs.open(src)
-  eq(C.get_P().file, "Tabs/Song.gp", "the same tab again: no 2nd copy")
+  eq(Tabs.cur().file, "Tabs/Song.gp", "the same tab again: no 2nd copy")
   ok(not exists(tmp .. "\\a\\Tabs\\Song (2).gp"))
   Tabs.open(tmp .. "\\src2\\Song.gp")
-  eq(C.get_P().file, "Tabs/Song (2).gp", "the same name, another tab: its own copy")
+  eq(Tabs.cur().file, "Tabs/Song (2).gp", "the same name, another tab: its own copy")
   Tabs.open(src)
   Project.save()
 end)
@@ -503,22 +598,22 @@ test("the Track dropdown: its texts, the default track (bass), the choice saved 
   eq(table.concat(t, " | "), "Bass - 4 strings, Standard | Rhythm Guitar - 6 strings, Drop D, capo 2 | Drums - Drums | Keys - Electric Piano")
   eq(Tabs.track(), 1, "the bass first"); ok(R.tab and R.tab.nstr == 4, "its tab")
   Tabs.pick(2)
-  eq(C.get_P().track, 2); eq(R.tab.nstr, 6, "the guitar")
-  eq(Project.serialize(C.get_P()), "file=Tabs/Song.gp\ntrack=2\n")
-  eq(Project.parse("file=Tabs/Song.gp\ntrack=2\n").track, 2, "read back")
+  eq(Tabs.cur().track, 2); eq(R.tab.nstr, 6, "the guitar")
+  eq(Project.serialize(C.get_P()), "tab=Tabs/Song.gp\ntrack=2\n")
+  eq(Project.parse("tab=Tabs/Song.gp\ntrack=2\n").tabs[1].track, 2, "read back")
   Tabs.pick(3)
   eq(R.tab, nil); ok(R.tab_why:find("Drum tracks", 1, true), "drums: the line")
   Tabs.pick(4)
   ok(R.tab_why:find("no tab", 1, true), "keys: no tab")
   Tabs.pick(1)
-  eq(C.get_P().track, nil, "the default again: not saved")
-  eq(Project.serialize(C.get_P()), "file=Tabs/Song.gp\n")
+  eq(Tabs.cur().track, nil, "the default again: not saved")
+  eq(Project.serialize(C.get_P()), "tab=Tabs/Song.gp\n")
   Tabs.pick(2)
   Tabs.open(src)
-  eq(C.get_P().track, nil, "another Open tab: the default track")
-  C.get_P().track = 9
+  eq(Tabs.cur().track, nil, "another Open tab: the default track")
+  Tabs.cur().track = 9
   eq(Tabs.track(), 1, "a saved track that the tab does not have: the default")
-  C.get_P().track = nil
+  Tabs.cur().track = nil
   Project.save()
 end)
 
@@ -540,10 +635,10 @@ end)
 test("bar 1 of the tab = bar N of the song: the times, the play position, the bar numbers, saved; < stops at 1", function()
   Tabs.open(src)
   Tabs.set_bar(3)
-  eq(C.get_P().bar, 3); eq(R.bar_txt, "Bar 1 of the tab = bar 3 of the song")
+  eq(Tabs.cur().bar, 3); eq(R.bar_txt, "Bar 1 of the tab = bar 3 of the song")
   eq(R.tab.bars[1].label .. " " .. R.tab.bars[4].label, "3 6", "the song's bar numbers")
-  eq(Project.serialize(C.get_P()), "file=Tabs/Song.gp\nbar=3\n")
-  eq(Project.parse("file=x.gp\nbar=3\n").bar, 3, "read back")
+  eq(Project.serialize(C.get_P()), "tab=Tabs/Song.gp\nbar=3\n")
+  eq(Project.parse("tab=x.gp\nbar=3\n").tabs[1].bar, 3, "read back")
   -- 120 BPM 4/4: bar 3 starts at 4 s; the tab's bars are 4, 4, 4 and 3 quarter notes (its 3/4 bar fits)
   near(Tabs.time_of(1, 0), 4, 1e-9); near(Tabs.time_of(2, 1), 6.5, 1e-9)
   local bi, q = Tabs.place_of(6.5)
@@ -552,10 +647,10 @@ test("bar 1 of the tab = bar N of the song: the times, the play position, the ba
   eq(bi, 4, "the 3/4 bar (12 quarter notes in)"); near(q, 0.5, 1e-9)
   eq(Tabs.place_of(3.9), nil, "before the tab"); eq(Tabs.place_of(4 + 15 * 0.5), nil, "after it")
   Tabs.set_bar(0)
-  eq(C.get_P().bar, nil, "1 at least, and 1 is not saved"); eq(R.tab.bars[1].label, "1")
+  eq(Tabs.cur().bar, nil, "1 at least, and 1 is not saved"); eq(R.tab.bars[1].label, "1")
   Tabs.set_bar(5)
   Tabs.open(src)
-  eq(C.get_P().bar, nil, "another Open tab: bar 1")
+  eq(Tabs.cur().bar, nil, "another Open tab: bar 1")
   Project.save()
 end)
 
@@ -571,43 +666,137 @@ test("the yellow line when the project's tempo is not the tab's (the tab would d
 end)
 
 test("open a file that can not be read: nothing changes", function()
-  local before = C.get_P().file
+  local before = Tabs.cur().file
   local done, why = Tabs.open(tmp .. "\\src\\damaged.gp")
   eq(done, nil); ok(why and why:find("damaged", 1, true), "why")
-  eq(C.get_P().file, before); eq(#R.rows, 4, "the list of the tab before")
+  eq(Tabs.cur().file, before); eq(#R.rows, 4, "the list of the tab before")
 end)
 
 test("another project: its own tab (none); back: the tab again; a missing tab file", function()
   r.Main_SaveProject(0, false)
   r.Main_openProject("noprompt:" .. proj_b)
   Project.update()
-  eq(C.get_P().file, "", "project b has no tab"); eq(R.rows, nil); eq(R.err, nil)
+  eq(Tabs.cur(), nil, "project b has no tab"); eq(R.rows, nil); eq(R.err, nil)
   r.Main_openProject("noprompt:" .. proj_a)
   Project.update()
-  eq(C.get_P().file, "Tabs/Song.gp", "project a: its tab"); eq(#R.rows, 4)
-  C.get_P().file = "Tabs/gone.gp"
+  eq(Tabs.cur().file, "Tabs/Song.gp", "project a: its tab"); eq(#R.rows, 4)
+  Tabs.cur().file = "Tabs/gone.gp"
   Tabs.load()
   eq(R.rows, nil); ok(R.err and R.err:find("missing", 1, true), "the line in the window: " .. tostring(R.err))
-  C.get_P().file = "Tabs/Song.gp"
+  Tabs.cur().file = "Tabs/Song.gp"
   Tabs.load()
 end)
 
 test("a project that is not saved yet: the copy at the 1st save; Save as: the tab goes with the project", function()
-  local keep_fn, keep_p = R.projfn, C.get_P()
-  C.set_P({ file = "" })
+  local keep_fn, keep_p, keep_cur = R.projfn, C.get_P(), R.cur
+  C.set_P({ tabs = {} })
   R.projfn = "" -- (not saved)
   local done, copied = Tabs.open(src)
   eq(done, true); eq(copied, false, "no project folder yet")
-  eq(C.get_P().file, src, "the full path for now")
+  eq(Tabs.cur().file, src, "the full path for now")
   R.projfn = proj_b -- (the 1st save)
   Tabs.moved("")
-  eq(C.get_P().file, "Tabs/Song.gp"); ok(exists(tmp .. "\\b\\Tabs\\Song.gp"), "the copy at the 1st save")
+  eq(Tabs.cur().file, "Tabs/Song.gp"); ok(exists(tmp .. "\\b\\Tabs\\Song.gp"), "the copy at the 1st save")
   R.projfn = proj_c -- (Save as into another folder)
   Tabs.moved(proj_b)
-  eq(C.get_P().file, "Tabs/Song.gp"); ok(exists(tmp .. "\\c\\Tabs\\Song.gp"), "the copy in the new folder")
+  eq(Tabs.cur().file, "Tabs/Song.gp"); ok(exists(tmp .. "\\c\\Tabs\\Song.gp"), "the copy in the new folder")
   eq(#R.rows, 4, "the list stays")
   R.projfn, R.pdirty = keep_fn, false
-  C.set_P(keep_p)
+  C.set_P(keep_p); R.cur = keep_cur
+  Tabs.relist()
+end)
+
+test("tabs per region: Open tab for the region at the edit cursor, the tab moves with its region, saved", function()
+  local proj = R.proj -- (120 BPM 4/4: a bar is 2 s)
+  local i1 = r.AddProjectMarker2(proj, true, 8, 20, "Song One", -1, 0)   -- (starts on bar 5)
+  local i2 = r.AddProjectMarker2(proj, true, 21, 40, "Song Two", -1, 0)  -- (starts inside bar 11)
+  Tabs.regions()
+  local n0 = #C.get_P().tabs -- (the tab without a region of the tests before)
+  r.SetEditCurPos2(proj, 9, false, false)
+  local done, _, g = Tabs.open(src)
+  eq(done, true); eq(g and g.label, 'Region ' .. i1 .. ' "Song One"', "the region at the edit cursor")
+  eq(#C.get_P().tabs, n0 + 1, "a new tab"); ok(Tabs.cur().rgn, "linked by GUID")
+  near(Tabs.time_of(1, 0), 8, 1e-9, "bar 1 of the tab on the region's start")
+  eq(R.bar_txt, "Bar 1 of the tab = bar 1 of the region")
+  Tabs.set_bar(2)
+  near(Tabs.time_of(1, 0), 10, 1e-9, "bar 2 of the region"); eq(R.tab.bars[1].label, "2", "the region's bar numbers")
+  r.SetEditCurPos2(proj, 22, false, false)
+  Tabs.open(tmp .. "\\src2\\Song.gp")
+  eq(#C.get_P().tabs, n0 + 2, "the 2nd region: its own tab")
+  near(Tabs.time_of(1, 0), 22, 1e-9, "a region inside a bar: the next bar line")
+  local two = R.cur
+  r.SetEditCurPos2(proj, 22, false, false)
+  Tabs.open(src)
+  eq(#C.get_P().tabs, n0 + 2, "Open tab again in the same region: it replaces its tab"); eq(R.cur, two)
+  eq(Tabs.at(9), n0 + 1); eq(Tabs.at(30), two); eq(Tabs.at(1), 1, "outside the regions: the tab without a region")
+  -- the region moves 4 bars later: its tab moves with it
+  r.SetProjectMarker(i1, true, 16, 28, "Song One")
+  Tabs.regions()
+  Tabs.select(n0 + 1)
+  near(Tabs.time_of(1, 0), 18, 1e-9, "bar 2 of the moved region")
+  local txt = Project.serialize(C.get_P())
+  ok(txt:find("region={", 1, true) and txt:find("bar=2", 1, true), txt)
+  local back = Project.parse(txt)
+  eq(#back.tabs, n0 + 2); eq(back.tabs[n0 + 1].rgn, Tabs.cur().rgn, "read back"); eq(back.tabs[n0 + 1].bar, 2)
+  ok(R.tab_labels[n0 + 1].txt:find('Song One', 1, true), R.tab_labels[n0 + 1].txt)
+  -- the region is deleted: the tab stays, "its region is gone", from the song's bar 2
+  r.DeleteProjectMarker(proj, i1, true)
+  Tabs.regions()
+  ok(R.tab_labels[n0 + 1].txt:find("its region is gone", 1, true), R.tab_labels[n0 + 1].txt)
+  near(Tabs.time_of(1, 0), 2, 1e-9)
+  Tabs.set_region(R.rgns.list[1])
+  eq(Tabs.cur().bar, nil, "another region: from its first bar"); near(Tabs.time_of(1, 0), 22, 1e-9)
+  Tabs.remove()
+  eq(#C.get_P().tabs, n0 + 1, "removed"); ok(Tabs.cur(), "another tab in the window")
+  Tabs.select(n0 + 1); Tabs.remove()
+  eq(#C.get_P().tabs, n0)
+  r.DeleteProjectMarker(proj, i2, true)
+  Tabs.regions(); Tabs.select(1)
+  r.SetEditCurPos2(proj, 0, false, false)
+  Project.save()
+end)
+
+test("tabs per region: the window follows the play or edit cursor; Find tempo takes the audio of the region", function()
+  local proj = R.proj
+  local i1 = r.AddProjectMarker2(proj, true, 8, 20, "Song One", -1, 0)
+  local i2 = r.AddProjectMarker2(proj, true, 24, 40, "Song Two", -1, 0)
+  local i3 = r.AddProjectMarker2(proj, true, 44, 50, "No Tab", -1, 0)
+  Tabs.regions()
+  local whole = R.cur -- (the tab without a region)
+  r.SetEditCurPos2(proj, 9, false, false); Tabs.open(src); local one = R.cur
+  r.SetEditCurPos2(proj, 25, false, false); Tabs.open(src); local two = R.cur
+  R.follow_last = nil
+  Tabs.follow(9); eq(R.cur, one, "in Song One")
+  Tabs.follow(30); eq(R.cur, two, "in Song Two")
+  Tabs.select(one)
+  Tabs.follow(31); eq(R.cur, one, "a choice in the dropdown stays while the place has the same tab")
+  Tabs.follow(21); eq(R.cur, whole, "between the regions: the tab without a region")
+  Tabs.follow(45); eq(R.cur, nil, "a region without a tab: none"); eq(R.rows, nil)
+  eq(Tabs.at(45), nil, "not the tab without a region")
+  Tabs.follow(30); eq(R.cur, two)
+  -- the song of Find tempo: the longest audio item in the region of the tab (not a longer one elsewhere)
+  local tr = r.GetTrack(proj, 0) or (r.InsertTrackAtIndex(0, false) or r.GetTrack(proj, 0))
+  local function audio_item(pos, len)
+    local it = r.AddMediaItemToTrack(tr)
+    r.SetMediaItemInfo_Value(it, "D_POSITION", pos); r.SetMediaItemInfo_Value(it, "D_LENGTH", len)
+    local tk = r.AddTakeToMediaItem(it)
+    r.SetMediaItemTake_Source(tk, r.PCM_Source_CreateFromType("WAVE"))
+    return it
+  end
+  local long = audio_item(8, 12)    -- (in Song One)
+  local mine = audio_item(25, 10)   -- (in Song Two)
+  r.SelectAllMediaItems(proj, false)
+  eq(Tabs.song_item(), mine, "Song Two: its own item")
+  Tabs.select(one); eq(Tabs.song_item(), long, "Song One: its own item")
+  Tabs.select(whole); eq(Tabs.song_item(), long, "no region: the longest of the project")
+  Tabs.follow(45)
+  r.DeleteTrackMediaItem(tr, long); r.DeleteTrackMediaItem(tr, mine)
+  -- clean up: the 2 tabs and the 3 regions go
+  for _, i in ipairs({ two, one }) do Tabs.select(i); Tabs.remove() end
+  for _, i in ipairs({ i1, i2, i3 }) do r.DeleteProjectMarker(proj, i, true) end
+  Tabs.regions(); Tabs.select(whole); R.follow_last = nil
+  r.SetEditCurPos2(proj, 0, false, false)
+  Project.save()
 end)
 
 for _, t in ipairs(tests) do

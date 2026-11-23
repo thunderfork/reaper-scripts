@@ -255,6 +255,51 @@ function Beat.plan(beats, i0, short, style, t_end)
   return m, t, bar
 end
 
+-- The tempo markers of a tab (bars: GP.timeline) with its bar 1 at t0, the same shape as Beat.plan: { { t, bpm, num
+-- (0: the same as before), den, bar (0 = bar 1), beat (in the bar, in beats of den; a change inside a bar) } }, the
+-- time after the last bar, the number of bars. A marker only where the tempo or the time signature changes.
+function Beat.tab_plan(bars, t0)
+  local m, t, bpm, num, den = {}, t0, nil, 0, 0
+  for k, b in ipairs(bars) do
+    local q, sig = 0, b.num ~= num or b.den ~= den
+    local function upto(q1) -- (the time of the bar from q to q1 at the tempo of now)
+      t, q = t + (q1 - q) * 60 / bpm, q1
+    end
+    local first = b.tempos[1] and b.tempos[1].q < 1e-6
+    if sig or first then
+      if first then bpm = b.tempos[1].bpm end
+      m[#m + 1] = { t = t, bpm = bpm, num = sig and b.num or 0, den = b.den, bar = k - 1, beat = 0 }
+    end
+    for i, x in ipairs(b.tempos) do
+      if not (i == 1 and first) and x.q < b.len - 1e-9 then
+        upto(x.q)
+        bpm = x.bpm
+        m[#m + 1] = { t = t, bpm = bpm, num = 0, den = b.den, bar = k - 1, beat = x.q * b.den / 4 }
+      end
+    end
+    upto(b.len)
+    num, den = b.num, b.den
+  end
+  return m, t, #bars
+end
+-- The time from bar 1 of a tab to the quarter note qn of it (bars: GP.timeline).
+function Beat.tab_time(bars, qn)
+  local m = Beat.tab_plan(bars, 0)
+  local q0, k, t = 0, 1, 0
+  for _, b in ipairs(bars) do
+    if q0 + b.len > qn then break end
+    q0, k = q0 + b.len, k + 1
+  end
+  for _, x in ipairs(m) do -- (the last marker before the place: its time and tempo go on to the place)
+    local xq = 0
+    for j = 1, x.bar do xq = xq + bars[j].len end
+    xq = xq + x.beat * 4 / x.den
+    if xq > qn + 1e-9 then break end
+    t = x.t + (qn - xq) * 60 / x.bpm
+  end
+  return t
+end
+
 -- A bar between 2 fixed times, at about this beat length: its beats and its tempo.
 function Beat.fit_bar(t0, t1, beat)
   local n = math.max(1, math.floor((t1 - t0) / beat + 0.5))
@@ -380,6 +425,46 @@ function TP.new(host)
     if tm and tm.run then TP.close(tm.run.rd); tm.run = nil end
   end
 
+  -- "The tab (its tempo)": no listening; the tempo, its changes and the time signatures of the tab (bars:
+  -- GP.timeline). Bar 1 goes where the first note of the tab (qn: quarter notes from its start) meets the first sound
+  -- of the song. Bar 1 (by beats), Play with click and Set tempo work as after Find tempo.
+  function Tempo.from_tab(bars, qn)
+    local song, t0, t1 = host.song()
+    if not song then host.notice(t0, true); return end
+    if not bars[1] then return end
+    Tempo.untry()
+    Tempo.cancel()
+    local first = TP.first_sound_of(song) or t0
+    local bar1 = first - Beat.tab_time(bars, qn or 0)
+    local beat = 60 / bars[1].tempos[1].bpm
+    while bar1 < 0 do bar1 = bar1 + beat end
+    local _, guid = r.GetSetMediaItemInfo_String(song, "GUID", "", false)
+    local beats, i0 = {}, 1
+    for k = -32, 64 do -- (beats at the first tempo around bar 1: the < and > of Bar 1 move it by 1 of them)
+      local t = bar1 + k * beat
+      if t >= 0 then
+        beats[#beats + 1] = t
+        if k == 0 then i0 = #beats end
+      end
+    end
+    local _, t_after = Beat.tab_plan(bars, bar1)
+    R.tempo = { song = { guid = guid, t0 = t0, t1 = math.max(t1, t_after) }, short = {}, tab = bars, beats = beats, i0 = i0,
+      bpm = bars[1].tempos[1].bpm, steady = true, style = "tab" }
+    Tempo.labels()
+    host.notice(string.format("Tempo of the tab: %s. Check bar 1 with Play with click, then click Set tempo.", R.tempo.lbl_bpm))
+  end
+  -- The tempo markers that Set tempo writes: Beat.plan, or Beat.tab_plan from the tab. Also the tempo before bar 1.
+  function Tempo.plan()
+    local tm = R.tempo
+    if tm.tab then
+      local m, t_after, nbars = Beat.tab_plan(tm.tab, tm.beats[tm.i0])
+      return m, t_after, nbars, m[1].bpm
+    end
+    local m, t_after, nbars = Beat.plan(tm.beats, tm.i0, tm.short, tm.style, tm.song.t1)
+    local _, p = Beat.fit(tm.beats, tm.i0)
+    return m, t_after, nbars, 60 / p
+  end
+
   -- The found beats (s from the read start); bar 1, the short bars and the style start again.
   function Tempo.set_beats(bpm, rel)
     local tm = R.tempo
@@ -437,6 +522,15 @@ function TP.new(host)
   -- The texts of the section (made after a change, not every frame).
   function Tempo.labels()
     local tm = R.tempo
+    tm.lbl_bar1 = TP.time(tm.beats[tm.i0])
+    if tm.tab then
+      local n = 0
+      for _, b in ipairs(tm.tab) do n = n + #b.tempos end
+      tm.lbl_bpm = string.format("%.4g BPM", tm.bpm)
+      tm.lbl_drift = n > 1 and string.format("%d tempo changes in the tab", n - 1) or "1 tempo"
+      tm.short_list = {}
+      return
+    end
     local _, p = Beat.fit(tm.beats, tm.i0)
     tm.lbl_bpm = string.format("%.1f BPM", 60 / p)
     local m = Beat.plan(tm.beats, tm.i0, tm.short, "follow", tm.song.t1)
@@ -445,7 +539,6 @@ function TP.new(host)
     table.sort(bpms)
     local lo, hi = bpms[math.max(1, math.floor(0.1 * #bpms))], bpms[math.max(1, math.ceil(0.9 * #bpms))]
     tm.lbl_drift = tm.steady and "steady" or string.format("drifts %.0f-%.0f", lo, hi)
-    tm.lbl_bar1 = TP.time(tm.beats[tm.i0])
     tm.short_list = {}
     for k, b in ipairs(Beat.bars(#tm.beats, tm.i0, tm.short)) do
       if b.n == 3 then
@@ -531,8 +624,8 @@ function TP.new(host)
         r.DeleteTempoTimeSigMarker(proj, k)
       end
     end
-    local function put(meas, b, num, den)
-      r.SetTempoTimeSigMarker(proj, -1, -1, meas, 0, b, num, num > 0 and den or 0, false)
+    local function put(meas, b, num, den, beat)
+      r.SetTempoTimeSigMarker(proj, -1, -1, meas, beat or 0, b, num, num > 0 and den or 0, false)
     end
     local m0 = mb -- (the measure of the first bar line of the song's tempo)
     if t_start - tb > 0.0625 then -- (closer: that bar line is the old one)
@@ -542,7 +635,7 @@ function TP.new(host)
     end
     if back > 0 then put(m0, 60 / beat0, 4, 4) end -- (the bars before bar 1: the song tempo)
     m0 = m0 + back -- (the measure of bar 1)
-    for _, x in ipairs(m) do put(m0 + x.bar, x.bpm, x.num, 4) end
+    for _, x in ipairs(m) do put(m0 + x.bar, x.bpm, x.num, x.den or 4, x.beat) end
     local n, b = Beat.fit_bar(t_after, te, beat1)
     put(m0 + nbars, b, n, 4)
     if not (later[1] and math.abs(later[1].t - te) < 1e-4) then put(m0 + nbars + 1, bpm_e, num_e, den_e) end
@@ -559,14 +652,14 @@ function TP.new(host)
   -- Tempo.align (s; nil: no first note found).
   function Tempo.write(undo_name, align)
     local tm = R.tempo
-    local m, t_after, nbars = Beat.plan(tm.beats, tm.i0, tm.short, tm.style, tm.song.t1)
+    local m, t_after, nbars, bpm = Tempo.plan()
     r.Undo_BeginBlock2(R.proj)
     r.PreventUIRefresh(1)
     local h = Tempo.hold()
-    local _, p = Beat.fit(tm.beats, tm.i0)
-    Tempo.map(m, t_after, nbars, tm.song.t0, 60 / p)
+    Tempo.map(m, t_after, nbars, tm.song.t0, bpm)
     Tempo.release(h)
-    local d = align and Tempo.align() or nil
+    -- (from the tab: bar 1 is already where its first note meets the song; a note off the beat must stay there)
+    local d = align and (tm.tab and 0 or Tempo.align()) or nil
     r.PreventUIRefresh(-1)
     r.UpdateTimeline()
     r.Undo_EndBlock2(R.proj, undo_name, -1)

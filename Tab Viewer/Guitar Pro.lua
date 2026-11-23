@@ -315,7 +315,9 @@ end
 -- The parts of a score (the text of score.gpif): { tracks = { { name, kind (GP.kind), inst (the instrument name),
 -- open = { MIDI from the lowest string } (none for drums), capo } }, tempo (the first, BPM), tempos (how many),
 -- mbars = { { num, den, bars = { the bar of each track }, rstart, rend, count, alt = { [pass] = true } } }, and the
--- tables bars, voices, beats, notes, rhythms (by id) }.
+-- tables bars, voices, beats, notes, rhythms (by id) }; tmap = { { bar (its master bar), frac (how far into the bar,
+-- 0-1) or q (quarter notes into it: the older files), bpm (quarter notes) } }: the tempo changes (GP.timeline).
+local TEMPO_UNIT = { 0.5, 1, 1.5, 2, 3 }
 function GP.parse(xml)
   local function tbl(tag)
     local t = {}
@@ -331,14 +333,25 @@ function GP.parse(xml)
     if kind ~= "drums" then
       for p in (body:match('<Property name="Tuning">%s*<Pitches>([%d%s]+)</Pitches>') or ""):gmatch("%d+") do open[#open + 1] = tonumber(p) end
     end
+    local diag = {} -- (the chord diagrams of the track: their names, by id; a beat names its chord by id)
+    for id, nm in body:gmatch('<Item id="(%d+)" name="([^"]*)"') do diag[id] = nm end
     doc.tracks[#doc.tracks + 1] = { name = body:match("<Name><!%[CDATA%[(.-)%]%]></Name>") or "Track", kind = kind,
-      inst = inst:match("<Name>(.-)</Name>") or "", open = open,
+      inst = inst:match("<Name>(.-)</Name>") or "", open = open, diag = diag,
       capo = tonumber(body:match('<Property name="CapoFret">%s*<Fret>(%d+)</Fret>') or "") or 0 }
   end
+  doc.tmap = {}
   for body in (xml:match("<MasterTrack>(.-)</MasterTrack>") or ""):gmatch("<Automation>(.-)</Automation>") do
     if body:match("<Type>(.-)</Type>") == "Tempo" then
       doc.tempos = doc.tempos + 1
-      if doc.tempos == 1 then doc.tempo = tonumber(body:match("<Value>%s*([%d%.]+)") or "") end
+      local v, unit = body:match("<Value>%s*([%d%.]+)%s*(%d*)")
+      local bpm = tonumber(v or "")
+      if doc.tempos == 1 then doc.tempo = bpm end
+      -- the beat of the tempo: 1 an 8th, 2 a quarter (the usual), 3 a dotted quarter, 4 a half, 5 a dotted half
+      if bpm then
+        bpm = bpm * (TEMPO_UNIT[tonumber(unit) or 2] or 1)
+        doc.tmap[#doc.tmap + 1] = { bar = (tonumber(body:match("<Bar>(%d+)</Bar>") or "") or 0) + 1,
+          frac = tonumber(body:match("<Position>([%d%.]+)</Position>") or "") or 0, bpm = bpm }
+      end
     end
   end
   for body in xml:gmatch("<MasterBar>(.-)</MasterBar>") do
@@ -424,7 +437,8 @@ function GP.read_old(data)
   local major, minor = head:match("GUITAR PRO v?L?(%d)%.(%d%d)")
   local v = major and tonumber(major) * 100 + tonumber(minor)
   if not v or v < 300 or v > 510 then return nil, "This Guitar Pro version can not be read (" .. head .. ")." end
-  local doc = { tracks = {}, mbars = {}, bars = {}, tempos = 1 }
+  local doc = { tracks = {}, mbars = {}, bars = {}, tempos = 1, tmap = {} }
+  local here = { k = 1, pos = 0 } -- (the bar and the place in it of the beat that is read: a tempo change there)
 
   -- the song: texts, lyrics, page setup, tempo, key, the 64 MIDI channels
   local function info()
@@ -537,14 +551,20 @@ function GP.read_old(data)
 
   -- the notes, bar after bar, each bar: track after track
   local function bend() skip(5); skip(count(i32(), 100) * 9) end -- (type, value; the points: position, value, vibrato)
+  -- A chord diagram: its name ("" none). Guitar Pro 5: 107 bytes, the name at 17; the new format of 3 and 4 (after
+  -- its first byte 1): 124 / 106 bytes, the name at 25 / 16; the old format: name, first fret, 6 frets.
   local function chord()
-    if v >= 500 then skip(107); return end
-    if u8() == 0 then -- (the old format: name, first fret, 6 frets)
-      ibstr()
+    local at, name = p, nil
+    if v >= 500 then skip(17); name = bstr(21); p = at; skip(107); return name end
+    if u8() == 0 then
+      name = ibstr()
       if i32() ~= 0 then skip(24) end
-    else
-      skip(v >= 400 and 106 or 124)
+      return name
     end
+    at = p
+    skip(v >= 400 and 16 or 25); name = bstr(22)
+    p = at; skip(v >= 400 and 106 or 124)
+    return name
   end
   local function beat_effects()
     if v < 400 then
@@ -569,7 +589,10 @@ function GP.read_old(data)
     for i = 1, 6 do if vals[i] >= 0 then skip(1) end end
     if tempo >= 0 then
       skip(v > 500 and 2 or 1)
-      if tempo > 0 then doc.tempos = doc.tempos + 1 end
+      if tempo > 0 then
+        doc.tempos = doc.tempos + 1
+        doc.tmap[#doc.tmap + 1] = { bar = here.k, q = here.pos, bpm = tempo }
+      end
     end
     if v >= 400 then skip(1) end -- (all tracks)
     if v >= 500 then skip(1) end -- (wah)
@@ -623,7 +646,13 @@ function GP.read_old(data)
       local n = i32()
       if TUPLET[n] then len = len * TUPLET[n] / n end
     end
-    if f & 0x02 ~= 0 then chord() end
+    if f & 0x02 ~= 0 then
+      local name = chord():gsub("[%c]", "")
+      if name ~= "" then
+        out.chords = out.chords or {}
+        out.chords[#out.chords + 1] = { pos = pos, name = name }
+      end
+    end
     if f & 0x04 ~= 0 then ibstr() end -- (text)
     if f & 0x08 ~= 0 then beat_effects() end
     if f & 0x10 ~= 0 then mix_table() end
@@ -639,7 +668,10 @@ function GP.read_old(data)
       local out = {}
       for _ = 1, (v >= 500 and 2 or 1) do -- (the voices)
         local pos = 0
-        for _ = 1, count(i32(), 1000) do pos = pos + beat(strings[t], pos, out) end
+        for _ = 1, count(i32(), 1000) do
+          here.k, here.pos = k, pos
+          pos = pos + beat(strings[t], pos, out)
+        end
       end
       if v >= 500 then skip(1) end -- (line break)
       local id = k .. ":" .. t
@@ -677,8 +709,9 @@ local NOTE_VALUE = { Zero = 0, Whole = 4, Half = 2, Quarter = 1, Eighth = 0.5, [
 -- The notes of 1 bar, voice after voice: { { pos (quarter notes from the start of the bar), len, midi, s (1 = the
 -- lowest string), fret, tie } }; muted (dead) notes and grace notes are left out. bar: the text of a bar of a .gp
 -- file, or the list itself (an older file: GP.read_old makes it). open: the tuning of the track (a note with only its
--- string and fret, as in Guitar Pro 6, gets its pitch from it).
-function GP.bar_notes(doc, bar, open)
+-- string and fret, as in Guitar Pro 6, gets its pitch from it). diag: the chord names of the track by id. The chord
+-- names of the bar: out.chords = { { pos, name } } (nil: none).
+function GP.bar_notes(doc, bar, open, diag)
   if type(bar) == "table" then return bar end
   local out = {}
   for vid in ((bar and bar:match("<Voices>([%d%s%-]+)</Voices>")) or ""):gmatch("%-?%d+") do
@@ -693,6 +726,11 @@ function GP.bar_notes(doc, bar, open)
       if dots > 0 then len = len * (2 - 0.5 ^ dots) end
       local tn, td = rh:match("<PrimaryTuplet num=\"(%d+)\" den=\"(%d+)\"")
       if tn then len = len * tonumber(td) / tonumber(tn) end
+      local cname = diag and diag[beat:match("<Chord>(%d+)</Chord>") or ""]
+      if cname and cname ~= "" then
+        out.chords = out.chords or {}
+        out.chords[#out.chords + 1] = { pos = pos, name = cname }
+      end
       for nid in (beat:match("<Notes>([%d%s]+)</Notes>") or ""):gmatch("%d+") do
         local n = doc.notes[nid] or ""
         local midi = tonumber(n:match('<Property name="Midi">%s*<Number>(%d+)</Number>') or "")
@@ -712,18 +750,21 @@ end
 
 -- The notes of a track in the order they play: { { q, len (quarter notes from the start of bar 1), midi, s (1 = the
 -- lowest string), fret } }; ties join the note before. A repeat bar mark (%, the SimileMark of a bar) plays the bar
--- that played 1 bar before (Simple) or 2 bars before (FirstOfDouble, SecondOfDouble).
+-- that played 1 bar before (Simple) or 2 bars before (FirstOfDouble, SecondOfDouble). Second value: the chord names
+-- of the file in the order they play: { { q, name } }.
 local SIMILE_BACK = { Simple = 1, FirstOfDouble = 2, SecondOfDouble = 2 }
 function GP.notes(doc, track)
-  local out, q, last, played, seen = {}, 0, {}, {}, {}
-  local open = doc.tracks[track] and doc.tracks[track].open
+  local out, q, last, played, seen, names = {}, 0, {}, {}, {}, {}
+  local tr = doc.tracks[track]
+  local open, diag = tr and tr.open, tr and tr.diag
   for j, k in ipairs(GP.order(doc.mbars)) do
     local mb = doc.mbars[k]
     local bar = doc.bars[mb.bars[track] or "-1"]
     local back = type(bar) == "string" and SIMILE_BACK[bar:match("<SimileMark>(%a+)</SimileMark>") or ""]
     if back then bar = played[j - back] end
     played[j] = bar
-    if bar and not seen[bar] then seen[bar] = GP.bar_notes(doc, bar, open) end -- (a repeated bar: read once)
+    if bar and not seen[bar] then seen[bar] = GP.bar_notes(doc, bar, open, diag) end -- (a repeated bar: read once)
+    for _, c in ipairs(bar and seen[bar] and seen[bar].chords or {}) do names[#names + 1] = { q = q + c.pos, name = c.name } end
     for _, x in ipairs(bar and seen[bar] or {}) do
       local prev = last[x.midi]
       if x.tie and prev then prev.len = q + x.pos + x.len - prev.q -- (a tie: the note goes on)
@@ -736,13 +777,15 @@ function GP.notes(doc, track)
     q = q + 4 * mb.num / mb.den
   end
   table.sort(out, function(a, b) return a.q < b.q or (a.q == b.q and a.midi < b.midi) end) -- (a chord: from the lowest)
-  return out
+  return out, names
 end
 
 -- The tab of a track: its bars in the order they play (the repeats played out), each with its notes: { nstr, names
 -- (the open strings, from the lowest; the highest "e" when it has the name of the lowest), bars = { { q0 (quarter
 -- notes from the start of the tab), len, n16 (its 16ths), notes = { { q (in the bar), len, s (1 = the lowest
--- string), fret } } } } }. A note without a string and fret (drums) is left out.
+-- string), fret } }, chords = { { q, name } } } }, has_chords }. A note without a string and fret (drums) is left
+-- out. The chord names: the file's, else named from the notes that start together and ring at least 1 beat
+-- (GP.chord_name; decided 24 November 2026: fast riffs get no names); a name shows only where the chord changes.
 function GP.tab(doc, track)
   local open = doc.tracks[track].open
   local tab = { nstr = #open, names = {}, bars = {} }
@@ -751,16 +794,101 @@ function GP.tab(doc, track)
   local q = 0
   for _, k in ipairs(GP.order(doc.mbars)) do
     local len = 4 * doc.mbars[k].num / doc.mbars[k].den
-    tab.bars[#tab.bars + 1] = { q0 = q, len = len, n16 = math.max(1, math.ceil(len * 4 - 1e-9)), notes = {} }
+    tab.bars[#tab.bars + 1] = { q0 = q, len = len, n16 = math.max(1, math.ceil(len * 4 - 1e-9)), notes = {}, chords = {} }
     q = q + len
   end
+  local notes, names = GP.notes(doc, track)
+  -- the chords: by place (in 48ths of a quarter note), the file's name or the notes there
+  local at, places = {}, {}
+  local function place(qq)
+    local key = math.floor(qq * 48 + 0.5)
+    if not at[key] then at[key] = { q = qq, midis = {} }; places[#places + 1] = key end
+    return at[key]
+  end
+  for _, c in ipairs(names) do place(c.q).name = c.name end
   local b = 1
-  for _, n in ipairs(GP.notes(doc, track)) do
+  for _, n in ipairs(notes) do
     while tab.bars[b + 1] and n.q >= tab.bars[b + 1].q0 - 1e-9 do b = b + 1 end
     local bar = tab.bars[b]
-    if bar and n.s and n.fret then bar.notes[#bar.notes + 1] = { q = n.q - bar.q0, len = n.len, s = n.s, fret = n.fret } end
+    if bar and n.s and n.fret then
+      bar.notes[#bar.notes + 1] = { q = n.q - bar.q0, len = n.len, s = n.s, fret = n.fret }
+      local x = place(n.q)
+      x.midis[#x.midis + 1] = n.midi
+      x.len = math.max(x.len or 0, n.len)
+    end
+  end
+  table.sort(places)
+  local shown
+  b = 1
+  for _, key in ipairs(places) do
+    local x = at[key]
+    local name = x.name or ((x.len or 0) >= 1 - 1e-6 and GP.chord_name(x.midis)) or nil -- (a fast riff: no names)
+    if name and name ~= shown then
+      while tab.bars[b + 1] and x.q >= tab.bars[b + 1].q0 - 1e-9 do b = b + 1 end
+      local bar = tab.bars[b]
+      if bar then
+        bar.chords[#bar.chords + 1] = { q = x.q - bar.q0, name = name }
+        shown, tab.has_chords = name, true
+      end
+    end
   end
   return tab
+end
+
+-- The name of a chord from its notes (MIDI numbers): the root and its kind ("Am", "G7", "D5"), "/" the lowest note
+-- when it is not the root ("C/E"); nil when it is not a chord (fewer than 2 note names, or no known kind).
+local CHORD_KINDS = {
+  ["0 4 7"] = "", ["0 3 7"] = "m", ["0 7"] = "5", ["0 4 7 10"] = "7", ["0 4 7 11"] = "maj7", ["0 3 7 10"] = "m7",
+  ["0 2 7"] = "sus2", ["0 5 7"] = "sus4", ["0 3 6"] = "dim", ["0 4 8"] = "aug", ["0 4 7 9"] = "6", ["0 3 7 9"] = "m6",
+  ["0 2 4 7"] = "add9", ["0 2 4 7 10"] = "9", ["0 5 7 10"] = "7sus4", ["0 3 6 10"] = "m7b5", ["0 3 6 9"] = "dim7",
+  ["0 4 10"] = "7", ["0 3 10"] = "m7", ["0 4 11"] = "maj7", ["0 2 3 7"] = "madd9",
+}
+function GP.chord_name(midis)
+  if #midis < 2 then return nil end
+  local low, pcs, has = math.huge, {}, {}
+  for _, m in ipairs(midis) do
+    low = math.min(low, m)
+    if not has[m % 12] then has[m % 12] = true; pcs[#pcs + 1] = m % 12 end
+  end
+  if #pcs < 2 then return nil end
+  local bass = low % 12
+  table.sort(pcs, function(a, c) return (a - bass) % 12 < (c - bass) % 12 end) -- (the lowest note first: the usual root)
+  for _, root in ipairs(pcs) do
+    local iv = {}
+    for k, pc in ipairs(pcs) do iv[k] = (pc - root) % 12 end
+    table.sort(iv)
+    local kind = CHORD_KINDS[table.concat(iv, " ")]
+    if kind then return GP.NAMES[root] .. kind .. (root ~= bass and ("/" .. GP.NAMES[bass]) or "") end
+  end
+  return nil
+end
+
+-- The bars of the tab in the order they play, with their time signature and tempo: { { len (quarter notes), num,
+-- den, tempos = { { q (quarter notes into the bar), bpm } } } }. Bar 1 always has a tempo at q 0 (the file's first
+-- tempo, else 120); a repeated bar has its tempo changes again on each pass.
+function GP.timeline(doc)
+  local at = {}
+  for _, x in ipairs(doc.tmap or {}) do
+    local mb = doc.mbars[x.bar]
+    if mb then
+      local list = at[x.bar] or {}
+      at[x.bar] = list
+      local q = x.q or (x.frac or 0) * 4 * mb.num / mb.den
+      local dup = false
+      for _, y in ipairs(list) do if math.abs(y.q - q) < 1e-6 then y.bpm, dup = x.bpm, true end end -- (each track: once)
+      if not dup then list[#list + 1] = { q = q, bpm = x.bpm } end
+    end
+  end
+  for _, list in pairs(at) do table.sort(list, function(a, b) return a.q < b.q end) end
+  local out = {}
+  for j, k in ipairs(GP.order(doc.mbars)) do
+    local mb = doc.mbars[k]
+    local tempos = {}
+    for i, x in ipairs(at[k] or {}) do tempos[i] = x end
+    if j == 1 and not (tempos[1] and tempos[1].q < 1e-6) then table.insert(tempos, 1, { q = 0, bpm = doc.tempo or 120 }) end
+    out[j] = { len = 4 * mb.num / mb.den, num = mb.num, den = mb.den, tempos = tempos }
+  end
+  return out
 end
 
 ---------------------------------------------------------------------------

@@ -36,6 +36,19 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-23 | Tab Viewer | timing | after Set tempo with Beats from a track (a bass stem), the tab started at the
+  first bass note: its 5 empty bars before the first note were left out, so the tab was late (from the tab: right)
+  Cause: Find tempo makes the first beat with sound bar 1 of the song; Tabs.set_tempo put bar 1 of the tab on that
+  bar, without the tab's empty bars before its first note. Fix: Tabs.start_bar (that bar less the empty bars; at
+  least bar 1, with a notice).
+  Why the tests missed it: no test for where the tab starts after Set tempo (only the tempo map was tested).
+  Test: "Set tempo from a track: the tab's empty bars before its first note come before bar 1 of the song"
+  (tests\tabviewer.lua), failed before the fix
+  Other scripts: searched, Note Detective's import lines up the first note of the tab (Imp.start, list[1].q): right.
+  Status: confirmed (the user, 23 November 2026)
+```
+
+```
 2026-11-23 | Note Detective | refactor | Tempo and bars: a script error after Find tempo ("Note Detective.lua:3317:
   attempt to compare number with nil"), manual test 29 of segment 2d
   Cause: the move of the tempo code into the shared Tempo.lua removed CFG.BPM_MIN / CFG.BPM_MAX from Note

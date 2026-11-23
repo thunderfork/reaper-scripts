@@ -95,6 +95,27 @@
   with check.ps1 step 2b; manual test PASSED after the fix (the user, 23 November 2026). Next (ask first): 2e. Next (ask
   first): step 2 (the window: List and Tab tabs, the tab drawing, the track dropdown, the tab on the bars; with the
   new-feature skill and a mockup).
+- Segment 2e built 23 November 2026: Tab Viewer's "Tempo and bars" (Beats from "The tab (its tempo)" first, then
+  the tracks as in Note Detective); shared code in Guitar Pro.lua (`GP.timeline`, `doc.tmap`) and Tempo.lua
+  (`Tempo.from_tab`, `Beat.tab_plan`). Tests pass (Tab Viewer 22, Note Detective 72); deployed; NOT COMMITTED.
+  Manual test PASSED (the user, 23 November 2026). Next (ask first): 2c.
+- Tabs per region, decided 23 November 2026 (not built; a change of saved data: a list of tabs instead of 1
+  `file=`): many tabs in 1 project, each linked to 1 region; the window shows the tab of the region at the play or
+  edit cursor (a dropdown chooses another one when stopped); the tab moves with its region, its start inside the
+  region found automatically as now (Tempo and bars), with < > to correct it by hand. Mockup approved 23 November
+  2026. Segment 1 built 23 November 2026 (the Tab dropdown with Region and Remove this tab, Open tab for the region
+  at the edit cursor, the start bar counted from the region, the saved list `tab=`/`region=`); tests pass (Tab
+  Viewer 24); deployed; NOT COMMITTED; manual test PASSED (the user, 24 November 2026). Segment 2 built 24 November
+  2026 (the window follows the play / edit cursor; Find tempo uses the audio in the tab's region); tests pass (Tab
+  Viewer 25); deployed; NOT COMMITTED; manual test PASSED (the user, 24 November 2026).
+- Tab Viewer next, decided 24 November 2026: step 3 (chord names in a row above the tab, at the beat where the chord
+  changes; from the file, else named from the notes; Settings > Tab > Chord names, on), then the editable tab (notes
+  on the 16th grid of guitar and bass: fret, string, add, delete, as in Note Detective; the changes saved in the
+  project on top of the tab, the file and its copy unchanged; "Undo all changes" in the Tab dropdown). Drums (step 6):
+  delayed, the user thinks about it. Step 3 built 24 November 2026 (only chords that ring at least 1 beat get a
+  name from the notes: decided 24 November 2026); tests pass (Tab Viewer 26, Note Detective 72); deployed; NOT
+  COMMITTED; manual test PASSED (the user, 24 November 2026). The stopped position line is blue too (no dashed
+  line; decided 24 November 2026). Next (ask first): the editable tab.
 - Step 0 done 23 November 2026: Note Detective committed as it was (the user's choice, without the debug-time round
   first: it is the rollback point before the Guitar Pro work). The debug-time round comes before its release.
 - 23 November 2026, new direction (decided by the user): the Guitar Pro tab becomes the main feature, the detection
@@ -197,44 +218,49 @@ skipped or failed test stays here; remove it when it passed.
 13. SFX Drop, before its release: the flaky test "find spots on real tracks" failed once ("a rise at bar 5") in a
     full `test.ps1 -Coverage` run, then passed 3 times (17 November 2026). Find the cause (the WAV peaks not ready
     yet?).
-15. Manual test (Note Detective, 23 November 2026): click a line (plays), double-click and type, "Change all", Join,
+14. Note Detective's manual tests 15-27 are set aside until its next version (decided 23 November 2026). Then
+    check which of them are still relevant.
+15. Set-aside test (Note Detective, 23 November 2026): click a line (plays), double-click and type, "Change all", Join,
     Split, + Add, Undo, the keys (Up / Down, N, Space, F2, Delete).
-16. Manual test (Note Detective, 23 November 2026): Write with Markers, Notes track and both; Ctrl+Z; are the text items
+16. Set-aside test (Note Detective, 23 November 2026): Write with Markers, Notes track and both; Ctrl+Z; are the text items
     readable for the learner?
-17. Manual test (Note Detective, 23 November 2026): Finish on a copy: the region, the plugins, the metronome track; Ctrl+Z.
-18. Manual test (Note Detective, 23 November 2026): a song with no steady tempo, Markers = "About 2 seconds".
-19. Manual test (Note Detective, lessons, 23 November 2026): Export the song with the 16ths that were 1 16th off and
+17. Set-aside test (Note Detective, 23 November 2026): Finish on a copy: the region, the plugins, the metronome track; Ctrl+Z.
+18. Set-aside test (Note Detective, 23 November 2026): a song with no steady tempo, Markers = "About 2 seconds".
+19. Set-aside test (Note Detective, lessons, 23 November 2026): Export the song with the 16ths that were 1 16th off and
     open the .mid in Guitar Pro again: on the right 16th now? (The repeated 16ths are still 1 note: not fixed.)
-20. Manual test (Note Detective, bass review 3, 5, 2, 23 November 2026): right-click a line > New key from here > a
+20. Set-aside test (Note Detective, bass review 3, 5, 2, 23 November 2026): right-click a line > New key from here > a
     key: the blue "Key: ..." line, the names after it; Write with Markers and Notes track: the "Key: ..." marker and
     the beat counts ("1 F · 2& Eb") in the text items; Settings > Notes > String names = Numbers, Find notes again.
-21. Manual test (Note Detective, 23 November 2026): Export > Folder > Change... (a folder of your own), Export; Clear...
+21. Set-aside test (Note Detective, 23 November 2026): Export > Folder > Change... (a folder of your own), Export; Clear...
     (asks; then Undo and Ctrl+Z); Set tempo on a song with a count-in (bars before bar 1 from the item start); View >
     Tab: click a note, play (the blue note, the line follows); close and reopen the project: the tab is still there.
-22. Manual test (Note Detective, slides and 8ths / 16ths, 23 November 2026): Set tempo, Find notes on a song with slides
+22. Set-aside test (Note Detective, slides and 8ths / 16ths, 23 November 2026): Set tempo, Find notes on a song with slides
     and pumping 8ths: are the "/G" marks real slides (very short slides are missed)? "C (8ths)" and "8ths: Ab - A"
     right? View > Tab and the .mid: the repeated notes as separate notes? Try Settings > Notes > Slide mark.
-23. Manual test (Note Detective, 23 November 2026): Simple mode (the default): Find notes, the markers only notes and
+23. Set-aside test (Note Detective, 23 November 2026): Simple mode (the default): Find notes, the markers only notes and
     "E (A 7)"-style places; the window without Tempo and bars, Tab and Export. Simple mode off: View > Tab, right-click
     a note (Octave up / down, another string, Delete); Undo. A song that had beat 1 on 4a: on beat 1 now?
-24. Manual test (Note Detective, tab editing, changed 23 November 2026 by the user's wishes; the user runs the tests):
+24. Set-aside test (Note Detective, tab editing, changed 23 November 2026 by the user's wishes; the user runs the tests):
     stopped, View > Tab: click a note (blue box, the edit cursor goes there); Left / Right = the note before / after;
     Up / Down; type 1 then 2 (fret 12); Delete; double-click a note: its box (Enter = new fret, Left / Right move it,
     never onto another note); click an empty place on a string, type a fret, Enter (not on a 16th that has a note);
     Undo; play: the blue line; "Update the list", then Write.
-25. Manual test (Note Detective, "1 2 3", 23 November 2026): Simple mode off. Set tempo and Find notes on Burning
+25. Set-aside test (Note Detective, "1 2 3", 23 November 2026): Simple mode off. Set tempo and Find notes on Burning
     Roads, then "Import tab..." with its .gp: the bass track chosen, bar 1 right at once (bar 5 of the tab on the
     first bass note), Import; the tab
     and the list follow the song; Undo brings the found notes back. Turn off Settings > Notes > Split repeated notes, Find
     notes: no split held notes. A tab with "%" bars (repeat bar): those bars have their notes.
-26. Manual test (Note Detective, the new detection, 23 November 2026): Find notes on 2-3 songs (Simple mode on and
+26. Set-aside test (Note Detective, the new detection, 23 November 2026): Find notes on 2-3 songs (Simple mode on and
     off): fast repeated notes (16ths) as separate notes, held notes not cut, the octaves; point at a yellow line: the
     reason; the time of Find notes (song 2: 16 s). A song with a soft part: its notes found too.
-27. Manual test (Note Detective, Set tempo aligns, 23 November 2026): Find tempo, Set tempo: the notice says how far
+27. Set-aside test (Note Detective, Set tempo aligns, 23 November 2026): Find tempo, Set tempo: the notice says how far
     the audio moved; the first bass note sits on a beat (zoom in); the other stems moved with it, other songs and a
     long backing track did not; one Ctrl+Z takes back the grid and the move. With a list: it moved too. In the tab: select the 2nd piece of a split note, press J.
-28. Manual test (Tab Viewer, real files that were never checked, 23 November 2026): when you get a .gpx, .gp4 or
-    .gp3 tab, open it in Tab Viewer: the tracks, tunings and the line below right? (Only made-up files were tested.)
+28. Decided 23 November 2026: segment 2c (Note Detective List | Tab) later. The song inside a .gp file (its audio
+    and sync points) as the alignment reference: not wanted (the user).
+29. Decided 23 November 2026 (Later): the shared alignment test (the tab's first note on the song's first note, empty
+    bars and a pickup, a random item position) for Tab Viewer and Note Detective; the user checks Note Detective's
+    import for the same error with segment 2c.
 
 ## Later
 
@@ -346,7 +372,8 @@ Ideas, not started.
   segments 1a (.gp, the shared reader, the window), 1c before 1b (.gp5, .gp3, .gp4 first, then .gpx). The opened tab
   is copied into a "Tabs" folder of the project folder (an unsaved project: the original path, the copy at the 1st
   save).
-- Note Detective (1.0 built 23 November 2026). Later: the complete song as the source (doubtful lines), a large "Now / Next" view, larger text in the Notes track items, the 40 ms of a separated file.
+- Note Detective (1.0 built 23 November 2026). Later: the tab's position line blue when stopped too, as in Tab Viewer
+  (no dashed line; decided 24 November 2026); the complete song as the source (doubtful lines), a large "Now / Next" view, larger text in the Notes track items, the 40 ms of a separated file.
   The trials that its detection comes from: trial 1, 23 November 2026, on 1 finished project (86 markers made by hand), in plain Lua, no plugin: first note
   right 83 / 86; about 125 of 131 marker notes found (the 6 missed ones are in fast fills); 10 s for 196 s of audio;
   tuning measured right (441 Hz). Method: take accessor at 4000 Hz mono, YIN (window 200 samples, hop 40, lags 8-130,
