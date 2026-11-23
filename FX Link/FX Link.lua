@@ -57,7 +57,6 @@ CFG.FONT_SIZE_BOLD = 15        -- section titles
 CFG.TEXT_LIFT = 1              -- px the text is raised above the true centre in every control
 CFG.HELP_ICON = 20             -- the round "?" icon
 CFG.LABEL_W = 130              -- the label column of Link settings (Mode, Parameters, Link bypass)
-CFG.FORM_MAX_W = 300           -- the widest control column
 CFG.FORM_MIN_WIDE = 180        -- below the label column + this width, the labels go above their control
 CFG.CTRL_GAP = 8               -- between 2 controls side by side
 CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = 7, 8, 4 -- spacing (pixels; the same gaps as Chart Cue)
@@ -1652,6 +1651,15 @@ function UI.trunc(text, max_w)
   end
   return "..."
 end
+-- UI.trunc, kept per text until the width changes (the rows of the lists: not cut again every frame).
+function UI.trunc_c(text, w)
+  R.tc = R.tc or {}
+  local e = R.tc[text]
+  if e and e.w == w then return e.s end
+  local cut = UI.trunc(text, w)
+  R.tc[text] = { w = w, s = cut }
+  return cut
+end
 
 -- Button kinds: "primary" (blue: an action), "ghost" (text only), nil (grey).
 function UI.button(label, w, h, kind)
@@ -1742,7 +1750,7 @@ function UI.heading(text, help, id, fold, reserve)
 end
 
 -- A button on the line of the last heading, right-aligned (each next one goes left of the one before).
--- "+ Add" (the template of all 4 scripts): a ghost button on the heading line that opens a dropdown menu.
+-- "+ Add" (the template of all the scripts): a ghost button on the heading line that opens a dropdown menu.
 UI.ADD = "+ Add"
 function UI.add_w() return UI.btn_w(UI.ADD) end
 
@@ -2052,11 +2060,11 @@ function UI.draw_groups()
       local tx = rx + 24
       local tw_room = rw - 24 - bw
       ImGui.PushFont(ctx, bold)
-      local name = UI.trunc(g.name, math.max(20, tw_room - iw - 16))
+      local name = UI.trunc_c(g.name, math.max(20, tw_room - iw - 16))
       ImGui.DrawList_AddText(dl, tx, UI.text_y(y), g.on and COL.TEXT_MAIN or COL.TEXT_DIM, name)
       local nw = (ImGui.CalcTextSize(ctx, name))
       ImGui.PopFont(ctx)
-      ImGui.DrawList_AddText(dl, tx + nw + 12, UI.text_y(y), COL.TEXT_DIM, UI.trunc(info, math.max(10, tw_room - nw - 20)))
+      ImGui.DrawList_AddText(dl, tx + nw + 12, UI.text_y(y), COL.TEXT_DIM, UI.trunc_c(info, math.max(10, tw_room - nw - 20)))
       ImGui.SameLine(ctx, 0, 8)
       ImGui.SetCursorScreenPos(ctx, x + aw - CFG.X_BTN, y + (h - CFG.X_BTN) / 2)
       if UI.remove_x_button("##del", CFG.X_BTN) then del = i end
@@ -2279,7 +2287,7 @@ function UI.draw_params(g)
         ImGui.DrawList_AddRectFilled(dl, x, y, x + aw - CFG.X_BTN - 8, y + h, (COL.ACCENT & 0xFFFFFF00) | math.floor(0x70 * a), 6)
       else R.flash = nil end
     end
-    ImGui.DrawList_AddText(dl, x + 8, UI.text_y(y), COL.TEXT_MAIN, UI.trunc(UI.pname(g, p), aw - CFG.X_BTN - 24))
+    ImGui.DrawList_AddText(dl, x + 8, UI.text_y(y), COL.TEXT_MAIN, UI.trunc_c(UI.pname(g, p), aw - CFG.X_BTN - 24))
     ImGui.SameLine(ctx, 0, 8)
     ImGui.SetCursorScreenPos(ctx, x + aw - CFG.X_BTN, y + (h - CFG.X_BTN) / 2)
     if UI.remove_x_button("##rp", CFG.X_BTN) then rm = p end
@@ -2369,8 +2377,8 @@ function UI.draw_plugins(g)
         end
         local odd = df and df.m[m]
         ImGui.DrawList_AddText(dl, x + 8, UI.text_y(y), m.off and COL.TEXT_DIM or odd and COL.ORANGE or COL.TEXT_MAIN,
-          UI.trunc(rt.track_label, col_w - 12))
-        local fl = UI.trunc(rt.fx_label, fx_w - 24)
+          UI.trunc_c(rt.track_label, col_w - 12))
+        local fl = UI.trunc_c(rt.fx_label, fx_w - 24)
         ImGui.DrawList_AddText(dl, x + col_w, UI.text_y(y), hov2 and COL.TEXT_MAIN or COL.TEXT_DIM, fl)
         local ax = x + col_w + (ImGui.CalcTextSize(ctx, fl)) + 8
         local ay = math.floor(y + h / 2) + 0.5
@@ -2391,7 +2399,7 @@ function UI.draw_plugins(g)
       else
         ImGui.Dummy(ctx, row_w, h)
         local who = (m.tname or "") ~= "" and (m.tname .. ", " .. (m.fname ~= "" and m.fname or g.plug)) or "the plugin was deleted"
-        ImGui.DrawList_AddText(dl, x + 8, UI.text_y(y), COL.TEXT_DIM, UI.trunc("Missing (" .. who .. ")", row_w - 16))
+        ImGui.DrawList_AddText(dl, x + 8, UI.text_y(y), COL.TEXT_DIM, UI.trunc_c("Missing (" .. who .. ")", row_w - 16))
         ImGui.SameLine(ctx, 0, 8)
         ImGui.SetCursorScreenPos(ctx, x0 + aw - CFG.X_BTN - 8 - mw, y)
         if UI.button("Find", mw, h, "ghost") then

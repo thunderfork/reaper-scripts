@@ -2061,7 +2061,7 @@ function UI.swatch(c, size)
   else ImGui.DrawList_AddRect(dl, x, top, x + size, top + size, COL.TOGGLE_OFF, 3) end
 end
 
-UI.ADD = "+ Add" -- (the "+ Add" template of the 4 scripts: a ghost button that opens a menu)
+UI.ADD = "+ Add" -- (the "+ Add" template of all the scripts: a ghost button that opens a menu)
 
 -- The titles of a table as plain text (TableHeadersRow makes them clickable).
 function UI.plain_headers(names)
