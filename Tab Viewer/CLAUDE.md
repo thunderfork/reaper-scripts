@@ -56,15 +56,28 @@ dropdown, the tab on the bars of the song (step 2).
 
 - Modules: `Util`, `Tabs` (the tab of the project), `Project` (the project data), `UI`.
 - `P` (ProjExtState "Tab Viewer"/"cfg"; nothing saved without a tab): `file=` the tab, relative to the project
-  folder ("Tabs/Song.gp") or a full path (a project that is not saved yet).
+  folder ("Tabs/Song.gp") or a full path (a project that is not saved yet); `track=` the chosen track (only when it
+  is not the default: `Tabs.default_track`, the first bass, else the first guitar; a new Open tab clears it).
+- The tab (step 2a, 23 November 2026): `GP.tab(doc, track)` (the shared reader: the bars as they play, the notes with
+  q in the bar, s, fret; the string names, the top "e" when it has the name of the lowest); `Tabs.build` (R.tab, or
+  R.tab_why for drums and "other"; the texts made once), `Tabs.layout` (lines of bars for the width, as Note
+  Detective's), `Tabs.hit` (a point -> the bar and its 16th). `UI.draw_tab`: only the lines in view; a click plays
+  from there (`UI.play_from`). The drawing moves into a shared file with segment 2c (Note Detective).
+- The tab on the song (step 2b, 23 November 2026): `P.bar` (`bar=`, only when not 1; a new Open tab clears it) = the
+  song bar (REAPER's, from 1) of bar 1 of the tab; `Tabs.set_bar` ("<" / ">", `UI.repeat_button`: hold = repeat),
+  `Tabs.relabel` (the bar numbers = the song's, the bar line text). From that bar the tab follows the project's
+  quarter notes (`Tabs.start_qn`, `Tabs.time_of`, `Tabs.place_of`: a binary search, asked every frame), with the bar
+  lengths of the tab: a 3/4 bar of the tab fits where REAPER has 4/4 (decided by Claude: beats, not REAPER's bar
+  lines). The position line: playing blue, stopped dashed at the edit cursor (as Note Detective); `S.follow`
+  (Settings > Tab > Follow playback, ExtState `follow`, on) scrolls to the playing line once per line change.
 - `Tabs.keep`: a saved project keeps a copy of its tab in `<project folder>\Tabs` (the same name with other content:
   " (2)"; the same tab again: no copy). `Tabs.moved`: the 1st save and Save as (the project file changes, the project
   data stays) copy it into the new folder (`Tabs.keep(from)`: a relative path from the old folder); the window keeps
   the list (no 2nd read). The project then shows as changed once more (the new place): kept so, decided 23 November
   2026. `Tabs.show` puts a tab (or why not) into the window. A missing file: a grey line in the window (`R.err`); a file that can not be
   read at Open tab...: an orange notice, the project does not change.
-- `S` (ExtState "Tab Viewer"): `light`, `dock`.
-- `R.rows` / `R.info` (`Tabs.rows`): the lines of the list, made once per tab (not every frame). Another project tab:
+- `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`.
+- `R.rows` / `R.info` (`Tabs.rows`): the Track dropdown texts and the line below the tab, made once per tab. Another project tab:
   its tab is read again (0.3 s for a 2 MB score; no cache: decided in the simplify round, 23 November 2026).
 
 ## Deployment and tests

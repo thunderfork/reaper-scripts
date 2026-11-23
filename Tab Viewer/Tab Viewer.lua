@@ -54,7 +54,7 @@ CFG.VERSION = "1.0"            -- keep equal to @version in the header
 CFG.EXT = "Tab Viewer"         -- ExtState section (this computer) and the project data section
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.TABS_DIR = "Tabs"          -- the folder next to the project file that keeps the copies of the tabs
-CFG.DEFAULT_W, CFG.DEFAULT_H = 480, 420
+CFG.DEFAULT_W, CFG.DEFAULT_H = 520, 480
 CFG.WIN_EDGE = 6               -- floating window: width of the resize edges (inside the window), as in Chart Cue
 CFG.WIN_GRIP = 22              -- floating window: size of the bottom-right resize corner
 CFG.WIN_MIN_W, CFG.WIN_MIN_H = 340, 240
@@ -69,7 +69,14 @@ CFG.SETTINGS_BTN_W = 200       -- the buttons in the Settings menu
 CFG.NOTICE_SEC = 4             -- a notice at the bottom of the window shows this long
 CFG.TIP_DELAY = 0.5            -- seconds on an item before its tooltip shows (as in Chart Cue)
 CFG.TIP_WRAP_EM = 32           -- tooltip lines wrap at this many font sizes
-CFG.TRACK_LINE = 24            -- the height of a line of the track list
+CFG.TRACK_W = 320              -- the Track dropdown
+-- the tab: the same sizes as Note Detective's
+CFG.TAB_SLOT = 12              -- the width of a 16th note
+CFG.TAB_PAD = 10               -- the space at the start of a bar
+CFG.TAB_LINE = 17              -- between 2 strings
+CFG.TAB_TOP, CFG.TAB_BOTTOM = 22, 30 -- above the top string (the bar number) and below the low one (the beats, a gap)
+CFG.TAB_LEFT = 22              -- the string names at the left
+CFG.TAB_STRETCH = 1.6          -- the bars of a line stretch to the full width, at most this much
 
 local COL = {
   RED = 0xF26D6DFF, YELLOW = 0xF2C75CFF, GREEN = 0x6FCF8AFF,
@@ -112,13 +119,21 @@ local R = {
   proj = nil, projfn = "", state_cc = -1, plast_txt = "", pdirty = false, sdirty = false,
   frames = 0,
   err = nil,         -- why the tab of the project could not be read (a line in the window)
-  rows = nil,        -- the lines of the track list: { name, what, tun, tip, id } (Tabs.show; with the tab)
-  info = nil,        -- the line below the list: bars, time signature, tempo
+  doc = nil,         -- the opened tab (GP.read)
+  rows = nil,        -- the tracks of the Track dropdown: { name, what, tun, tip, label } (Tabs.show; with the tab)
+  info = nil,        -- the line below the tab: bars, time signature, tempo
+  -- tab: the tab of the chosen track (GP.tab; Tabs.build), with its lines for a width (Tabs.layout); nil: none
+  tab_why = nil,     -- the chosen track has no tab: why (a line in its place)
+  bar_txt = nil,     -- the text of the bar line (Tabs.relabel)
+  tempo_warn = nil,  -- the project's tempo is not the tab's: the yellow line (Tabs.tempo_check)
 }
-local P = { file = "" } -- file: the tab (relative to the project folder: "Tabs/song.gp"; else a full path)
+-- file: the tab (relative to the project folder: "Tabs/song.gp"; else a full path); track: the chosen track (nil:
+-- the default, Tabs.default_track); bar: the bar of the song where bar 1 of the tab starts (nil: 1)
+local P = { file = "" }
 local S = {
   light = false,     -- Light theme (Dark is the default)
   dock = 0,          -- the REAPER docker of the window (0 = floating)
+  follow = true,     -- Settings > Tab > Follow playback
 }
 
 ---------------------------------------------------------------------------
@@ -175,11 +190,14 @@ function Util.load_settings()
   if v ~= "" then S.light = (v == "1") end
   v = r.GetExtState(CFG.EXT, "dock")
   if v ~= "" then S.dock = math.floor(tonumber(v) or 0) end
+  v = r.GetExtState(CFG.EXT, "follow")
+  if v ~= "" then S.follow = (v ~= "0") end
   R.dock_req = S.dock -- the window opens where it was (floating or in its docker)
 end
 function Util.save_settings()
   r.SetExtState(CFG.EXT, "light", S.light and "1" or "0", true)
   r.SetExtState(CFG.EXT, "dock", tostring(S.dock), true)
+  r.SetExtState(CFG.EXT, "follow", S.follow and "1" or "0", true)
   R.sdirty = false
 end
 
@@ -251,7 +269,9 @@ function Tabs.rows(doc)
     local tip = t.name .. "\n" .. what
     if tab then tip = tip .. "\nOpen strings, from the lowest: " .. GP.notes_text(t.open) .. (t.capo > 0 and ("\nCapo: fret " .. t.capo) or "") end
     if not tab and t.kind ~= "drums" then tip = tip .. "\nNot a tab part (no strings and frets)." end
-    rows[k] = { name = t.name, what = what, tun = tun, tip = tip, id = "##track" .. k }
+    local detail = tab and (#t.open .. " strings, " .. tun) or what
+    local label = t.name .. " - " .. detail
+    rows[k] = { name = t.name, what = what, tun = tun, tip = tip, label = label, sel = label .. "##tr" .. k }
   end
   local first, change = doc.mbars[1], false
   for _, mb in ipairs(doc.mbars) do if mb.num ~= first.num or mb.den ~= first.den then change = true; break end end
@@ -261,8 +281,144 @@ function Tabs.rows(doc)
 end
 -- The window shows this tab (nil: none; why: the line in its place).
 function Tabs.show(doc, why)
-  R.err, R.rows, R.info = why, nil, nil
+  R.doc, R.err, R.rows, R.info = doc, why, nil, nil
   if doc then R.rows, R.info = Tabs.rows(doc) end
+  Tabs.build()
+end
+
+-- The track that opens first: the first bass track, else the first guitar, else the 1st track.
+function Tabs.default_track(doc)
+  for _, kind in ipairs({ "bass", "guitar" }) do
+    for k, t in ipairs(doc.tracks) do if t.kind == kind then return k end end
+  end
+  return 1
+end
+-- The chosen track of the tab (its index).
+function Tabs.track()
+  if P.track and R.doc and R.doc.tracks[P.track] then return P.track end
+  return R.doc and Tabs.default_track(R.doc) or 1
+end
+-- The Track dropdown: the tab shows track k (saved in the project when it is not the default).
+function Tabs.pick(k)
+  local p = k ~= Tabs.default_track(R.doc) and k or nil
+  if p ~= P.track then P.track, R.pdirty = p, true end
+  Tabs.build()
+end
+-- The tab of the chosen track (R.tab), or why it has none (R.tab_why).
+function Tabs.build()
+  R.tab, R.tab_why, R.tempo_warn = nil, nil, nil
+  if not R.doc then return end
+  local t = R.doc.tracks[Tabs.track()]
+  if t.kind == "drums" then R.tab_why = "Drum tracks come in a later version (a drum grid). Pick another track."
+  elseif t.kind == "other" then R.tab_why = "This track has no tab (no strings and frets). Pick another track."
+  else
+    local tab = GP.tab(R.doc, Tabs.track())
+    R.tab = tab
+    for _, b in ipairs(tab.bars) do -- (the texts drawn every frame: made once)
+      for _, nt in ipairs(b.notes) do nt.txt = tostring(nt.fret) end
+    end
+    Tabs.relabel()
+  end
+end
+
+-- The bar of the song where bar 1 of the tab starts (REAPER's bar numbers, from 1).
+function Tabs.bar() return P.bar or 1 end
+-- The "<" and ">" of the bar line: bar 1 of the tab starts at bar n of the song (saved when it is not 1).
+function Tabs.set_bar(n)
+  local bar = math.max(1, math.floor(n))
+  local p = bar ~= 1 and bar or nil
+  if p ~= P.bar then P.bar, R.pdirty = p, true end
+  Tabs.relabel()
+end
+-- The bar numbers of the tab (the song's: from Tabs.bar) and the text of the bar line, made when the bar changes.
+function Tabs.relabel()
+  local n = Tabs.bar()
+  R.bar_txt = string.format("Bar 1 of the tab = bar %d of the song", n)
+  for bi, b in ipairs(R.tab and R.tab.bars or {}) do b.label = tostring(n + bi - 1) end
+  Tabs.tempo_check()
+end
+-- The yellow warning (R.tempo_warn) when the project's tempo where the tab starts is not the tab's first tempo (more
+-- than 0.5 BPM apart): the tab would drift. Again after each change of the project (a new tempo) and of the bar.
+function Tabs.tempo_check()
+  R.tempo_warn = nil
+  if not (R.tab and R.doc and R.doc.tempo and R.proj) then return end
+  local q0 = Tabs.start_qn()
+  local bpm = 60 / (r.TimeMap2_QNToTime(R.proj, q0 + 1) - r.TimeMap2_QNToTime(R.proj, q0)) -- (quarter notes)
+  if math.abs(bpm - R.doc.tempo) > 0.5 then
+    R.tempo_warn = string.format("The project's tempo here is %.4g BPM, the tab's %.4g BPM: the tab will not stay on the song. Set the song's tempo first (Note Detective: Tempo and bars).", bpm, R.doc.tempo)
+  end
+end
+-- The line of the tab that holds bar bi.
+function Tabs.line_of(tab, bi)
+  for _, ln in ipairs(tab.lines or {}) do if bi >= ln.first and bi <= ln.last then return ln end end
+end
+
+-- The lines of the tab for a width: { { first, last (bars), y } } and the height of all of them (px). Each bar gets
+-- x, its 16th width sw and its start pad; the bars of a line stretch to the full width (at most CFG.TAB_STRETCH times).
+function Tabs.layout(tab, w)
+  local lines, x, y, first = {}, 0, 0, 1
+  local lh = (tab.nstr - 1) * CFG.TAB_LINE + CFG.TAB_TOP + CFG.TAB_BOTTOM
+  local function close(last)
+    local f = math.min(CFG.TAB_STRETCH, math.max(1, (w - CFG.TAB_LEFT - 1) / math.max(1, x)))
+    local bx = 0
+    for k = first, last do
+      local b = tab.bars[k]
+      b.x, b.sw, b.pad = bx, CFG.TAB_SLOT * f, CFG.TAB_PAD * f
+      bx = bx + b.n16 * b.sw + b.pad
+    end
+    lines[#lines + 1] = { first = first, last = last, y = y }
+  end
+  for i, b in ipairs(tab.bars) do
+    local bw = b.n16 * CFG.TAB_SLOT + CFG.TAB_PAD
+    if x > 0 and CFG.TAB_LEFT + x + bw > w then
+      close(i - 1)
+      y, x, first = y + lh, 0, i
+    end
+    x = x + bw
+  end
+  if #tab.bars > 0 then close(#tab.bars); y = y + lh end
+  return lines, y
+end
+-- The bar (its index) and the place in it (quarter notes, on a 16th) of a point of the tab (x, y from its top left);
+-- nil: not on a bar.
+function Tabs.hit(tab, x, y)
+  local lh = (tab.nstr - 1) * CFG.TAB_LINE + CFG.TAB_TOP + CFG.TAB_BOTTOM
+  for _, ln in ipairs(tab.lines or {}) do
+    if y >= ln.y and y < ln.y + lh then
+      for bi = ln.first, ln.last do
+        local b = tab.bars[bi]
+        local bx = CFG.TAB_LEFT + b.x
+        if x >= bx and x < bx + b.pad + b.n16 * b.sw then
+          return bi, math.min(b.n16 - 1, math.max(0, math.floor((x - bx - b.pad) / b.sw))) / 4
+        end
+      end
+    end
+  end
+end
+-- The tab on the song: bar 1 of the tab starts at bar Tabs.bar() of the song; from there the tab follows the song's
+-- beats (its quarter notes: REAPER's tempo map), with the bar lengths of the tab (a 3/4 bar of the tab fits even
+-- where REAPER has 4/4). The start in quarter notes of the project:
+function Tabs.start_qn()
+  return r.TimeMap2_timeToQN(R.proj, r.TimeMap2_beatsToTime(R.proj, 0, Tabs.bar() - 1))
+end
+-- The project time of a place in the tab: bar bi, q quarter notes in.
+function Tabs.time_of(bi, q)
+  local tab = R.tab
+  return r.TimeMap2_QNToTime(R.proj, Tabs.start_qn() + (tab and tab.bars[bi].q0 or 0) + q)
+end
+-- The place in the tab of a project time: the bar (its index) and the quarter notes into it; nil before or after it.
+function Tabs.place_of(t)
+  local tab = R.tab
+  if not tab then return nil end
+  local q = r.TimeMap2_timeToQN(R.proj, t) - Tabs.start_qn()
+  local last = tab.bars[#tab.bars]
+  if not last or q < 0 or q >= last.q0 + last.len then return nil end
+  local lo, hi = 1, #tab.bars -- (the bar: a binary search, the place is asked every frame)
+  while lo < hi do
+    local mid = (lo + hi + 1) // 2
+    if tab.bars[mid].q0 <= q then lo = mid else hi = mid - 1 end
+  end
+  return lo, q - tab.bars[lo].q0
 end
 
 -- Reads the tab of the project into the window, or why not.
@@ -280,7 +436,7 @@ end
 function Tabs.open(path)
   local doc, why = GP.read(path)
   if not doc then return nil, why end
-  P.file, R.pdirty = path, true
+  P.file, P.track, P.bar, R.pdirty = path, nil, nil, true
   local copied = Tabs.keep()
   Tabs.show(doc)
   return true, copied
@@ -300,11 +456,17 @@ function Project.parse(txt)
   local p = { file = "" }
   for line in (txt or ""):gmatch("[^\n]+") do
     local k, v = line:match("^(%w+)=(.*)$")
-    if k == "file" then p.file = v end
+    if k == "file" then p.file = v
+    elseif k == "track" then p.track = math.tointeger(tonumber(v))
+    elseif k == "bar" then p.bar = math.tointeger(tonumber(v)) end
   end
   return p
 end
-function Project.serialize(p) return p.file ~= "" and ("file=" .. p.file .. "\n") or "" end
+function Project.serialize(p)
+  if p.file == "" then return "" end
+  return "file=" .. p.file .. "\n" .. (p.track and ("track=" .. p.track .. "\n") or "")
+    .. (p.bar and ("bar=" .. p.bar .. "\n") or "")
+end
 function Project.read()
   local n, txt = r.GetProjExtState(R.proj, CFG.EXT, CFG.PEXT_KEY)
   return (n and n > 0 and txt) or ""
@@ -342,7 +504,8 @@ function Project.update()
     R.state_cc, R.projfn = cc, fn
     local txt = Project.read()
     if txt ~= R.plast_txt then Project.load(txt) -- (never write the old tab into the next project)
-    elseif fn ~= old then Tabs.moved(old) end
+    elseif fn ~= old then Tabs.moved(old)
+    else Tabs.tempo_check() end -- (the tempo may have changed)
   end
 end
 
@@ -366,17 +529,25 @@ local bold = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE, ImGui.FontFlags_Bold(
 local head_font = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE_BOLD, ImGui.FontFlags_Bold())
 ImGui.Attach(ctx, font); ImGui.Attach(ctx, bold); ImGui.Attach(ctx, head_font)
 
-local HELP_INTRO = "Tab Viewer shows the tracks of a Guitar Pro tab in your project. "
-  .. "This first version opens a tab and lists its tracks: the guitars, the bass and the drums, with their tunings."
+local HELP_INTRO = "Tab Viewer shows a Guitar Pro tab in your project: pick a track, read its tab, and click to hear "
+  .. "the song from there."
 local HELP_TOPICS = {
   { title = "Open a tab", text = [[
 Got a Guitar Pro tab of the song? Click "Open tab..." and pick the file: .gp (Guitar Pro 7 and 8), .gpx (Guitar Pro 6), .gp5, .gp4 or .gp3 (Guitar Pro 5, 4 and 3).
 
-The list shows every track of the tab: its instrument, how many strings it has and its tuning ("Standard", "Drop D", "Eb Standard", or the notes of the open strings), and the capo. Point at a track for its open strings.]] },
-  { title = "Where your stuff is saved", text = [[
-In the project: which tab it uses. Tab Viewer copies the tab into a "Tabs" folder next to the project file, so the project keeps its tab when you move or delete the original. Not saved yet? The copy is made when you save the project.
+The Track dropdown has every track of the tab: its name, how many strings it has and its tuning ("Standard", "Drop D", "Eb Standard", or the notes of the open strings), and the capo. Point at a track for its open strings. Tab Viewer starts with the bass (else a guitar), and the project remembers your choice.]] },
+  { title = "Reading the tab", text = [[
+The lines are the strings, the lowest at the bottom; the numbers on them are the frets. Notes 1 above the other are played together (a chord). The repeats of the tab are played out, so the bars follow the song from start to end.
 
-On this computer: the Light theme and the window dock.]] },
+Want to hear a part? Click it: the song plays from there. While it plays, a blue line shows where the song is, and the tab scrolls along (off: Settings > Tab > Follow playback). Stopped, a dashed line shows the edit cursor.
+
+Does the tab start later than the song (an intro, a count-in)? Set "Bar 1 of the tab = bar ... of the song" with < and > (hold for faster). The bar numbers above the tab are then the song's. From that bar on, the tab follows the beats of your project, so set the tempo of the song first.
+
+A drum track? Drums come in a later version (a drum grid).]] },
+  { title = "Where your stuff is saved", text = [[
+In the project: which tab it uses, the track you picked, and the bar where the tab starts. Tab Viewer copies the tab into a "Tabs" folder next to the project file, so the project keeps its tab when you move or delete the original. Not saved yet? The copy is made when you save the project.
+
+On this computer: the Light theme, Follow playback and the window dock.]] },
 }
 
 -- The theme: the same colours and sizes as Chart Cue (pushed every frame; UI.pop_style pops them).
@@ -587,9 +758,9 @@ end
 
 -- The sections of the Settings menu (tools\docs-check.ps1 reads the names).
 local SETTINGS_SECTIONS = {
-  { "Look" }, { "Window" },
+  { "Look" }, { "Tab" }, { "Window" },
 }
--- The Settings menu (the gear button): Look, Window.
+-- The Settings menu (the gear button): Look, Tab, Window.
 function UI.draw_settings()
   R.settings_open = ImGui.BeginPopup(ctx, "##settings")
   if not R.settings_open then return end
@@ -604,6 +775,10 @@ function UI.draw_settings()
   ch, S.light = UI.toggle_line("Light theme", S.light, "On: light panels and fields, dark text. Off: Dark (the default).")
   if ch then apply_theme(S.light); R.sdirty = true end
   head(SETTINGS_SECTIONS[2][1])
+  ch, S.follow = UI.toggle_line("Follow playback", S.follow,
+    "On (the default): while the song plays, the tab scrolls to the line that plays. Off: you scroll yourself (the blue line still shows where it plays).")
+  if ch then R.sdirty = true end
+  head(SETTINGS_SECTIONS[3][1])
   local docked = R.docked == true
   if UI.toggle_line("Dock in REAPER's docker", docked, "On: Tab Viewer is in a REAPER docker. Off: a floating window.") then
     R.dock_req = docked and 0 or (S.dock ~= 0 and S.dock or -1)
@@ -653,34 +828,153 @@ function UI.draw_help()
   end
 end
 
--- The track list: 1 line per track (name, instrument and strings, tuning), then the bars, time signature and tempo.
+-- The Track dropdown, the tab of the chosen track, then the bars, time signature and tempo of the file.
 function UI.draw_tracks()
-  ImGui.PushFont(ctx, head_font)
-  ImGui.TextColored(ctx, COL.HEADING, "Tracks")
-  ImGui.PopFont(ctx)
-  local aw = ImGui.GetContentRegionAvail(ctx)
   if not R.rows then
     ImGui.PushTextWrapPos(ctx, 0)
     ImGui.TextColored(ctx, COL.TEXT_DIM, R.err or "No tab yet. Open a Guitar Pro file (.gp, .gpx, .gp5, .gp4 or .gp3).")
     ImGui.PopTextWrapPos(ctx)
     return
   end
-  local dl = ImGui.GetWindowDrawList(ctx)
-  local w1, w2 = math.floor(aw * 0.42), math.floor(aw * 0.30)
-  local LH = CFG.TRACK_LINE
-  for _, row in ipairs(R.rows) do
-    local x, y = ImGui.GetCursorScreenPos(ctx)
-    ImGui.InvisibleButton(ctx, row.id, aw, LH)
-    if ImGui.IsItemHovered(ctx) then ImGui.DrawList_AddRectFilled(dl, x, y, x + aw, y + LH, COL.ROW_HOVER, 4) end
-    UI.tip(row.tip)
-    local ty = UI.text_y(y, LH)
-    ImGui.DrawList_AddText(dl, x + 4, ty, COL.TEXT_MAIN, UI.trunc_c(row.name, w1 - 12))
-    ImGui.DrawList_AddText(dl, x + w1, ty, COL.TEXT_DIM, UI.trunc_c(row.what, w2 - 8))
-    ImGui.DrawList_AddText(dl, x + w1 + w2, ty, COL.TEXT_MAIN, UI.trunc_c(row.tun, aw - w1 - w2 - 4))
-    UI.vgap(0)
+  local k = Tabs.track()
+  UI.label("Track")
+  ImGui.SetNextItemWidth(ctx, math.max(80, math.min(CFG.TRACK_W, (ImGui.GetContentRegionAvail(ctx)))))
+  if ImGui.BeginCombo(ctx, "##track", R.rows[k].label) then
+    for i, row in ipairs(R.rows) do
+      if ImGui.Selectable(ctx, row.sel, i == k) then Tabs.pick(i) end
+      UI.tip(row.tip)
+    end
+    ImGui.EndCombo(ctx)
   end
-  UI.vgap(10)
+  UI.tip(R.rows[k].tip)
+  if R.tab then -- (the bar line: where the tab starts in the song)
+    local BW = UI.btn_w("<")
+    UI.row_text(R.bar_txt)
+    UI.tip("Where the tab starts in your song: the bar of the song (REAPER's bar numbers) that is bar 1 of the tab. From there the tab follows the song's beats. Wrong bar? Click < or > (hold: faster).")
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+    ImGui.BeginDisabled(ctx, Tabs.bar() <= 1)
+    if UI.repeat_button("<", BW) then Tabs.set_bar(Tabs.bar() - 1) end
+    ImGui.EndDisabled(ctx)
+    UI.tip("The tab starts 1 bar earlier.")
+    ImGui.SameLine(ctx, 0, 4)
+    if UI.repeat_button(">", BW) then Tabs.set_bar(Tabs.bar() + 1) end
+    UI.tip("The tab starts 1 bar later.")
+    if R.tempo_warn then
+      ImGui.PushTextWrapPos(ctx, 0)
+      ImGui.TextColored(ctx, COL.YELLOW, R.tempo_warn)
+      ImGui.PopTextWrapPos(ctx)
+    end
+  end
+  local _, ah = ImGui.GetContentRegionAvail(ctx)
+  UI.draw_tab(math.max(40, ah - ImGui.GetTextLineHeightWithSpacing(ctx)))
   ImGui.TextColored(ctx, COL.TEXT_DIM, R.info)
+end
+
+-- A button that repeats while it is held (after 0.4 s, every 0.08 s). True at each step.
+function UI.repeat_button(label, w)
+  local hit = UI.button(label, w)
+  local h = R.hold and R.hold.id == label and R.hold or nil
+  if ImGui.IsItemActive(ctx) then
+    local now = Util.now()
+    if not h then h = { id = label, t = now + 0.4 }; R.hold = h end
+    if now >= h.t then h.t, h.rep = now + 0.08, true; return true end
+    return false
+  end
+  if h then
+    R.hold = nil
+    if h.rep then return false end -- (the release after repeats: no extra step)
+  end
+  return hit
+end
+
+-- A text centred on a point (digits have no descent: 1 px lower than the middle of the line height).
+function UI.centre(dl, cx, cy, col, txt)
+  local tw, th = ImGui.CalcTextSize(ctx, txt)
+  ImGui.DrawList_AddText(dl, cx - tw / 2, cy - th / 2 + 1, col, txt)
+  return tw, th
+end
+local BEAT_TXT = {}
+for k = 1, 32 do BEAT_TXT[k] = tostring(k) end
+-- The tab of the chosen track (only the lines in view are drawn); a click plays the song from there.
+function UI.draw_tab(h)
+  if not ImGui.BeginChild(ctx, "##tab", 0, h) then return end
+  local tab = R.tab
+  if not tab then
+    ImGui.PushTextWrapPos(ctx, 0)
+    ImGui.TextColored(ctx, COL.TEXT_DIM, R.tab_why or "")
+    ImGui.PopTextWrapPos(ctx)
+    ImGui.EndChild(ctx)
+    return
+  end
+  local w = ImGui.GetContentRegionAvail(ctx)
+  if tab.w ~= w then tab.lines, tab.h = Tabs.layout(tab, w); tab.w = w end
+  local ox, oy = ImGui.GetCursorScreenPos(ctx)
+  ImGui.InvisibleButton(ctx, "##tabarea", math.max(1, w), math.max(1, tab.h))
+  UI.tip("Click: the song plays from there.")
+  if ImGui.IsItemClicked(ctx, 0) then
+    local mx, my = ImGui.GetMousePos(ctx)
+    local bi, q = Tabs.hit(tab, mx - ox, my - oy)
+    if bi then UI.play_from(Tabs.time_of(bi, q)) end
+  end
+  local dl, fs = ImGui.GetWindowDrawList(ctx), ImGui.GetFontSize(ctx)
+  local sy = ImGui.GetScrollY(ctx)
+  local lh = (tab.nstr - 1) * CFG.TAB_LINE + CFG.TAB_TOP + CFG.TAB_BOTTOM
+  for _, ln in ipairs(tab.lines) do
+    if ln.y + lh >= sy and ln.y <= sy + h then
+      local y0 = oy + ln.y + CFG.TAB_TOP -- (the top string)
+      local yb = y0 + (tab.nstr - 1) * CFG.TAB_LINE
+      local lb = tab.bars[ln.last]
+      local x_end = ox + CFG.TAB_LEFT + lb.x + lb.n16 * lb.sw + lb.pad
+      for s = 1, tab.nstr do
+        local ys = y0 + (tab.nstr - s) * CFG.TAB_LINE
+        UI.centre(dl, ox + CFG.TAB_LEFT / 2 - 2, ys, COL.TEXT_DIM, tab.names[s])
+        ImGui.DrawList_AddLine(dl, ox + CFG.TAB_LEFT, ys, x_end, ys, COL.LINE, 1)
+      end
+      ImGui.DrawList_AddLine(dl, x_end, y0, x_end, yb, COL.TEXT_DIM, 1)
+      for bi = ln.first, ln.last do
+        local b = tab.bars[bi]
+        local bx = ox + CFG.TAB_LEFT + b.x
+        ImGui.DrawList_AddLine(dl, bx, y0, bx, yb, COL.TEXT_DIM, 1)
+        ImGui.DrawList_AddText(dl, bx + 2, oy + ln.y + 2, COL.TEXT_DIM, b.label)
+        for beat = 0, b.n16 // 4 - 1 do -- (the beats, under the middle of their 16th)
+          UI.centre(dl, bx + b.pad + (beat * 4 + 0.5) * b.sw, yb + fs, COL.TEXT_DIM, BEAT_TXT[beat + 1] or "")
+        end
+        for _, nt in ipairs(b.notes) do -- (a chord: its notes on their strings, 1 above the other)
+          local x, y = bx + b.pad + (nt.q * 4 + 0.5) * b.sw, y0 + (tab.nstr - nt.s) * CFG.TAB_LINE
+          local tw, th = ImGui.CalcTextSize(ctx, nt.txt)
+          ImGui.DrawList_AddRectFilled(dl, x - tw / 2 - 2, y - th / 2, x + tw / 2 + 2, y + th / 2, COL.PANEL_BG)
+          UI.centre(dl, x, y, COL.TEXT_MAIN, nt.txt)
+        end
+      end
+    end
+  end
+  -- the position line: playing, blue at the play position (Follow playback: its line in view); stopped, dashed at the
+  -- edit cursor (as in Note Detective)
+  local playing = r.GetPlayStateEx(R.proj) & 1 == 1
+  local pbi, pq = Tabs.place_of(playing and r.GetPlayPositionEx(R.proj) or r.GetCursorPositionEx(R.proj))
+  local pln = pbi and Tabs.line_of(tab, pbi)
+  if pln then
+    local b = tab.bars[pbi]
+    local px = ox + CFG.TAB_LEFT + b.x + b.pad + math.min(pq or 0, b.len) * 4 * b.sw
+    local y0 = oy + pln.y + CFG.TAB_TOP
+    local y1 = y0 + (tab.nstr - 1) * CFG.TAB_LINE + 8
+    if playing then
+      ImGui.DrawList_AddLine(dl, px, y0 - 8, px, y1, COL.ACCENT, 2)
+    else -- (dashed: not a bar line)
+      for y = y0 - 8, y1, 6 do ImGui.DrawList_AddLine(dl, px, y, px, math.min(y + 3, y1), COL.TEXT_MAIN, 1) end
+    end
+    if playing and S.follow and R.tab_line ~= pln.y then
+      R.tab_line = pln.y
+      ImGui.SetScrollY(ctx, math.max(0, pln.y - CFG.TAB_LINE))
+    end
+  end
+  if not playing then R.tab_line = nil end
+  ImGui.EndChild(ctx)
+end
+-- The song plays from time t (playing: it jumps there).
+function UI.play_from(t)
+  r.SetEditCurPos2(R.proj, t, true, true)
+  if r.GetPlayStateEx(R.proj) & 1 == 0 then r.OnPlayButtonEx(R.proj) end
 end
 
 function UI.draw_panel_menu()
@@ -697,7 +991,7 @@ function UI.draw_panel_menu()
   ImGui.EndPopup(ctx)
 end
 
--- The window: the toolbar, then one panel (a rounded area) with the track list.
+-- The window: the toolbar, then one panel (a rounded area) with the Track dropdown and the tab.
 function UI.draw_main()
   UI.draw_toolbar()
   local aw, ah = ImGui.GetContentRegionAvail(ctx)

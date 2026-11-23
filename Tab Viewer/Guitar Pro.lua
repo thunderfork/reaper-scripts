@@ -739,6 +739,30 @@ function GP.notes(doc, track)
   return out
 end
 
+-- The tab of a track: its bars in the order they play (the repeats played out), each with its notes: { nstr, names
+-- (the open strings, from the lowest; the highest "e" when it has the name of the lowest), bars = { { q0 (quarter
+-- notes from the start of the tab), len, n16 (its 16ths), notes = { { q (in the bar), len, s (1 = the lowest
+-- string), fret } } } } }. A note without a string and fret (drums) is left out.
+function GP.tab(doc, track)
+  local open = doc.tracks[track].open
+  local tab = { nstr = #open, names = {}, bars = {} }
+  for s, m in ipairs(open) do tab.names[s] = GP.NAMES[m % 12] end
+  if tab.nstr > 1 and tab.names[tab.nstr] == tab.names[1] then tab.names[tab.nstr] = tab.names[tab.nstr]:lower() end
+  local q = 0
+  for _, k in ipairs(GP.order(doc.mbars)) do
+    local len = 4 * doc.mbars[k].num / doc.mbars[k].den
+    tab.bars[#tab.bars + 1] = { q0 = q, len = len, n16 = math.max(1, math.ceil(len * 4 - 1e-9)), notes = {} }
+    q = q + len
+  end
+  local b = 1
+  for _, n in ipairs(GP.notes(doc, track)) do
+    while tab.bars[b + 1] and n.q >= tab.bars[b + 1].q0 - 1e-9 do b = b + 1 end
+    local bar = tab.bars[b]
+    if bar and n.s and n.fret then bar.notes[#bar.notes + 1] = { q = n.q - bar.q0, len = n.len, s = n.s, fret = n.fret } end
+  end
+  return tab
+end
+
 ---------------------------------------------------------------------------
 -- TUNINGS (the names shown for a track)
 ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ local function eq(a, b, what)
   if a ~= b then error((what or "value") .. ": expected " .. tostring(b) .. ", got " .. tostring(a), 2) end
 end
 local function ok(v, what) if not v then error((what or "check") .. " failed", 2) end end
+local function near(a, b, tol, what) ok(math.abs(a - b) <= tol, (what or "value") .. ": " .. tostring(a) .. " is not about " .. tostring(b)) end
 local tests = {}
 local function test(name, fn) tests[#tests + 1] = { name, fn } end
 
@@ -476,6 +477,97 @@ test("open a tab in a saved project: a copy in its Tabs folder, the project data
   eq(C.get_P().file, "Tabs/Song (2).gp", "the same name, another tab: its own copy")
   Tabs.open(src)
   Project.save()
+end)
+
+test("the tab of a track: the bars as they play (repeats, 3/4), the notes on their strings, the string names", function()
+  local tab = GP.tab(GP.parse(D.GPIF), 1)
+  eq(tab.nstr, 4); eq(table.concat(tab.names, " "), "E A D G")
+  local t = {}
+  for k, b in ipairs(tab.bars) do
+    local n = {}
+    for j, x in ipairs(b.notes) do n[j] = string.format("%.2f s%d f%d", x.q, x.s, x.fret) end
+    t[k] = string.format("%.0f+%.0f/%d: %s", b.q0, b.len, b.n16, table.concat(n, ", "))
+  end
+  eq(table.concat(t, " | "), "0+4/16: 0.00 s2 f3 | 4+4/16: 0.00 s3 f2 | 8+4/16: 0.00 s3 f2 | 12+3/12: 0.00 s4 f0",
+    "bar 2 twice, the 3/4 bar 12 16ths")
+  write(tmp .. "\\src\\guitar.gp5", old_file(510))
+  local g = GP.tab(GP.read(tmp .. "\\src\\guitar.gp5"), 1) -- (the guitar of the older file test: Drop D)
+  eq(table.concat(g.names, " "), "D A D G B E", "the highest E is not the lowest name: capital")
+  eq(table.concat(GP.tab({ tracks = { { open = { 40, 45, 50, 55, 59, 64 } } }, mbars = {} }, 1).names, " "), "E A D G B e")
+end)
+
+test("the Track dropdown: its texts, the default track (bass), the choice saved in the project", function()
+  Tabs.open(src)
+  local t = {}
+  for k, row in ipairs(R.rows) do t[k] = row.label end
+  eq(table.concat(t, " | "), "Bass - 4 strings, Standard | Rhythm Guitar - 6 strings, Drop D, capo 2 | Drums - Drums | Keys - Electric Piano")
+  eq(Tabs.track(), 1, "the bass first"); ok(R.tab and R.tab.nstr == 4, "its tab")
+  Tabs.pick(2)
+  eq(C.get_P().track, 2); eq(R.tab.nstr, 6, "the guitar")
+  eq(Project.serialize(C.get_P()), "file=Tabs/Song.gp\ntrack=2\n")
+  eq(Project.parse("file=Tabs/Song.gp\ntrack=2\n").track, 2, "read back")
+  Tabs.pick(3)
+  eq(R.tab, nil); ok(R.tab_why:find("Drum tracks", 1, true), "drums: the line")
+  Tabs.pick(4)
+  ok(R.tab_why:find("no tab", 1, true), "keys: no tab")
+  Tabs.pick(1)
+  eq(C.get_P().track, nil, "the default again: not saved")
+  eq(Project.serialize(C.get_P()), "file=Tabs/Song.gp\n")
+  Tabs.pick(2)
+  Tabs.open(src)
+  eq(C.get_P().track, nil, "another Open tab: the default track")
+  C.get_P().track = 9
+  eq(Tabs.track(), 1, "a saved track that the tab does not have: the default")
+  C.get_P().track = nil
+  Project.save()
+end)
+
+test("the tab on the window: a click on a place gives its bar and 16th, and the song time there", function()
+  Tabs.open(src)
+  local tab = R.tab
+  tab.lines, tab.h = Tabs.layout(tab, 600)
+  eq(#tab.lines, 2, "4 bars on 600 px: 2 lines"); eq(tab.lines[1].last, 2)
+  local b = tab.bars[2]
+  local bi, q = Tabs.hit(tab, C.CFG.TAB_LEFT + b.x + b.pad + 4.5 * b.sw, C.CFG.TAB_TOP)
+  eq(bi, 2); eq(q, 1, "the 5th 16th: 1 quarter note in")
+  eq(Tabs.hit(tab, 1, C.CFG.TAB_TOP), nil, "on the string names")
+  local b4, ln2 = tab.bars[4], tab.lines[2]
+  bi, q = Tabs.hit(tab, C.CFG.TAB_LEFT + b4.x + b4.pad + 0.5 * b4.sw, ln2.y + C.CFG.TAB_TOP)
+  eq(bi, 4); eq(q, 0)
+  near(Tabs.time_of(2, 1), 2.5, 1e-9, "bar 2 + 1 quarter note at 120 BPM")
+end)
+
+test("bar 1 of the tab = bar N of the song: the times, the play position, the bar numbers, saved; < stops at 1", function()
+  Tabs.open(src)
+  Tabs.set_bar(3)
+  eq(C.get_P().bar, 3); eq(R.bar_txt, "Bar 1 of the tab = bar 3 of the song")
+  eq(R.tab.bars[1].label .. " " .. R.tab.bars[4].label, "3 6", "the song's bar numbers")
+  eq(Project.serialize(C.get_P()), "file=Tabs/Song.gp\nbar=3\n")
+  eq(Project.parse("file=x.gp\nbar=3\n").bar, 3, "read back")
+  -- 120 BPM 4/4: bar 3 starts at 4 s; the tab's bars are 4, 4, 4 and 3 quarter notes (its 3/4 bar fits)
+  near(Tabs.time_of(1, 0), 4, 1e-9); near(Tabs.time_of(2, 1), 6.5, 1e-9)
+  local bi, q = Tabs.place_of(6.5)
+  eq(bi, 2); near(q, 1, 1e-9)
+  bi, q = Tabs.place_of(10.25)
+  eq(bi, 4, "the 3/4 bar (12 quarter notes in)"); near(q, 0.5, 1e-9)
+  eq(Tabs.place_of(3.9), nil, "before the tab"); eq(Tabs.place_of(4 + 15 * 0.5), nil, "after it")
+  Tabs.set_bar(0)
+  eq(C.get_P().bar, nil, "1 at least, and 1 is not saved"); eq(R.tab.bars[1].label, "1")
+  Tabs.set_bar(5)
+  Tabs.open(src)
+  eq(C.get_P().bar, nil, "another Open tab: bar 1")
+  Project.save()
+end)
+
+test("the yellow line when the project's tempo is not the tab's (the tab would drift)", function()
+  Tabs.open(src)
+  eq(R.tempo_warn, nil, "the project and the tab: both 120 BPM")
+  R.doc.tempo = 150
+  Tabs.tempo_check()
+  ok(R.tempo_warn and R.tempo_warn:find("120 BPM, the tab's 150 BPM", 1, true), tostring(R.tempo_warn))
+  Tabs.show(nil)
+  eq(R.tempo_warn, nil, "no tab: no line")
+  Tabs.open(src) -- (the tests after this one start with the tab open)
 end)
 
 test("open a file that can not be read: nothing changes", function()

@@ -65,7 +65,30 @@
   Detective tests hand over the shared reader, release.ps1 copies like deploy.ps1. Skipped: 1 shape for the bars of
   all formats (more parse time at open), reading @provides instead of `Uses`, a cache for project tab switches.
   Committed 23 November 2026 (2 commits). Decided 23 November 2026: after the 1st save or Save as of a project with
-  a tab, the project shows as changed once more (the tab's new place); kept as it is. Next (ask
+  a tab, the project shows as changed once more (the tab's new place); kept as it is.
+- Step 2 decided 23 November 2026 (the tab in the window): Tab Viewer: a track dropdown above the tab (no Tracks
+  tab); the tab read only, any number of strings, chords stacked, bar numbers, repeats played out, a click plays from
+  there; drums: a grey line (later). Saved in the project: the chosen track (`track=`) and the tab's start bar
+  (`bar=`; default: the first bass track, bar 1). A "Follow playback" switch in a new Tab section of Settings (this
+  computer, on; segment 2b). Segments: 2a
+  the tab (Tab Viewer), 2b "Bar 1 of the tab = bar N of the song" and following playback, 2c Note Detective List |
+  Tab tabs with the same drawing. Guitar tab editing and drums later. The exception of the open manual tests covers
+  this direction (assumed; the user did not object).
+- Segment 2a built 23 November 2026: Tab Viewer's Track dropdown and the tab (read only, chords, any strings, a click
+  plays from there; bar 1 of the tab = bar 1 of the project until 2b). Tests pass (Tab Viewer 18, Note Detective 72);
+  deployed; manual test PASSED (the user, 23 November 2026); NOT COMMITTED.
+- Segment 2b built 23 November 2026: "Bar 1 of the tab = bar N of the song" (< and >, hold = repeat; saved as
+  `bar=`), the tab follows the song's beats from there (its own bar lengths), the bar numbers are the song's; the
+  blue play line, the dashed edit cursor; Settings > Tab > Follow playback (on). Tests pass (Tab Viewer 20);
+  deployed; NOT COMMITTED. Manual test 23 November 2026: the tab plays and follows, but not the song's tempo: the
+  project was at REAPER's default tempo (expected, not a bug). Added: a yellow line when the project's tempo where
+  the tab starts is not the tab's (`Tabs.tempo_check`).
+- Tempo in Tab Viewer, decided 23 November 2026: 2d = Note Detective's tempo code (Beat, Tempo: find the beats, the
+  bar plan, writing REAPER's tempo with the items held in place) into a shared file, Note Detective unchanged; 2e =
+  Tab Viewer gets the same foldable "Tempo and bars" section above Track (as the mockup), "Beats from" gets a first
+  choice "The tab (its tempo)" (the tab's tempo, tempo changes and time signatures, no listening; Bar 1, Play with
+  click and Set tempo the same); after Set tempo the tab starts on the new bar 1 (< > still move it). Order: 2d, 2e,
+  then 2c. Next (ask
   first): step 2 (the window: List and Tab tabs, the tab drawing, the track dropdown, the tab on the bars; with the
   new-feature skill and a mockup).
 - Step 0 done 23 November 2026: Note Detective committed as it was (the user's choice, without the debug-time round
