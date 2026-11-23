@@ -18,6 +18,13 @@ dropdown, the tab on the bars of the song (step 2).
   copy `<Name>*.lua`, then the `Uses` files). Each script loads it from its own folder (`debug.getinfo`); the Note
   Detective tests hand it over (`NoteDetectiveTest.GP`).
 
+- `Tempo.lua` (`TP`, segment 2d, 23 November 2026): Tempo and bars, moved from Note Detective unchanged (find the
+  beats: `TP.Beat`; the audio reader `TP.reader`; `TP.first_sound`; `TP.new(host)` = the section's functions: Find
+  tempo in steps, 1/2 x2, bar 1, short bars, Play with click, Set tempo with `hold` / `map` / `align`). The host gives
+  R (the state lives in R.tempo, R.tsrc, R.tsrc_sel), name, undo_try, note, notice, song, and optionally first_note,
+  shift, written, set_extra. Note Detective uses it now; Tab Viewer from segment 2e (its @provides and `Uses` then).
+  Its tests are Note Detective's (tests\notedetective.lua: the beats, the plan, Set tempo, Play with click).
+
 ## The reader (`Guitar Pro.lua`, `GP`)
 
 - `GP.read(path)` -> doc, or nil and a text for the user. .gp (Guitar Pro 7 / 8: a zip; `GP.unzip` + `GP.inflate`,

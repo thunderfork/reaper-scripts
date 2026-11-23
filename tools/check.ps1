@@ -3,7 +3,7 @@
 #   .\tools\check.ps1 -Full         (every file and every warning)
 #   .\tools\check.ps1 -UpdateKnown  (the current warnings become the known ones: tools\known-warnings.txt)
 # 1. Syntax (luac -p)                       - must pass
-# 2. Undefined globals (from the luac listing) - must pass
+# 2. Undefined globals (from the luac listing) - must pass; 2b. CFG names read but never set - must pass
 # 3. Lua Language Server warnings            - information only (many are false alarms: it cannot see that a value
 #    is checked earlier in the same function). Compared with tools\known-warnings.txt by file, code and text (not by
 #    line: the lines move with every change); only a new one is shown.
@@ -43,6 +43,25 @@ foreach ($f in $files) {
     ForEach-Object { $_.Matches[0].Groups[2].Value } | Sort-Object -Unique
   $bad = $names | Where-Object { $known -notcontains $_ }
   if ($bad) { Write-Host "  FAIL  globals: $($f.Name): $($bad -join ', ')" -ForegroundColor Red; $failed = $true }
+  else { Say "  OK    $($f.Name)" }
+}
+
+# 2b. Every CFG.NAME that a file reads is defined in it ("CFG.NAME =", or a key of its "CFG = { ... }" block): a
+# constant that was removed or moved but is still read gives nil only when that code runs (lessons 23 November 2026:
+# Note Detective's Tempo and bars window read CFG.BPM_MIN after the move to Tempo.lua). Comments are skipped; the
+# CFG of another table (TP.CFG.NAME) is not the file's.
+Say "== 2b. Undefined CFG names ==" Cyan
+foreach ($f in $files) {
+  $code = (Get-Content $f.FullName) | ForEach-Object { $_ -replace '--.*$', '' }
+  $text = $code -join "`n"
+  $defs = @{}
+  foreach ($m in [regex]::Matches($text, '(?<![\w.])CFG\.([A-Z][A-Z_0-9]*)(?=(\s*,\s*CFG\.[A-Z][A-Z_0-9]*)*\s*=[^=])')) { $defs[$m.Groups[1].Value] = $true }
+  foreach ($b in [regex]::Matches($text, '(?s)CFG\s*=\s*\{(.*?)\n\}')) {
+    foreach ($m in [regex]::Matches($b.Groups[1].Value, '\b([A-Z][A-Z_0-9]*)\s*=[^=]')) { $defs[$m.Groups[1].Value] = $true }
+  }
+  $bad = [regex]::Matches($text, '(?<![\w.])CFG\.([A-Z][A-Z_0-9]*)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique |
+    Where-Object { -not $defs[$_] }
+  if ($bad) { Write-Host "  FAIL  CFG: $($f.Name): $(($bad | ForEach-Object { 'CFG.' + $_ }) -join ', ') read but never set" -ForegroundColor Red; $failed = $true }
   else { Say "  OK    $($f.Name)" }
 }
 

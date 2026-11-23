@@ -107,16 +107,18 @@ look, 1 window, no tabs. Plan and answers: decided 23 November 2026.
   with `CFG.RUN_MIN` parts or more; `Group.rows(notes, bars, key, opt)`, `opt = List.opt()`.
 - Modules: `Util`, `Key` (the key in a file name, the note names of a key), `Det` (the detection), `Group` (notes ->
   bars -> rows), `List` (the rows, corrections, Undo), `Project`, `Find` (reads the item in steps), `Out` (Write and
-  Finish), `Beat` (tempo, beats, bar 1, the plan of the tempo markers; no REAPER calls), `Tempo` (Tempo and bars:
-  Find tempo in steps, Set tempo, Play with click), `UI`.
+  Finish), `Beat` and `Tempo` (Tempo and bars: since 23 November 2026 (segment 2d) the shared `Tempo.lua` in
+  `Tab Viewer\`, `TP.Beat` and `TP.new(host)`; Note Detective gives it the song (the bass item), the first note (the
+  first found note of the list), the list shift, the extra Set tempo text; the audio reader `TP.reader` and
+  `TP.first_sound` are there too), `UI`.
 - Tempo and bars (step 1 of the 23 November 2026 wishes): `R.tempo` only (runtime, nothing saved; the result is
-  REAPER's tempo map). Beats from: metronome tracks (`Util.is_click`), then drum tracks, then the others. Find tempo:
+  REAPER's tempo map). Beats from: metronome tracks (`TP.is_click`), then drum tracks, then the others. Find tempo:
   `Beat.onset` (the rise of the log level), `Beat.tempo` (Fourier, 60-200 BPM, folded into 90-180), `Beat.track`
   (dynamic programming), `Beat.bar1` = the first beat with sound. Style suggested by `Beat.fit` (9 of 10 beats within
   30 ms: "1 tempo", else "Follow the song": 1 marker per bar).
 - Set tempo aligns (decided 23 November 2026 by the user): `Tempo.write(name, true)` -> `Tempo.align` in the same undo
-  step: `Tempo.first_note` (the first found note when the list is of this item, else `Det.first_sound` in the item's
-  first `CFG.ALIGN_SCAN` s: the first pluck missed the first note of song 2), then every item at least half inside the song moves so that note is on the nearest beat;
+  step: `Tempo.first_note` (the first found note when the list is of this item, else `TP.first_sound` in the item's
+  first `TP.CFG.ALIGN_SCAN` s: the first pluck missed the first note of song 2), then every item at least half inside the song moves so that note is on the nearest beat;
   `List.shift` moves the list (its own Undo step: REAPER's undo does not change ProjExtState). Not for Play with click.
 - `Tempo.write` (1 undo step): REAPER's default timebase is beats, so `Tempo.hold` puts every item in time mode for a
   moment and puts the markers, regions and envelope points back at their times. `Tempo.map`: a bar from the old bar line

@@ -34,7 +34,8 @@ local function finish()
   r.defer(function() r.Main_OnCommand(40004, 0) end) -- File: Quit REAPER
 end
 
-NoteDetectiveTest = { GP = dofile(here .. "\\..\\Tab Viewer\\Guitar Pro.lua") } -- (the shared reader: in the repository)
+NoteDetectiveTest = { GP = dofile(here .. "\\..\\Tab Viewer\\Guitar Pro.lua"), -- (the shared files: in the repository)
+  TP = dofile(here .. "\\..\\Tab Viewer\\Tempo.lua") }
 local loaded, err = pcall(dofile, here .. "\\..\\Note Detective\\Note Detective.lua")
 local C = NoteDetectiveTest
 if not loaded or not C.Project then
@@ -199,8 +200,8 @@ end
 -- the notes of an item in 1 go: notes, tuning, the end of the item
 local function find_all(it, tk)
   local pos, len = r.GetMediaItemInfo_Value(it, "D_POSITION"), r.GetMediaItemInfo_Value(it, "D_LENGTH")
-  local rd = Find.reader(tk, len)
-  while not Find.read_block(rd) do end
+  local rd = C.TP.reader(tk, len)
+  while not C.TP.read_block(rd) do end
   local list, tune = Find.notes(rd.x, pos, function() end)
   return list, tune, pos + len
 end
@@ -822,8 +823,8 @@ test("onsets: 1 per pluck; a held note has none inside; the same note plucked ag
   times_near(Det.onsets_of(x, 4000), { 1 }, "noise 60 dB down, then A at 1 s: only the A")
   local found = Det.analyse(x, function() end, 28)
   eq(#found, 1, "1 note, none in the noise"); near(found[1].t, 1, 0.02)
-  near(Det.first_sound(x, 4000), 1, 0.011, "the first sound for Set tempo: the A, not the noise")
-  eq(Det.first_sound({ 0, 0, 0 }, 4000), nil, "silence")
+  near(C.TP.first_sound(x, 4000), 1, 0.011, "the first sound for Set tempo: the A, not the noise")
+  eq(C.TP.first_sound({ 0, 0, 0 }, 4000), nil, "silence")
   -- (a loud note straight into a much softer one hides the soft start: that note starts at its pitch change instead)
   times_near(Det.onsets_of(tone4k({ { 36, 1 }, { 36, 1 }, { nil, 0.3 }, { 43, 1, -25 }, { 43, 1, -25 }, { 36, 1 } }), 4000),
     { 0, 1, 2.3, 3.3, 4.3 }, "the soft part (25 dB lower) keeps its plucks (Dev 5)")

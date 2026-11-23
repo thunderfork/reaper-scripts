@@ -16,9 +16,10 @@ script's files there). Each folder has its own CLAUDE.md with its modules, data,
   no saved data.
 - **Note Detective** (`Note Detective/`): finds the notes of a separated bass item and writes them as markers or text
   items. A preparation tool; Chart Cue look, no tabs; in the project only its list, until Finish.
-- **Tab Viewer** (`Tab Viewer/`): Guitar Pro tabs in the project (guitar, bass, drums). Chart Cue look. Its
-  `Guitar Pro.lua` is the 1 shared Guitar Pro reader: Note Detective uses it too (and later Chart Cue);
-  `tools\scripts.psd1` (Uses) and each `@provides` put a copy next to each script.
+- **Tab Viewer** (`Tab Viewer/`): Guitar Pro tabs in the project (guitar, bass, drums). Chart Cue look. Its shared
+  files: `Guitar Pro.lua` (the Guitar Pro reader) and `Tempo.lua` (Tempo and bars, from Note Detective); Note
+  Detective uses both (and later Chart Cue); `tools\scripts.psd1` (Uses) and each `@provides` put a copy next to
+  each script.
 
 The rules below apply to all 9 scripts ("the script" = the script being changed).
 
@@ -124,7 +125,7 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
 ## Verification
 
 - After editing: `.\tools\check.ps1` must print "Syntax and globals OK" (syntax with `luac -p`, undefined
-  globals, then Lua Language Server warnings as information). It compares the warnings with
+  globals, CFG names read but never set, then Lua Language Server warnings as information). It compares the warnings with
   `tools\known-warnings.txt` and shows only new ones: look at each new one; fix it, or (a false alarm) run
   `.\tools\check.ps1 -UpdateKnown`. It also runs `tools\docs-check.ps1`: paths, skill names and "Settings > ..."
   paths in the docs and skills that no longer match; fix each one it reports. And `tools\imgui-check.ps1`: the

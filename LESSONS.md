@@ -18,6 +18,7 @@ failed manual test, or a `debug-time` finding in committed code. Newest first.
 - `per-frame`: work in the UI loop that should be cached (text cuts, string building, scans).
 - `naming`: a name rule or match that gives the wrong new name.
 - `file-format`: a part of an outside file format (a mark, a sign, a version) that the script does not read.
+- `refactor`: a moved, renamed or removed name (a constant, a function, a field) that other code still reads.
 
 The rules that came from these entries are in `LESSONS-RULES.md` (loaded in every session).
 
@@ -32,6 +33,20 @@ YYYY-MM-DD | Script | tag | what the user saw
   Test: "<test name>" (tests\<file>.lua), failed before the fix | no test possible: <reason>
   Other scripts: searched, <result>
   Status: fixed, not confirmed | confirmed
+```
+
+```
+2026-11-23 | Note Detective | refactor | Tempo and bars: a script error after Find tempo ("Note Detective.lua:3317:
+  attempt to compare number with nil"), manual test 29 of segment 2d
+  Cause: the move of the tempo code into the shared Tempo.lua removed CFG.BPM_MIN / CFG.BPM_MAX from Note
+  Detective's CFG, but its Tempo and bars window still read them (the 1/2 and x2 buttons). Claude's search for the
+  uses was anchored to the line start and missed the 2 uses inside the window code.
+  Why the tests missed it: the tests never draw the window (UI code); the syntax and globals checks do not see a
+  missing field of a table (CFG.X is nil, not an undefined global).
+  Test: tools\check.ps1 step 2b "Undefined CFG names" (every CFG.NAME a file reads is set in it), a must-pass check
+  for all scripts; failed before the fix with exactly these 2 names. The fix: TP.CFG.BPM_MIN / TP.CFG.BPM_MAX.
+  Other scripts: the new check runs on all 9; no other gap (Mono Merge and Tempo.lua set their CFG in 1 block).
+  Status: confirmed (the user, 23 November 2026)
 ```
 
 ```

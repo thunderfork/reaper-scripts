@@ -88,7 +88,11 @@
   Tab Viewer gets the same foldable "Tempo and bars" section above Track (as the mockup), "Beats from" gets a first
   choice "The tab (its tempo)" (the tab's tempo, tempo changes and time signatures, no listening; Bar 1, Play with
   click and Set tempo the same); after Set tempo the tab starts on the new bar 1 (< > still move it). Order: 2d, 2e,
-  then 2c. Next (ask
+  then 2c. 2a and 2b committed 23 November 2026.
+- Segment 2d built 23 November 2026: `Tab Viewer\Tempo.lua` (shared) holds Note Detective's Tempo and bars, its audio
+  reader and first-sound search; Note Detective uses it through a small host (no visible change). Tests pass (Note
+  Detective 72, Tab Viewer 20); deployed; NOT COMMITTED. A bug in it (CFG.BPM_MIN still read by the window) fixed,
+  with check.ps1 step 2b; manual test PASSED after the fix (the user, 23 November 2026). Next (ask first): 2e. Next (ask
   first): step 2 (the window: List and Tab tabs, the tab drawing, the track dropdown, the tab on the bars; with the
   new-feature skill and a mockup).
 - Step 0 done 23 November 2026: Note Detective committed as it was (the user's choice, without the debug-time round
