@@ -2,56 +2,27 @@
 
 ## Handoff (24 November 2026)
 
-- Branch `script/tab-viewer`. Segments A (loop, speed), Play / Stop and B (playing marks) are committed. NOT
-  COMMITTED (deployed): segment C1 (note lengths, PASSED), segment C2 (length keys; the whole chord changes, the saved
-  len = the written length: decided 24 November 2026; "/" failed, fixed (lessons), re-test PASSED), and the checkup.
-- Checkup of Tab Viewer only (full, the user 24 November 2026): step 1 (debug-time, 3 review agents) DONE: 8 bugs
-  fixed (the loop and the selection on another project / tab / track / bars; my own time selection kept; triplet
-  places read back exact; "/" with a held note; a tie that joined an old note; a too long rest; the speed item),
-  5 text fixes, and 4 proposals built (all decided by the user, 24 November 2026): Up / Down selects on the next
-  string (Alt+Up / Down moves the note) and an empty place can be selected (a number adds a note); a new note as
-  long as the note before it; the speed yellow below 100% and a notice at load; the Undo button always there.
-  Tab Viewer 38 tests, Note Detective 72. Manual test of step 1: PASSED (24 November 2026).
-  Step 2 (simplify: 4 agents, code checker) DONE: Tabs.x_of / x_end / line_of (b.ln), UI.tab_item (1 drawing of
-  notes and held parts, text sizes measured once), the ghost buttons drawn as in Chart Cue, button widths measured
-  once, R.tsrc_audio and UI.trunc_c removed, 1 fret check, 1 undo push, the settings switches in 1 list, GP.tab
-  bar_at, GP.fx search texts made once, old comments; no new checker warnings. Steps 3 (review) and 4
-  (housekeeping) DONE; the user said "do all" (24 November 2026): built the bar widths from the texts
-  (`Tabs.min_slot`, the user's screenshot), the held notes grey, the loop that moves with its bars, R.playing, the
-  notes tidied; manual test PASSED (24 November 2026). Items 1-2 (whole-number places, a cached tab): "Later". Item
-  5 (brighter playing marks): not needed (the user, 24 November 2026). NOT COMMITTED (the user did not answer the
-  commit question).
-- After the checkup (24 November 2026, from the user's Guitar Pro screenshots): the triplet bracket as in Guitar Pro;
-  repeats as written (|: :|, x3, endings 1. 2.; default on, Settings > Tab > Repeats as written; written bar numbers;
-  a click while stopped = the first pass; decided 24 November 2026). Tab Viewer 40 tests; deployed; NOT COMMITTED;
-  manual test PASSED (24 November 2026).
-- Line breaks as in Guitar Pro (& and Ctrl+Enter; saved per tab as `lines=`, a new saved value approved; a too wide
-  line shrinks; your own lines fill the width: the user, 24 November 2026): built, Tab Viewer 41 tests, deployed,
-  manual test PASSED (24 November 2026).
-- Section names (manual test PASSED), then tempo marks, time signatures and the final double bar (the user: "do",
-  24 November 2026): built, Tab Viewer 42 tests, deployed, committed (e2dc5ed; all the work above too). Manual test
-  PASSED (24 November 2026). The 2 not checked items (made-up data only, a tempo change in a later pass): not
-  relevant (the user, 24 November 2026). NEXT: the release of Tab Viewer (see "Then" below).
-- After e2dc5ed (24 November 2026, all manual tests PASSED, NOT COMMITTED): rests inside the strings, lines to the right
-  edge, a frame, endings of 2+ bars (`GP.endings`, Note Detective too), tremolo picking (slashes; Settings > Tab >
-  Tremolo as notes, on), line breaks that keep only yours (`joins=`), Tab dropdown > Layout... (`layout=`), right-click
-  a bar > Time signature... (`meter=`, the notes fit). Tab Viewer 43 tests, Note Detective 72.
+- Tab Viewer 1.0 released (24 November 2026): branch `script/tab-viewer` merged into main (with the Note Detective
+  work on it; Note Detective stays unreleased, `@noindex`). Today: note lengths and length keys, repeats as written,
+  line breaks (only yours, `joins=`), Layout... (`layout=`), section names, tempo marks, time signatures, tremolo
+  picking (Tremolo as notes), rests in the strings, full-width lines, endings of 2+ bars, right-click a bar > Time
+  signature... (`meter=`, the notes and your fixes fit). All manual tests PASSED. Tab Viewer 43 tests.
+- Open: Open now 28 (Set tempo from the tab with 6/8 bars, a manual test).
 - Not fixed (low risk): the speed of a project left with another project tab stays (REAPER has no call for a
   project that is not active); in the reader: 2 voices sharing a tie, tempo automations out of order, a repeat
   without a start mark (uncertain).
 - The user's question still open: the stronger fix for the tag `imgui-input` (click rules into plain functions with
   a test; recommended "Later").
-- Then: the release of Tab Viewer (debug-time, README, ReaPack). Later: the list from the tab (step 5, Note
-  Detective), chord detection (6), drums (on hold), Note Detective's Find tempo as in Tab Viewer.
-- Last checkup: 24 November 2026, Tab Viewer only (full); a 2nd one the same day on e2dc5ed..a953bd1 (steps 1-4
-  done: 1 bug fixed (8d94164), 1 tidy (eb3c835); proposals and file findings answered in the session). The other scripts: none as 1 full run yet.
+- Next: Later: the list from the tab (step 5, Note Detective), chord detection (6), drums (on hold), Note Detective's
+  Find tempo as in Tab Viewer, "Keep their time (move bar lines)".
+- Last checkup: 24 November 2026, Tab Viewer only (full, and a 2nd on the later changes). The other scripts: none as
+  1 full run yet.
 
 ### Other scripts (the facts that still hold from the handoffs before; their history: git)
 
 - Versions: Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1 (released 11 November 2026); Session Prep
   1.0.1, Mono Merge 1.0 (released 17 November 2026); SFX Drop 1.0 committed, not released (the user wants more work
-  first); Note Detective 1.0 committed (branch `script/note-detective`), not released; Tab Viewer 1.0 on
-  `script/tab-viewer`, not released.
+  first); Note Detective 1.0 on main, not released; Tab Viewer 1.0 released 24 November 2026.
 - The checkup of 21 November 2026 (all scripts) stopped before the user's answers: Open now 9.
 - Note Detective: the new detection stays for now; no more detection work until the user brings it up (decided
   23 November 2026). The Guitar Pro tab is the main feature, the detection the second (decided 23 November 2026).

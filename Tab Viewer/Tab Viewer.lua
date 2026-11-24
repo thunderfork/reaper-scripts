@@ -2,11 +2,11 @@
 -- @version 1.0
 -- @author Nick Gkogkomitros
 -- @license MIT
--- @noindex
 -- @about
---   Tab Viewer - opens a Guitar Pro tab (.gp, .gpx, .gp5, .gp4, .gp3) in the project and lists its tracks: the guitars,
---   the bass and the drums, with their strings, tunings and capo. The project keeps a copy of the tab in a "Tabs"
---   folder next to the project file.
+--   Tab Viewer - shows a Guitar Pro tab (.gp, .gpx, .gp5, .gp4, .gp3) of a guitar or bass track on the bars of your
+--   song, as Guitar Pro draws it (playing marks, note lengths, repeats), with a blue line that follows playback.
+--   Fix the tab, loop a bar, play slower, find the tempo from the tab. A tab per region; the project keeps a copy
+--   of it in a "Tabs" folder next to the project file.
 --   Requires: the free ReaImGui extension (ReaPack).
 -- @provides
 --   [nomain] Guitar Pro.lua

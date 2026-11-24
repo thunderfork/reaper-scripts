@@ -14,9 +14,7 @@ Scripts for playing live and for studio work with REAPER, installed and updated 
 <!-- Note Detective: hidden until its release
 - **Note Detective:** finds the notes of a separated bass track and writes them as markers, for a player who learns the part in REAPER.
 -->
-<!-- Tab Viewer: hidden until its release
-- **Tab Viewer:** opens a Guitar Pro tab in your project and shows its guitar and bass tracks on the song's bars.
--->
+- **Tab Viewer:** shows a Guitar Pro tab of your guitar or bass part on the bars of the song, and follows it while the song plays.
 
 # Chart Cue
 
@@ -217,9 +215,24 @@ Install with ReaPack (search "Mono Merge"), then run "Script: Mono Merge.lua". N
 
 Mono Merge saves nothing in the project or on this computer.
 
+# Tab Viewer
+
+Tab Viewer shows a Guitar Pro tab inside REAPER, on the bars of your song, and follows it while the song plays.
+
+- **Open a tab:** .gp (Guitar Pro 7 / 8), .gpx (6), .gp5, .gp4 and .gp3. Pick the guitar or bass track; you see its tuning and capo. Each region can have its own tab, and the window shows the tab where the song plays.
+- **As Guitar Pro draws it:** note lengths, rests, triplets, ties, hammer-ons, slides, bends, vibrato, palm mutes, harmonics, dead notes, chord names, section names, tempo marks, time signatures and repeats with their endings (1. 2.).
+- **On the song:** a blue line follows playback; click a bar to play from there. Find tempo puts REAPER's tempo and bars on the song, from the tab or from an audio track.
+- **Practise:** Shift+click a bar to loop it, and play slower (pitch kept).
+- **Fix the tab:** select a note and type a fret, move it, change its length, or add new notes; your fixes are green and saved in the project (the file never changes). Right-click a bar to correct its time signature.
+- **Your layout:** your own line breaks (& and Ctrl+Enter, as in Guitar Pro) and a fixed number of bars per line.
+
+Install with ReaPack (search "Tab Viewer"), then run "Script: Tab Viewer.lua". Needs ReaImGui 0.9.3 or newer.
+
+Tab Viewer saves its tabs, fixes and layout in the project, and a copy of each tab in a "Tabs" folder next to the project file; its settings are saved on this computer.
+
 ## Zips
 
-Each script also has a zip on the [Releases](https://github.com/thunderfork/reaper-scripts/releases) page (Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep): unzip it, copy its .lua files into your REAPER `Scripts` folder, and load them with Actions > Show action list > New action > Load ReaScript....
+Each script also has a zip on the [Releases](https://github.com/thunderfork/reaper-scripts/releases) page (Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep, Tab Viewer): unzip it, copy its .lua files into your REAPER `Scripts` folder, and load them with Actions > Show action list > New action > Load ReaScript....
 
 ## License
 
