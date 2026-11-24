@@ -18,7 +18,9 @@
   without a start mark (uncertain).
 - The user's question still open: the stronger fix for the tag `imgui-input` (click rules into plain functions with
   a test; recommended "Later").
-- Next: the manual tests 14-17. Later: chord detection, drums (on
+- Next: the manual tests 14-17, and the 1.1.1 fix (scroll the whole tab of a song with palm mutes through a repeat).
+  Open question: the stronger fix for `edge-case` (3 entries): 1 function for the x of a bar, which gives the drawn
+  pass for a bar that is not drawn. Later: chord detection, drums (on
   hold), "Keep their time (move bar lines)".
 - Last checkup: 24 November 2026, Tab Viewer only (full, and a 2nd on the later changes). The other scripts: none as
   1 full run yet.
@@ -27,7 +29,7 @@
 
 - Versions: Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1 (released 11 November 2026); Session Prep
   1.0.1, Mono Merge 1.0 (released 17 November 2026); SFX Drop 1.0 committed, not released (the user wants more work
-  first); Tab Viewer 1.1 released 24 November 2026 (Note Detective: now its Note Detection tab, never released).
+  first); Tab Viewer 1.1.1 released 24 November 2026 (1.1.1: the P.M. crash, LESSONS.md) (Note Detective: now its Note Detection tab, never released).
 - The checkup of 21 November 2026 (all scripts) stopped before the user's answers: Open now 9.
 - The Note Detection tab: the detection stays for now; no more detection work until the user brings it up (decided
   23 November 2026). The Guitar Pro tab is the main feature, the detection the second (decided 23 November 2026).

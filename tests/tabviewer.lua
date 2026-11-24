@@ -1434,6 +1434,19 @@ test("notes tab: no Guitar Pro tab here: the found notes as a tab; a fix is save
   eq(R.doc, nil, "no notes: no tab")
 end)
 
+test("P.M. row: a palm-mute run that ends in a later pass of a repeat ends on the drawn bar of that pass", function()
+  -- (|: 1 2 :| played 1 2 1' 2', palm mutes all the way: the run ends in 2', which is not drawn; lessons 24 November 2026)
+  local b = { { vp = 1 }, { vp = 2 }, { vp = 1, drawn = false }, { vp = 2, drawn = false } }
+  local tab = { view = { 1, 2 }, bars = b }
+  local b0, b1, v0, v1, q1 = Tabs.pm_span(tab, { b0 = 1, q0 = 0, b1 = 4, q1 = 1.5 })
+  ok(b0 == b[1] and b1 == b[2], "it ends on bar 2 as drawn")
+  eq(v0, 1); eq(v1, 2); eq(q1, nil, "to the end of that bar")
+  b0, b1, v0, v1, q1 = Tabs.pm_span(tab, { b0 = 2, q0 = 0, b1 = 3, q1 = 1 }) -- (2 into 1': back to the left)
+  ok(b1 == b[2] and v1 == 2 and q1 == nil, "it ends at the end of bar 2 (the repeat sign)")
+  b0, b1, v0, v1, q1 = Tabs.pm_span(tab, { b0 = 1, q0 = 0, b1 = 2, q1 = 1 })
+  ok(b1 == b[2] and q1 == 1, "a run without a repeat: as it is")
+end)
+
 test("settings: the folded sections and hidden tabs are saved as a list of numbers; wrong numbers are left out", function()
   local U, EXT = C.Util, C.CFG.EXT
   r.DeleteExtState(EXT, "test_set", true)

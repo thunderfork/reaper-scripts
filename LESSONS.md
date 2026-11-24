@@ -36,6 +36,14 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-24 | Tab Viewer | edge-case | Tab Viewer 1.1 stopped with a script error while it drew the tab ("field 'x'")
+  Cause: a palm-mute run through a repeat that ends in a later pass of a bar (|: 1 2 :| all palm-muted): UI.tab_pm
+  used that pass, which is not drawn and has no x. The case "back to the left" was handled, "on to the right" not.
+  Why the tests missed it: the P.M. row was drawing code only; no test had a run into a later pass.
+  Test: "P.M. row: ..." (tests\tabviewer.lua; Tabs.pm_span, a plain function now), failed before the fix
+  Other scripts: no other script draws repeats as written
+  Status: fixed, not confirmed
+
 2026-11-24 | Tab Viewer | stale-state | (debug-time) a new time signature kept the loop and the selection of the old bar times
   Cause: Tabs.set_meter (and its Undo) changed the bar lengths without Tabs.loop_off / Tabs.unselect, as "<" / ">" do.
   Why the tests missed it: the new test did not have a loop on.

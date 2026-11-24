@@ -1,5 +1,5 @@
 -- @description Tab Viewer: Guitar Pro tabs next to the song
--- @version 1.1
+-- @version 1.1.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,9 +13,7 @@
 --   [nomain] Tempo.lua
 --   [nomain] Notes.lua
 -- @changelog
---   New Note Detection tab: the bass notes as markers (found in a bass stem, or imported from the tab).
---   Tabs for Tab, Note Detection, Settings and Help; Find tempo works without a tab.
---   Settings look like Chart Cue: foldable sections, labels on the left.
+--   Fix: a script error while drawing a tab with palm mutes that go on through a repeat.
 
 -- MIT License
 --
@@ -57,7 +55,7 @@ end
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Tab Viewer"       -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.1"            -- keep equal to @version in the header
+CFG.VERSION = "1.1.1"            -- keep equal to @version in the header
 CFG.EXT = "Tab Viewer"         -- ExtState section (this computer) and the project data section
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.TABS_DIR = "Tabs"          -- the folder next to the project file that keeps the copies of the tabs
@@ -1343,6 +1341,17 @@ function Tabs.x_end(b) return b.x + b.pad + b.n16 * b.sw + (b.tail or 0) end
 function Tabs.head_w(b) return (b.rs and CFG.TAB_REPEAT or 0) + (b.sig and CFG.TAB_SIG or 0) end
 -- The bar shown at place k of the view (tab.view: the bars drawn, in order; without a view: bar k).
 function Tabs.vbar(tab, k) return tab.view and tab.view[k] or k end
+-- The drawn ends of a palm-mute run (UI.tab_pm): b0, b1 (bars), v0, v1 (their places in the view), q1 (its end in b1;
+-- nil: the bar end). A run that ends in a later pass of a repeat ends at the end of that pass's drawn bar; one that
+-- goes back to the left ends at the end of its first bar (the repeat sign). (lessons 24 November 2026: a run into a
+-- later pass crashed: that bar has no x)
+function Tabs.pm_span(tab, run)
+  local b0, b1 = tab.bars[run.b0], tab.bars[run.b1]
+  local v0, v1, q1 = b0.vp or run.b0, b1.vp or run.b1, run.q1
+  if b1.drawn == false then b1, q1 = tab.bars[Tabs.vbar(tab, v1)], nil end
+  if v1 < v0 then v1, b1, q1 = v0, b0, nil end
+  return b0, b1, v0, v1, q1
+end
 -- The lines of the tab for a width: { { first, last (places in the view), y } } and the height of all of them (px).
 -- Each bar shown gets x, its 16th width sw, its start pad and ln (its line); the bars of a line stretch to the full
 -- width (the last line: at most CFG.TAB_STRETCH times). tab.starts / tab.joins (your breaks and "&" joins: places of
@@ -2789,9 +2798,7 @@ function UI.tab_pm(dl, tab, ln, ox, top)
   local lx = ox + CFG.TAB_LEFT
   ImGui.PushFont(ctx, small_font)
   for _, run in ipairs(tab.pm) do
-    local b0, b1 = tab.bars[run.b0], tab.bars[run.b1]
-    local v0, v1, q1 = b0.vp or run.b0, b1.vp or run.b1, run.q1
-    if v1 < v0 then v1, b1, q1 = v0, b0, nil end
+    local b0, b1, v0, v1, q1 = Tabs.pm_span(tab, run)
     if b0.drawn ~= false and v0 <= ln.last and v1 >= ln.first then
       local x0 = v0 >= ln.first and lx + Tabs.x_of(b0, run.q0) - 6 or lx
       local x1 = v1 <= ln.last and lx + (q1 and Tabs.x_of(b1, q1) + 4 or Tabs.x_end(b1) - 4)
