@@ -202,7 +202,7 @@ local function imgui_missing()
   end
 end
 local TESTING = rawget(_G, "TabViewerTest") ~= nil
-local ImGui = {}
+local ImGui = TESTING and rawget(_G, "TabViewerTest").ImGui or {} -- (the tests: a stand-in that draws nothing)
 if not TESTING then
   if not r.ImGui_CreateContext or not r.file_exists(IMGUI_SHIM) then imgui_missing(); return end
   if not pcall(function() dofile(IMGUI_SHIM)("0.9.3") end) then imgui_missing(); return end
@@ -475,10 +475,21 @@ function Tabs.pick(k)
   if e and p ~= e.track then e.track, R.pdirty = p, true end
   Tabs.build()
 end
--- The tab of the chosen track (R.tab), or why it has none (R.tab_why).
+-- The tab of the chosen track (R.tab), or why it has none (R.tab_why). A file with something that the tab can not be
+-- made from (a real file can have what no test file has): the grey line and an orange notice, not a script error.
 function Tabs.build()
   R.tab, R.tab_why, R.tempo_warn = nil, nil, nil
   if not R.doc then return end
+  local ok, err = pcall(Tabs.make)
+  if not ok then Tabs.failed(err) end
+end
+-- The tab could not be made or laid out (err: the Lua error): no tab, the grey line, and the notice with the error.
+function Tabs.failed(err)
+  R.tab = nil
+  R.tab_why = "This track could not be shown: the file has something Tab Viewer can not read yet. Pick another track."
+  UI.notice("Could not show this track (" .. tostring(err) .. "). Please tell the developer.", true)
+end
+function Tabs.make()
   local t = R.doc.tracks[Tabs.track()]
   if t.kind == "drums" then R.tab_why = "Drum tracks come in a later version (a drum grid). Pick another track."
   elseif t.kind == "other" then R.tab_why = "This track has no tab (no strings and frets). Pick another track."
@@ -1755,19 +1766,6 @@ function Tabs.notes_of_tab()
 end
 
 ---------------------------------------------------------------------------
--- TESTS: tests/tabviewer.lua sets TabViewerTest: hand it the modules and do not start the UI
----------------------------------------------------------------------------
-if TESTING then
-  local test = rawget(_G, "TabViewerTest")
-  test.CFG, test.S, test.R, test.Util, test.Project, test.Tabs, test.GP = CFG, S, R, Util, Project, Tabs, GP
-  test.TP, test.Tempo, test.Notes = TP, Tempo, Notes.test
-  function UI.notice(text, warn) R.notice = { text = text, warn = warn } end
-  test.get_P = function() return P end -- (Tabs.cur(): the tab in the window)
-  test.set_P = function(p) P = p end
-  return
-end
-
----------------------------------------------------------------------------
 -- UI
 ---------------------------------------------------------------------------
 local ctx = ImGui.CreateContext(CFG.TITLE)
@@ -1852,6 +1850,15 @@ end
 function UI.pop_style()
   ImGui.PopStyleVar(ctx, #STYLE_VARS)
   ImGui.PopStyleColor(ctx, #STYLE_COLS)
+end
+-- A font for the drawing of the tab, counted (R.fonts): a bar that fails half way gives back its fonts (UI.draw_tab).
+function UI.font(f)
+  ImGui.PushFont(ctx, f)
+  R.fonts = (R.fonts or 0) + 1
+end
+function UI.unfont()
+  ImGui.PopFont(ctx)
+  R.fonts = R.fonts - 1
 end
 
 function UI.tip(text)
@@ -2752,9 +2759,9 @@ function UI.tab_repeat(dl, b, line_start, bx, bxe, top, y0, yb, pmh)
     if b.alt_first or line_start then
       ImGui.DrawList_AddLine(dl, bx + 2, y, bx + 2, y + CFG.TAB_ENDING - 4, col, 1)
       if b.alt_first then
-        ImGui.PushFont(ctx, small_font)
+        UI.font(small_font)
         ImGui.DrawList_AddText(dl, bx + 5, y + 1, col, b.alt)
-        ImGui.PopFont(ctx)
+        UI.unfont()
       end
     end
     if b.alt_last then ImGui.DrawList_AddLine(dl, bxe - 3, y, bxe - 3, y + CFG.TAB_ENDING - 4, col, 1) end
@@ -2777,13 +2784,13 @@ function UI.tab_score(dl, b, lx, bx, top, y0, yb)
     ImGui.DrawList_AddText(dl, x + 10, top + 2, COL.TEXT_DIM, t.txt)
   end
   if b.sig then
-    ImGui.PushFont(ctx, head_font)
+    UI.font(head_font)
     local x, ym = bx + (b.rs and CFG.TAB_REPEAT or 0) + CFG.TAB_SIG / 2 + 2, (y0 + yb) / 2
     for k, s in ipairs(b.sig) do
       local w, h = ImGui.CalcTextSize(ctx, s)
       ImGui.DrawList_AddText(dl, x - w / 2, k == 1 and ym - h + 1 or ym - 1, col, s)
     end
-    ImGui.PopFont(ctx)
+    UI.unfont()
   end
   if b.final and not b.re then
     local xe = lx + Tabs.x_end(b)
@@ -2796,7 +2803,7 @@ end
 -- the same as the first one (not drawn again); a run over a repeat sign ends at its bar end.
 function UI.tab_pm(dl, tab, ln, ox, top)
   local lx = ox + CFG.TAB_LEFT
-  ImGui.PushFont(ctx, small_font)
+  UI.font(small_font)
   for _, run in ipairs(tab.pm) do
     local b0, b1, v0, v1, q1 = Tabs.pm_span(tab, run)
     if b0.drawn ~= false and v0 <= ln.last and v1 >= ln.first then
@@ -2813,7 +2820,7 @@ function UI.tab_pm(dl, tab, ln, ox, top)
       if v1 <= ln.last then ImGui.DrawList_AddLine(dl, x1, ym - 3, x1, ym + 3, COL.TEXT_DIM, 1) end
     end
   end
-  ImGui.PopFont(ctx)
+  UI.unfont()
 end
 local BEAMS = { [8] = 1, [16] = 2, [32] = 3 }
 -- A rest of value v at x (y: the middle of the stems), as Guitar Pro draws it (small and grey).
@@ -2867,9 +2874,9 @@ function UI.tab_rhythm(dl, b, lx, y, ym)
       -- in its middle, the ends turned up to the notes; the user's screenshot, 24 November 2026)
       local x2 = lx + Tabs.x_of(b, rh[e.t3].q)
       local mid, yb = (x + x2) / 2, ye + 7
-      ImGui.PushFont(ctx, small_font)
+      UI.font(small_font)
       local tw = UI.centre(dl, mid, yb, col, "3")
-      ImGui.PopFont(ctx)
+      UI.unfont()
       if x2 - x > tw + 8 then
         ImGui.DrawList_AddLine(dl, x, yb - 3, x, yb, col, 1)
         ImGui.DrawList_AddLine(dl, x, yb, mid - tw / 2 - 2, yb, col, 1)
@@ -2878,6 +2885,51 @@ function UI.tab_rhythm(dl, b, lx, y, ym)
       end
     end
   end
+end
+-- The lines of the tab for width w, and its chord names (again when the width changes).
+function UI.tab_layout(tab, w)
+  tab.lines, tab.h = Tabs.layout(tab, w, UI.item_w); tab.w = w
+  if tab.chord_row then Tabs.place_chords(tab, function(t) return (ImGui.CalcTextSize(ctx, t)) end, UI.trunc) end
+end
+-- 1 bar of the tab: place vk of the view on line ln (top: the y of the line; y0 / yb: the top and the low string;
+-- sh / pmh: the rows above the repeat signs / the bar numbers). Its bar line and number, repeat signs, section, score
+-- marks, chord names, note lengths, notes and held parts.
+function UI.tab_bar(dl, tab, ln, vk, lx, ox, top, y0, yb, sh, pmh, sel_bi, sel_i)
+  local bi = Tabs.vbar(tab, vk)
+  local b = tab.bars[bi]
+  local bx = lx + b.x
+  ImGui.DrawList_AddLine(dl, bx, y0, bx, yb, COL.TEXT_DIM, 1)
+  ImGui.DrawList_AddText(dl, bx + 2, top + pmh + 2, COL.TEXT_DIM, b.label)
+  if b.rs or b.re or b.alt then UI.tab_repeat(dl, b, vk == ln.first, bx, lx + Tabs.x_end(b), top + sh, y0, yb, pmh - sh) end
+  if b.section then ImGui.DrawList_AddText(dl, bx + 2, top + 2, COL.TEXT_BRIGHT, b.section) end
+  if b.tempo or b.sig or (b.final and not b.re) then UI.tab_score(dl, b, lx, bx, top, y0, yb) end
+  if tab.chord_row then -- (the chord names, under the bar numbers, over their chord: Tabs.place_chords)
+    for _, c in ipairs(b.chords) do
+      ImGui.DrawList_AddText(dl, lx + c.x, top + pmh + CFG.TAB_TOP - 2, COL.TEXT_BRIGHT, c.txt)
+    end
+  end
+  if S.lengths then UI.tab_rhythm(dl, b, lx, yb + 10, (y0 + yb) / 2) end
+  for k, nt in ipairs(b.notes) do -- (a chord: its notes on their strings, 1 above the other)
+    UI.tab_item(dl, tab, ln, ox, nt, lx + Tabs.x_of(b, nt.q), y0 + (tab.nstr - nt.s) * CFG.TAB_LINE,
+      (nt.mine and S.marks) and COL.GREEN or COL.TEXT_MAIN, bi == sel_bi and k == sel_i)
+  end
+  if b.ties then -- (the held parts of tied notes: "(4)", an arc from the note before)
+    for _, t in ipairs(b.ties) do
+      if not t.off then -- (grey: it is held, not played; the user, 24 November 2026)
+        UI.tab_item(dl, tab, ln, ox, t, lx + Tabs.x_of(b, t.q), y0 + (tab.nstr - t.s) * CFG.TAB_LINE, COL.TEXT_DIM)
+      end
+    end
+  end
+end
+-- A part of the tab (key: a bar or a P.M. row; what: its name for the user) failed with err: the fonts it pushed go
+-- back to depth, and the notice tells it once per tab (tab.bad: again after the tab is made again).
+function UI.tab_bad(tab, key, what, err, depth)
+  while (R.fonts or 0) > depth do UI.unfont() end
+  tab.bad = tab.bad or {}
+  if tab.bad[key] then return end
+  tab.bad[key] = true
+  UI.notice(what .. " could not be shown: the file has something Tab Viewer can not read yet (" .. tostring(err)
+    .. "). Please tell the developer.", true)
 end
 -- The tab of the chosen track (only the lines in view are drawn); a click plays the song from there.
 function UI.draw_tab(h)
@@ -2898,8 +2950,12 @@ function UI.draw_tab(h)
   end
   local w = ImGui.GetContentRegionAvail(ctx)
   if tab.w ~= w then
-    tab.lines, tab.h = Tabs.layout(tab, w, UI.item_w); tab.w = w
-    if tab.chord_row then Tabs.place_chords(tab, function(t) return (ImGui.CalcTextSize(ctx, t)) end, UI.trunc) end
+    local ok, err = pcall(UI.tab_layout, tab, w)
+    if not ok then -- (the grey line from the next frame on)
+      Tabs.failed(err)
+      ImGui.EndChild(ctx)
+      return
+    end
   end
   local ox, oy = ImGui.GetCursorScreenPos(ctx)
   local lx = ox + CFG.TAB_LEFT -- (the left of the strings)
@@ -2957,7 +3013,11 @@ function UI.draw_tab(h)
         local x1 = lx + Tabs.x_end(b1)
         ImGui.DrawList_AddRectFilled(dl, x0, oy + ln.y + pmh + 1, x1, oy + ln.y + pmh + fs + 3, COL.HEADER_ACTIVE, 3)
       end
-      if tab.pm_row then UI.tab_pm(dl, tab, ln, ox, oy + ln.y + eh + 1) end
+      if tab.pm_row then
+        local depth = R.fonts or 0
+        local ok, err = pcall(UI.tab_pm, dl, tab, ln, ox, oy + ln.y + eh + 1)
+        if not ok then UI.tab_bad(tab, "pm" .. ln.first, "The P.M. row of bar " .. tostring(tab.bars[Tabs.vbar(tab, ln.first)].label), err, depth) end
+      end
       local y0 = oy + ln.y + tab.top -- (the top string)
       local yb = y0 + (tab.nstr - 1) * CFG.TAB_LINE
       local x_end = lx + Tabs.x_end(tab.bars[Tabs.vbar(tab, ln.last)])
@@ -2967,31 +3027,13 @@ function UI.draw_tab(h)
         ImGui.DrawList_AddLine(dl, lx, ys, x_end, ys, COL.LINE, 1)
       end
       ImGui.DrawList_AddLine(dl, x_end, y0, x_end, yb, COL.TEXT_DIM, 1)
-      for vk = ln.first, ln.last do
-        local bi = Tabs.vbar(tab, vk)
-        local b = tab.bars[bi]
-        local bx = lx + b.x
-        ImGui.DrawList_AddLine(dl, bx, y0, bx, yb, COL.TEXT_DIM, 1)
-        ImGui.DrawList_AddText(dl, bx + 2, oy + ln.y + pmh + 2, COL.TEXT_DIM, b.label)
-        if b.rs or b.re or b.alt then UI.tab_repeat(dl, b, vk == ln.first, bx, lx + Tabs.x_end(b), oy + ln.y + sh, y0, yb, pmh - sh) end
-        if b.section then ImGui.DrawList_AddText(dl, bx + 2, oy + ln.y + 2, COL.TEXT_BRIGHT, b.section) end
-        if b.tempo or b.sig or (b.final and not b.re) then UI.tab_score(dl, b, lx, bx, oy + ln.y, y0, yb) end
-        if tab.chord_row then -- (the chord names, under the bar numbers, over their chord: Tabs.place_chords)
-          for _, c in ipairs(b.chords) do
-            ImGui.DrawList_AddText(dl, lx + c.x, oy + ln.y + pmh + CFG.TAB_TOP - 2, COL.TEXT_BRIGHT, c.txt)
-          end
-        end
-        if S.lengths then UI.tab_rhythm(dl, b, lx, yb + 10, (y0 + yb) / 2) end
-        for k, nt in ipairs(b.notes) do -- (a chord: its notes on their strings, 1 above the other)
-          UI.tab_item(dl, tab, ln, ox, nt, lx + Tabs.x_of(b, nt.q), y0 + (tab.nstr - nt.s) * CFG.TAB_LINE,
-            (nt.mine and S.marks) and COL.GREEN or COL.TEXT_MAIN, bi == sel_bi and k == sel_i)
-        end
-        if b.ties then -- (the held parts of tied notes: "(4)", an arc from the note before)
-          for _, t in ipairs(b.ties) do
-            if not t.off then -- (grey: it is held, not played; the user, 24 November 2026)
-              UI.tab_item(dl, tab, ln, ox, t, lx + Tabs.x_of(b, t.q), y0 + (tab.nstr - t.s) * CFG.TAB_LINE, COL.TEXT_DIM)
-            end
-          end
+      for vk = ln.first, ln.last do -- (each bar on its own: a bar that fails is an orange "?", the others draw)
+        local depth = R.fonts or 0
+        local ok, err = pcall(UI.tab_bar, dl, tab, ln, vk, lx, ox, oy + ln.y, y0, yb, sh, pmh, sel_bi, sel_i)
+        if not ok then
+          local b = tab.bars[Tabs.vbar(tab, vk)]
+          UI.tab_bad(tab, vk, "Bar " .. tostring(b and b.label or vk), err, depth)
+          if b and b.x then ImGui.DrawList_AddText(dl, lx + b.x + 6, (y0 + yb) / 2 - fs / 2, COL.ORANGE, "?") end
         end
       end
     end
@@ -3316,6 +3358,20 @@ function UI.edges()
     ImGui.DrawList_AddLine(dl, x1 - 3 - d, y1 - 3, x1 - 3, y1 - 3 - d, col, 2)
   end
   ImGui.DrawList_PopClipRect(dl)
+end
+
+---------------------------------------------------------------------------
+-- TESTS: tests/tabviewer.lua sets TabViewerTest (with its ImGui stand-in): hand it the modules (the drawing of the
+-- tab too: UI) and do not start the window
+---------------------------------------------------------------------------
+if TESTING then
+  local test = rawget(_G, "TabViewerTest")
+  test.CFG, test.S, test.R, test.Util, test.Project, test.Tabs, test.GP = CFG, S, R, Util, Project, Tabs, GP
+  test.TP, test.Tempo, test.Notes, test.UI = TP, Tempo, Notes.test, UI
+  function UI.notice(text, warn) R.notice = { text = text, warn = warn } end
+  test.get_P = function() return P end -- (Tabs.cur(): the tab in the window)
+  test.set_P = function(p) P = p end
+  return
 end
 
 ---------------------------------------------------------------------------

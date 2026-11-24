@@ -36,7 +36,22 @@ local function finish()
   r.defer(function() r.Main_OnCommand(40004, 0) end) -- File: Quit REAPER
 end
 
-TabViewerTest = {}
+-- A stand-in for ReaImGui: it draws nothing, counts the fonts and the texts, Begin... opens (a popup: not), Is...: no.
+local IG = { push = 0, pop = 0, texts = 0 }
+local ImGuiStub = setmetatable({}, { __index = function(t, k)
+  local f
+  if k == "CalcTextSize" then f = function(_, s) return 7 * #tostring(s), 14 end
+  elseif k == "PushFont" then f = function() IG.push = IG.push + 1 end
+  elseif k == "PopFont" then f = function() IG.pop = IG.pop + 1 end
+  elseif k == "DrawList_AddText" then f = function(_, _, _, _, s) assert(type(s) == "string", "a text"); IG.texts = IG.texts + 1 end
+  elseif k == "GetContentRegionAvail" then f = function() return 900, 600 end
+  elseif k == "BeginPopup" or k:match("^Is") then f = function() return false end
+  elseif k:match("^Begin") then f = function() return true end
+  else f = function() return 0, 0 end end
+  rawset(t, k, f)
+  return f
+end })
+TabViewerTest = { ImGui = ImGuiStub }
 local loaded, err = pcall(dofile, here .. "\\..\\Tab Viewer\\Tab Viewer.lua")
 local C = TabViewerTest
 if not loaded or not C.Project then
@@ -1461,6 +1476,124 @@ test("settings: the folded sections and hidden tabs are saved as a list of numbe
   s = U.load_set("test_set", 4)
   ok(s[2] and not s[0] and not s[9], "only 1-4")
   r.DeleteExtState(EXT, "test_set", true)
+end)
+
+test("drawing the tab (Dev 1 of the review, 24 November 2026): every test file and track draws without an error; a bar or a tab that fails: a notice, not a script error", function()
+  local S, UI = C.S, C.UI
+  local keep = { S.written, S.lengths, S.pmarks, S.chords, S.marks, S.tremnotes }
+  S.lengths, S.pmarks, S.chords, S.marks = true, true, true, true
+  local files = { src }
+  for _, f in ipairs({ "chords300.gp3", "chords400.gp4", "chords500.gp5", "chords510.gp5", "packed.gpx", "plain.gpx", "guitar.gp5" }) do
+    if exists(tmp .. "\\src\\" .. f) then files[#files + 1] = tmp .. "\\src\\" .. f end
+  end
+  ok(#files >= 6, "the test files of the tests before")
+  local drawn = 0
+  for _, path in ipairs(files) do
+    local opened, why = Tabs.open(path)
+    ok(opened, path .. ": " .. tostring(why))
+    for k, tr in ipairs(R.doc.tracks) do
+      if tr.kind == "bass" or tr.kind == "guitar" then
+        for _, written in ipairs({ true, false }) do
+          for _, trem in ipairs({ true, false }) do
+            S.written, S.tremnotes = written, trem
+            Tabs.pick(k)
+            R.notice, IG.push, IG.pop = nil, 0, 0
+            local name = path:match("[^\\]+$") .. " track " .. k .. (written and " written" or "") .. (trem and " trem" or "")
+            ok(R.tab, name .. ": a tab (" .. tostring(R.tab_why) .. ")")
+            UI.draw_tab(100000) -- (all lines in view)
+            ok(not (R.notice and R.notice.warn), name .. ": " .. tostring(R.notice and R.notice.text))
+            eq(IG.push, IG.pop, name .. ": the fonts")
+            drawn = drawn + 1
+          end
+        end
+      end
+    end
+  end
+  ok(drawn >= 20, "drawn: " .. drawn)
+  -- a bar that fails: an orange ?, a notice once, the fonts given back, the other bars drawn
+  S.written, S.tremnotes = true, true
+  Tabs.open(src)
+  local tab = R.tab
+  tab.w, IG.texts = nil, 0
+  UI.draw_tab(100000)
+  local texts = IG.texts
+  local bad = tab.bars[tab.view[2]]
+  bad.sig = { "4", false } -- (the error while the font of the time signature is on: given back)
+  R.notice, IG.push, IG.pop, IG.texts = nil, 0, 0, 0
+  UI.draw_tab(100000)
+  ok(R.notice and R.notice.warn and R.notice.text:find("^Bar 2 could not be shown"), "the notice: " .. tostring(R.notice and R.notice.text))
+  eq(IG.push, IG.pop, "the fonts given back")
+  ok(tab.bad and tab.bad[2], "bar 2 marked")
+  ok(IG.texts > texts / 2, "the other bars drawn: " .. IG.texts .. " of " .. texts)
+  R.notice = nil
+  UI.draw_tab(100000)
+  eq(R.notice, nil, "the notice only once")
+  -- a tab that can not be made: the grey line and the notice; the window goes on
+  local doc = R.doc
+  R.doc = setmetatable({ mbars = false }, { __index = doc })
+  Tabs.build()
+  eq(R.tab, nil, "no tab")
+  ok(R.tab_why and R.tab_why:find("could not be shown"), "the grey line")
+  ok(R.notice and R.notice.warn and R.notice.text:find("Please tell the developer", 1, true), "the notice")
+  UI.draw_tab(400) -- (the grey line: no error)
+  R.doc = doc
+  Tabs.build()
+  ok(R.tab, "the tab again")
+  S.written, S.lengths, S.pmarks, S.chords, S.marks, S.tremnotes = table.unpack(keep)
+  R.notice = nil
+end)
+
+test("Find tempo > From tab, then Set tempo (Dev 2 of the review, 24 November 2026): the first note of the tab on the first sound of the song; an empty bar 1, a pickup; the item at an odd place; the audio stays", function()
+  -- a song: 0.8 s of silence, then a tone (a WAV file made here); its item at 7.3137 s: the first sound at 8.1137 s
+  r.RecursiveCreateDirectory(tmp .. "\\d", 0)
+  local proj_d = tmp .. "\\d\\align.rpp"
+  write(proj_d, "<REAPER_PROJECT 0.1\n  TEMPO 120 4 4\n>\n")
+  r.Main_openProject("noprompt:" .. proj_d)
+  Project.update()
+  local proj = R.proj
+  local sr, body = 44100, {}
+  for i = 0, math.floor(6 * sr) - 1 do
+    local t = i / sr
+    local v = t >= 0.8 and 0.4 * math.sin(2 * math.pi * 55 * t) or 0
+    body[#body + 1] = string.pack("<i2<i2", math.floor(v * 32767), math.floor(v * 32767))
+  end
+  body = table.concat(body)
+  local wav = tmp .. "\\d\\song.wav"
+  write(wav, "RIFF" .. string.pack("<I4", 36 + #body) .. "WAVEfmt " .. string.pack("<I4I2I2I4I4I2I2", 16, 1, 2, sr, sr * 4, 4, 16)
+    .. "data" .. string.pack("<I4", #body) .. body)
+  r.InsertTrackAtIndex(0, false)
+  local it = r.AddMediaItemToTrack(r.GetTrack(proj, 0))
+  local source = r.PCM_Source_CreateFromFile(wav)
+  r.SetMediaItemTake_Source(r.AddTakeToMediaItem(it), source)
+  r.SetMediaItemInfo_Value(it, "D_POSITION", 7.3137)
+  r.SetMediaItemInfo_Value(it, "D_LENGTH", (r.GetMediaSourceLength(source)))
+  r.SelectAllMediaItems(proj, false)
+  r.SetMediaItemSelected(it, true)
+  r.Undo_OnStateChange2(proj, "test: the song") -- (each Undo below goes back to here, with the item)
+  local first = 8.1137
+  ok(Tabs.open(src), "the tab")
+  -- each case: the notes of the tab before Find tempo, and the bar and place of its first note
+  local cases = {
+    { "an empty bar 1", function(tab) tab.bars[1].notes = {} end, 2, 0 },
+    { "a pickup (the last 8th of bar 1)", function(tab) tab.bars[1].notes = { { q = 3.5, s = 1, fret = 3, len = 0.5 } } end, 1, 3.5 },
+    { "the first note on bar 1", function() end, 1, 0 },
+  }
+  for _, c in ipairs(cases) do
+    Tabs.build()
+    c[2](R.tab)
+    Tabs.find_tempo() -- (From tab: no track)
+    ok(R.tempo and R.tempo.tab, c[1] .. ": the tempo of the tab: " .. tostring(R.notice and R.notice.text))
+    Tabs.set_tempo()
+    eq(R.tempo, nil, c[1] .. ": set")
+    near(Tabs.time_of(c[3], c[4]), first, 0.012, c[1] .. ": the first note on the first sound")
+    near(r.GetMediaItemInfo_Value(it, "D_POSITION"), 7.3137, 1e-9, c[1] .. ": the audio stays")
+    local _, m = r.TimeMap2_timeToBeats(proj, Tabs.time_of(1, 0) + 1e-6)
+    eq(m + 1, Tabs.bar(), c[1] .. ": the tab starts on the bar of its bar 1")
+    r.Undo_DoUndo2(proj) -- (the tempo map as before, for the next case)
+    Project.update()
+  end
+  r.Main_openProject("noprompt:" .. proj_a)
+  Project.update()
 end)
 
 local nloaded, nerr = pcall(function() -- (the tests of the Note Detection tab)

@@ -231,6 +231,12 @@ in the Tab tab, the list keys only in the Note Detection tab.
 
 ## Deployment and tests
 
+- Errors in a real file (Dev 1 of the developer review, 24 November 2026): `Tabs.build` runs `Tabs.make` in a
+  pcall (fails: `Tabs.failed`, the grey line and an orange notice with the error); `UI.draw_tab` draws each bar
+  (`UI.tab_bar`) and each P.M. row in a pcall: a bar that fails is an orange "?", the notice once (`UI.tab_bad`), its
+  fonts given back (`UI.font` / `UI.unfont` count them in `R.fonts`). The tests load the UI too, with a stand-in for
+  ReaImGui (`TabViewerTest.ImGui`): every test file and track is drawn. The alignment test (Dev 2): Find tempo > From
+  tab and Set tempo on a generated WAV (empty bar 1, a pickup, the item at an odd place).
 - `.\tools\deploy.ps1` copies `Tab Viewer.lua`, `Guitar Pro.lua`, `Tempo.lua` and `Notes.lua` to
   `Scripts\Thunderfork Scripts\Tab Viewer\` (ReaPack), else `Scripts\Tab Viewer\`.
 - The Note Detection tab's tests: `tests\notes.lua`, run at the end of `tests\tabviewer.lua` (NOTES.md).

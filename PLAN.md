@@ -1,24 +1,39 @@
 # Thunderfork scripts: plan
 
-## Handoff (24 November 2026, night)
+## Handoff (24 November 2026, late night)
 
-- Tab Viewer 1.1 released 24 November 2026: Note Detective is now its Note Detection tab (`Tab Viewer/Notes.lua`,
-  `Tab Viewer/NOTES.md`, `tests\notes.lua`), the tab row Tab, Note Detection, Settings, Help; the UI as in Chart Cue
-  (decided 24 November 2026): the Note Detection tab has a yellow "Works with bass only" line (no switch: decided 24
-  November 2026), a "Song" heading (Key, Tuning, Markers in the label column) and a "Notes" heading with Find notes
-  on its line; Settings: foldable sections Tab, Note Detection, Look, Window (ExtState `closed`), labels left. The
-  user tested both UI segments (passed). debug-time round before 1.1: only old names fixed.
+- Released today: Tab Viewer 1.1 (the Note Detection tab, Settings as in Chart Cue) and 1.1.1 (the P.M. crash).
+- NOT COMMITTED (deployed, all Tab Viewer tests passed: 125; Notes.lua, Tab Viewer.lua, NOTES.md, tests\notes.lua):
+  the musician review of the Note Detection tab, UX 1-9 (decided 24 November 2026), 4 segments, all passed the
+  user's manual tests: (1) Tempo row and Track row (named Track; `Find.track`, not saved); (2) a click on a line
+  loops it, 1 undo for the list and Write / Clear / Export; (3) Write + "Written (n markers)", More... with Export and
+  "Done: clean up..." (was Finish); (4) the suggested key (`Key.guess`), a new Tuning hears only the affected notes
+  again (`Find.retune`), the words Repeats / not sure, the Markers example. Plus 2 fixes of the found notes' tab
+  (the user kept them, 24 November 2026): no rest under an 8th (`Imp.legato`), the 8th grid with the scoop / double
+  rule (`Imp.grid`). Details: NOTES.md "The musician review". Next: commit (1 commit per segment group), then a
+  debug-time round, then release 1.2.
+- Detection research (24 November 2026, all in a test copy, now deleted; nothing of it in git): pYIN-style paths,
+  prime-harmonic octave, review fixes E1/E2/E4/M1/M2, the probabilistic rhythm grid (rhythm first, attacks as x,
+  then rhythm + pitch), the librosa / Boeck onset limit, a 16 kHz click band, no whole-16th offset: none was better
+  by the user's ear ("it is worse"; the 8th grid of the real Tab Viewer was the one clear gain). The comparison with
+  industry practice (the user's question): different from standard: the onset limit (1 s mean x 2 against 100 ms
+  mean + delta), the onset range (50-800 Hz), the automatic whole-16th offset (`Export.delay`), and the way of
+  measuring (own percentages on 1-2 songs; the standard: mir_eval, onset +-50 ms, pitch +-50 cents, precision and
+  recall, songs not used for tuning). Most rules were tuned on 1 day of trials on song 2 (steady 160 BPM, 8ths).
+  The user thinks a limit is reached. Next decision (the user's): give 5-8 stems with matching Guitar Pro tabs for a
+  measuring tool (about 1 session; the files stay on the user's computer, never in git), or "Use a MIDI item" (notes
+  from Melodyne or Basic Pitch), or stop detection work.
 - Not done (decided by Claude, say if wrong): no saved setting for the open tab (always Tab); a tuning that is not in
-  the Notes list (for example Drop A 5-string) imports with Standard's fingering names (the notes and strings are
-  right); the old deployed "Note Detective" folder in REAPER's Scripts is still there (outside the repository: delete
-  it yourself, or ask me). The version line under Settings is gone.
-- Open: Open now 14 (6/8), 15-17 (the manual tests of the Note Detection tab).
+  the Notes list (for example Drop A 5-string) imports with Standard's fingering names; the old deployed "Note
+  Detective" folder in REAPER's Scripts is still there (outside the repository: delete it yourself, or ask me). The
+  version line under Settings is gone.
+- Open: Open now 14 (6/8), 15-17 (the older manual tests of the Note Detection tab), 18 (1.1.1).
 - Not fixed (low risk): the speed of a project left with another project tab stays (REAPER has no call for a
   project that is not active); in the reader: 2 voices sharing a tie, tempo automations out of order, a repeat
   without a start mark (uncertain).
 - The user's question still open: the stronger fix for the tag `imgui-input` (click rules into plain functions with
   a test; recommended "Later").
-- Next: the manual tests 14-17, and the 1.1.1 fix (scroll the whole tab of a song with palm mutes through a repeat).
+- Next: commit the uncommitted work, the manual tests 14-18, the detection decision above.
   Open question: the stronger fix for `edge-case` (3 entries): 1 function for the x of a bar, which gives the drawn
   pass for a bar that is not drawn. Later: chord detection, drums (on
   hold), "Keep their time (move bar lines)".
@@ -141,6 +156,11 @@ skipped or failed test stays here; remove it when it passed.
     tempo (a track), Set tempo, Note Detection tab > select the bass item > Find notes: the list; the Tab tab shows the found
     notes as a tab from the bar of the first note (the song's bar numbers); click plays; fix a note (stopped): saved
     after a reopen of the project; Import to list takes the fix. Also: Export..., Finish..., Clear... as before.
+18. Manual test (Tab Viewer 1.1.1, 24 November 2026): the song that crashed (palm mutes through a repeat): scroll the
+    whole tab; no script error; the P.M. row ends at the repeat sign.
+19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
+    file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
+    computer only (never in git), as the `file-format` rule says.
 
 ## Later
 
@@ -151,8 +171,13 @@ Ideas, not started.
   - Time signature, "Keep their time (move bar lines)" (segment 3; put here by the user, 24 November 2026): the notes
     keep their place in the song and the bar lines move; needs new bars that the file does not have (repeats, fixes,
     line breaks, bar numbers). "Fit into the bar" is built.
-  - The alignment test (the tab's first note on the song's first note, empty bars and a pickup, a random item
-    position) for Find tempo > From tab (decided 23 November 2026).
+  - From the developer review of 24 November 2026 (Dev 3 and Dev 6, "later", decided 24 November 2026): (Dev 3) 1
+    small trial: does REAPER's undo bring back the project data (ProjExtState) written inside an undo block? If yes,
+    the tab fixes and the Note Detection list use REAPER's undo (also after a close; the Undo buttons stay). (Dev 6)
+    the tab logic (layout, repeats, rhythm, fixes) into its own file, as Tempo.lua: only when the tab view in Chart
+    Cue starts (roadmap step 8). (Dev 4, "later", decided 24 November 2026) 1 project watcher: Tab Viewer's
+    `Project.update` tells the Note Detection tab, so the order (its list first, then the tab) is in code, not in a
+    comment (`stale-state`).
   - From the checkup of 24 November 2026 (larger changes, each a segment; ask first): note places as whole numbers
     (48 per beat); a cached copy of the file's tab, so a fix rebuilds only its bar.
 - On hold (do NOT ask until the user brings it up):
