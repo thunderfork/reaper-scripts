@@ -68,3 +68,17 @@ of all 6 scripts (see the root CLAUDE.md).
     tabs and toolbar items.
 15. Large set: a 300-page PDF and a project with 30 regions: start time, page cache size and limit, smooth playback.
 16. Automatic tests: `.\tools\test.ps1` ("0 failed") and `.\tools\ui-test.ps1` ("no errors").
+
+## Later (ideas, moved from PLAN.md 24 November 2026)
+
+- Guitar Pro files: convert to PDF with MuseScore's command line (optional external program, like Poppler).
+- REAPER forum button in Help > About (disabled until there is a forum thread).
+- No way to show the mode hint again after "Not now".
+- A "Sharper page available" hint after the zoom stays the same (instead of an automatic DPI match).
+- Setlist: "Loop" as a song ending (loops until Next song).
+- Night mode: the page inverted (white notes on black) for very dark stages.
+- Undo for a deleted note.
+- PDF 2: a "(both)" view of the 2 cue lists in the Cues tab, and MIDI CCs for PDF 2.
+- UI scale 100 / 125 / 150 %: the drawn icons already use CFG.UI_SCALE, and the repeated sizes have names in CFG.
+  Still needed: the fonts rebuilt between frames, every pixel size in CFG times the scale, and a test of every
+  screen at each scale. Ask the user first.

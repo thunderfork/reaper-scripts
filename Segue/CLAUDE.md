@@ -27,3 +27,9 @@ Window, Backup.
 
 - `.\tools\deploy.ps1` copies Segue to `Scripts\Thunderfork Scripts\Segue\` (ReaPack), else `Scripts\Segue\`.
 - Tests: `tests\segue.lua` (`.\tools\test.ps1 -Script "Segue"`; result in `tests\result_segue.txt`).
+
+## Later (ideas, moved from PLAN.md 24 November 2026)
+
+- Segue: a thin countdown bar, a UI test for Segue. From the ReaSet changelog: repeat a song N times; region colours
+  in the list; a note per song; the next marker / section in the now playing area, with a 2nd thinner progress bar;
+  an option that forces an immediate jump when REAPER's smooth seek is on.

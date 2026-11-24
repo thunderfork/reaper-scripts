@@ -32,3 +32,7 @@ right. No window and no ReaImGui: 2 actions. A ReaImGui version (drop areas) is 
 
 - `.\tools\deploy.ps1` copies it to `Scripts\Thunderfork Scripts\Mono Merge\` (ReaPack), else `Scripts\Mono Merge\`.
 - Tests: `tests\monomerge.lua` (`.\tools\test.ps1 -Script "Mono Merge"`; result in `tests\result_monomerge.txt`).
+
+## Later (ideas, moved from PLAN.md 24 November 2026)
+
+- Mono Merge: a drop window (REAPER gfx, no ReaImGui) for 2 files from Explorer.

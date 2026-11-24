@@ -39,3 +39,10 @@ Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are untested). No relation
 
 - `.\tools\deploy.ps1` copies it to `Scripts\Thunderfork Scripts\MIDI Pilot\` (ReaPack), else `Scripts\MIDI Pilot\`.
 - Tests: `tests\midipilot.lua` (`.\tools\test.ps1 -Script "MIDI Pilot"`; result in `tests\result_midipilot.txt`).
+
+## Later (ideas, moved from PLAN.md 24 November 2026)
+
+- MIDI Pilot version 2: Record (a real pedal move into Lanes, from the unit's Preset MIDI Out expression messages)
+  and Learn, copy Scenes between songs, a check report, a cue sheet, import / export of the names, Looper X
+  (CC#48-61) in its own section. Only if a user asks: "Scenes like..." (copy another song's Scenes). The Line 6
+  profiles are untested (no units).

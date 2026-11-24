@@ -1,6 +1,6 @@
 ---
 name: new-feature
-description: Turn a new idea for Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep or SFX Drop into a short plan, a text mockup and the right questions before any code. Use when the user asks for a new feature, option, button, tab, view or setting ("add ...", "is it possible to ...", "can we have ..."), or a larger change to an existing one.
+description: Turn a new idea for a script of this repository (tools\scripts.psd1) into a short plan, a text mockup and the right questions before any code. Use when the user asks for a new feature, option, button, tab, view or setting ("add ...", "is it possible to ...", "can we have ..."), or a larger change to an existing one.
 ---
 
 # New feature
@@ -22,9 +22,9 @@ PLAN.md: no new feature until they are tested (global rule); say so and offer th
   - SFX Drop: tabs Sounds, Spots, Soundcheck; Settings sections Appearance, Library, Insert (Items, Files, Tracks,
     Levels), Window.
     A preparation tool (SFX Drop/CLAUDE.md).
-  - Note Detective: the toolbar, the Key and Markers dropdowns, the list, the foot (Join ... Undo, Write, Finish...),
-    the gear menu (Look, Window). A preparation tool (Note Detective/CLAUDE.md).
-  - Tab Viewer: the toolbar (Open tab...), the track list, the gear menu (Look, Window) (Tab Viewer/CLAUDE.md).
+  - Tab Viewer: the toolbar (Open tab..., Find tempo, play); tabs Tab (the Tab and Track dropdowns, Start, the tab)
+    and Notes (Find notes, the Key, Markers and Tuning dropdowns, the list, the foot: Join ... Undo, Write, Export...,
+    Finish...); Settings sections Tab, Note Detection, Look (Tabs), Window (Tab Viewer/CLAUDE.md, Tab Viewer/NOTES.md).
 - Its on/off switch and default (every optional feature can be turned off).
 - What is saved: in the project (P) or on this computer (S); the "?" text says where. A new key: ask first.
 - The special states: playing, paused, stopped, an empty list or project; Chart Cue: locked, performance mode,

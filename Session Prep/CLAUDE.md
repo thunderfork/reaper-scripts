@@ -103,3 +103,7 @@ collapsing sections, 1 open at a time (`S.settings_open`), with a bold label col
 
 - `.\tools\deploy.ps1` copies it to `Scripts\Thunderfork Scripts\Session Prep\` (ReaPack), else `Scripts\Session Prep\`.
 - Tests: `tests\sessionprep.lua` (`.\tools\test.ps1 -Script "Session Prep"`; result in `tests\result_sessionprep.txt`).
+
+## Later (ideas, moved from PLAN.md 24 November 2026)
+
+- Session Prep version 2: time alignment of close mics, a measured polarity check, routing / bus templates.

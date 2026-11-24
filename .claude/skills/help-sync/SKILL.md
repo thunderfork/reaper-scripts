@@ -1,6 +1,6 @@
 ---
 name: help-sync
-description: Find and fix every text in Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep and SFX Drop that names a feature, control, section or setting after it was added, renamed, moved or removed (Help topics, tooltips, "?" texts, messages, menu items, "Settings > ..." paths, comments, CLAUDE.md, PLAN.md, README.md). Use after any rename or move, and as a step of new-feature and debug-time.
+description: Find and fix every text in the scripts of this repository (tools\scripts.psd1) that names a feature, control, section or setting after it was added, renamed, moved or removed (Help topics, tooltips, "?" texts, messages, menu items, "Settings > ..." paths, comments, CLAUDE.md, PLAN.md, README.md). Use after any rename or move, and as a step of new-feature and debug-time.
 ---
 
 # Help sync

@@ -1,6 +1,6 @@
 ---
 name: lessons
-description: The self-improvement routine for Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep, SFX Drop and Mono Merge - the global lessons skill plus the project steps (the REAPER test files, a search of the other scripts, the tag list, the count before a release). Use when the user reports a bug or a failed manual test, when debug-time finds a bug in committed code, and before a release (the count).
+description: The self-improvement routine for the scripts of this repository (tools\scripts.psd1) - the global lessons skill plus the project steps (the REAPER test files, a search of the other scripts, the tag list, the count before a release). Use when the user reports a bug or a failed manual test, when debug-time finds a bug in committed code, and before a release (the count).
 ---
 
 # Lessons (project steps)

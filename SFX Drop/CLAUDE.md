@@ -119,3 +119,8 @@ label column (`UI.form_label`, `UI.form_toggle`), as in Session Prep.
 - `.\tools\deploy.ps1` copies it to `Scripts\Thunderfork Scripts\SFX Drop\` (ReaPack), else `Scripts\SFX Drop\`.
 - Tests: `tests\sfxdrop.lua` (`.\tools\test.ps1 -Script "SFX Drop"`; result in `tests\result_sfxdrop.txt`). They
   write 2 WAV files in the test REAPER's resource folder.
+
+## Later (ideas, moved from PLAN.md 24 November 2026)
+
+- SFX Drop: templates, key match, tags, mono check, sub limit, a pink noise / sweep step, cue markers, Move with
+  region.

@@ -1,6 +1,6 @@
 ---
 name: release
-description: Commit, push and release Chart Cue, Segue, MIDI Pilot, FX Link, Session Prep and SFX Drop (a new version on ReaPack, and a GitHub Release for each script with a new version). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
+description: Commit, push and release the scripts of this repository (tools\scripts.psd1) (a new version on ReaPack, and a GitHub Release for each script with a new version). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
 ---
 
 # Release
