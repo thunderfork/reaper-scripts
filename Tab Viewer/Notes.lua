@@ -2262,7 +2262,7 @@ function N.written() R.view = nil end -- (the bar numbers of the list)
 -- TESTS: tests\notes.lua (through Tab Viewer's TabViewerTest.Notes) gets the modules
 ---------------------------------------------------------------------------
 N.test = { CFG = CFG, S = S, R = R, Util = Util, Key = Key, Det = Det, Group = Group, List = List, Project = Project,
-  Find = Find, Out = Out, Export = Export, Imp = Imp, GP = GP, TP = TP,
+  Find = Find, Out = Out, Export = Export, Imp = Imp, GP = GP, TP = TP, UI = UI,
   get_P = function() return P end, set_P = function(p) P = p end }
 
 ---------------------------------------------------------------------------
@@ -2438,6 +2438,7 @@ function UI.play_row(i)
   r.GetSet_LoopTimeRange2(R.proj, true, true, t0, t1, false)
   r.GetSetRepeatEx(R.proj, 1)
   UI.play_at(t0)
+  host.loop_off() -- (the bar loop of the Tab tab ends first: 1 loop at a time, so both give back what was before)
 end
 -- Ends the loop of a row: repeat and the time selection as before (the time selection only when it is still the
 -- loop's: one that you made meanwhile stays).
@@ -3042,6 +3043,8 @@ function N.exit()
   if R.pdirty then Project.save() end
   if R.sdirty then Util.save_settings() end
 end
+-- Ends the loop of a row (Tab Viewer: before its bar loop starts).
+function N.loop_off() UI.loop_off() end
 function N.busy() return R.find ~= nil end -- (Find notes listens)
 -- Import to list (Tab Viewer's Tab tab; list and open: Imp.apply): asks first when the list has notes. done(n): after
 -- the import (n: the number of notes).

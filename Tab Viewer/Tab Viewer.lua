@@ -233,6 +233,7 @@ end
 -- (Project.entry_line, Project.entry_text). Its list changed: R.notes_dirty (the tab of the found notes again).
 Notes = NotesNew({ GP = GP, TP = TP, CFG = CFG, COL = COL, ImGui = ImGui, UI = UI, R = R,
   notes_changed = function() R.notes_dirty = true end,
+  loop_off = function() Tabs.loop_off() end,
   entry_line = function(e, k, v) Project.entry_line(e, k, v) end,
   entry_text = function(e) return Project.entry_text(e) end })
 
@@ -989,6 +990,7 @@ function Tabs.loop(bi)
   local sel = R.tsel
   if sel and tab.bars[sel.bi] then sbi, sq = sel.bi, sel.q else sbi, sq = Tabs.place_of(r.GetCursorPositionEx(R.proj)) end
   sbi, sq = Tabs.loop_start(bi, sbi, sq)
+  Notes.loop_off() -- (the loop of a row of the Note Detection tab ends first: 1 loop at a time)
   local old = R.loop or { rep = r.GetSetRepeatEx(R.proj, -1), ts = { r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false) } }
   local t0, t1 = Tabs.time_of(sbi, sq), Tabs.time_of(bi, tab.bars[bi].len)
   R.loop = { bi = bi, sbi = sbi, sq = sq, rep = old.rep, ts = old.ts, t0 = t0, t1 = t1 }

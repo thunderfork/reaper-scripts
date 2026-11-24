@@ -1465,6 +1465,29 @@ test("notes tab: no Guitar Pro tab here: the found notes as a tab; a fix is save
   eq(R.doc, nil, "no notes: no tab")
 end)
 
+test("a bar loop (Tab tab) and a line loop (Note Detection tab): 1 at a time; after both, repeat and the time selection as before (debug-time 25 November 2026)", function()
+  local N = C.Notes
+  N.Project.update() -- (the project of the Note Detection tab, as each frame of the window does)
+  Tabs.open(src)
+  local function state()
+    local a, b = r.GetSet_LoopTimeRange2(0, false, true, 0, 0, false)
+    return string.format("repeat %d, %.2f-%.2f", r.GetSetRepeatEx(0, -1), a, b)
+  end
+  local p = N.List.default()
+  p.rows = { { t = 5, text = "C" }, { t = 8, text = "F" } }
+  for _, order in ipairs({ "bar first", "row first" }) do
+    r.GetSetRepeatEx(0, 0)
+    r.GetSet_LoopTimeRange2(0, true, true, 1, 2, false)
+    N.set_P(p)
+    if order == "bar first" then Tabs.loop(1); N.UI.play_row(1) else N.UI.play_row(1); Tabs.loop(1) end
+    r.OnStopButtonEx(0)
+    eq(r.GetSetRepeatEx(0, -1), 1, order .. ": the loop repeats")
+    Tabs.loop_off() -- (as when Tab Viewer closes: the bar loop first, then the line loop)
+    N.UI.loop_off()
+    eq(state(), "repeat 0, 1.00-2.00", order .. ": as before both loops")
+  end
+end)
+
 test("P.M. row: a palm-mute run that ends in a later pass of a repeat ends on the drawn bar of that pass", function()
   -- (|: 1 2 :| played 1 2 1' 2', palm mutes all the way: the run ends in 2', which is not drawn; lessons 24 November 2026)
   local b = { { vp = 1 }, { vp = 2 }, { vp = 1, drawn = false }, { vp = 2, drawn = false } }
