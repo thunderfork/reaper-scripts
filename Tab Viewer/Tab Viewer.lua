@@ -576,8 +576,9 @@ function Tabs.line_starts(tab, bi, op, lines, joins)
     vp = b.vp + 1
   end
   local wb = tab.bars[Tabs.vbar(tab, vp)].wb
-  local add, drop = {}, {} -- (a break and a join on 1 bar: the newer one wins)
-  if op == "&" then add, drop = joins or {}, lines or {} else add, drop = lines or {}, joins or {} end
+  -- (a break and a join on 1 bar: the newer one wins)
+  local add, drop = lines or {}, joins or {}
+  if op == "&" then add, drop = drop, add end
   local function without(list)
     local out = {}
     for _, x in ipairs(list) do if x ~= wb then out[#out + 1] = x end end
