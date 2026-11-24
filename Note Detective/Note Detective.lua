@@ -2393,7 +2393,7 @@ Want to start again? "Clear..." removes the list and what Note Detective wrote (
 
 Want to see it as tab? View > Tab shows the found notes as bass tab, with the fingering (Simple mode off). A blue line shows where it plays; stopped, a dashed line shows the edit cursor.
 
-Fix the tab while the song is stopped: click a note to select it (the edit cursor goes there). Left / Right selects the note before or after it, Up / Down puts it on the next string, a number gives it a new fret, Delete removes it. Double-click a note to open its box: type a new fret and press Enter, or move the note with Left / Right (a note never moves onto another one). Click an empty place on a string, type the fret and press Enter for a new note. Right-click a note for Octave up / down. A held note cut in pieces? Select the 2nd piece and press J: it joins the note before it (the same note). "Update the list" then makes the markers from your tab (it asks first).
+Fix the tab while the song is stopped: click a note to select it (the edit cursor goes there). Left / Right selects the note before or after it, Up / Down puts it on the next string, a number gives it a new fret, Delete removes it. Double-click a note to open its box: type a new fret and press Enter, or move the note with Left / Right (a note never moves onto another one). Double-click an empty place on a string, type the fret and press Enter for a new note. Right-click a note for Octave up / down. A held note cut in pieces? Select the 2nd piece and press J: it joins the note before it (the same note). "Update the list" then makes the markers from your tab (it asks first).
 
 Keys: Up / Down = previous / next line, N = next doubtful line, Space = play / stop, F2 = type the notes, Delete = delete the line.]] },
   { title = "How the notes become markers", text = [[
@@ -2712,7 +2712,7 @@ function UI.draw_tab(h)
   local playing = r.GetPlayStateEx(R.proj) & 1 == 1
   if ImGui.IsItemHovered(ctx) then
     ImGui.SetTooltip(ctx, playing and "Click a note: play from there. (Stop to edit.)"
-      or "Click a note: select it, the cursor goes there (Left / Right: the note before / after, Up / Down: another string, Delete, a number = the fret, J = join with the note before). Double-click: its box (the fret; Left / Right move it). Click an empty place on a string: a new note. Right-click: more.")
+      or "Click a note: select it, the cursor goes there (Left / Right: the note before / after, Up / Down: another string, Delete, a number = the fret, J = join with the note before). Double-click: its box (the fret; Left / Right move it). Double-click an empty place on a string: a new note. Right-click: more.")
   end
   local mx, my = ImGui.GetMousePos(ctx)
   local hit = (lclick or rclick) and Tab.hit(tab, mx - ox, my - oy)
@@ -2780,13 +2780,19 @@ function UI.draw_tab(h)
     R.tab_note, R.tab_sel = hit.nt.src, hit.nt.note
     ImGui.OpenPopup(ctx, "##tabnote")
   elseif lclick and hit then
+    -- (a double-click only on the same place as the click before: lessons 24 November 2026, from Tab Viewer)
+    local last, here = R.tab_last, { bi = hit.bi, slot = hit.slot, s = hit.s }
+    dbl = dbl and last ~= nil and last.bi == here.bi and last.slot == here.slot and last.s == here.s
+    R.tab_last = here
     if hit.nt and dbl and not playing then -- (double-click: the box of its fret; Left / Right then move it)
       R.tab_sel = hit.nt.note
       R.tab_add = { note = hit.nt.note, s = hit.nt.s, txt = tostring(hit.nt.f), focus = true }
     elseif hit.nt then -- (a click: select it, and the cursor goes there)
       R.tab_sel, R.tab_add = hit.nt.note, nil
       UI.tab_cursor(hit.nt.note, playing)
-    elseif not playing then -- (an empty 16th of a string: a box for the fret of a new note)
+    elseif not playing and not dbl then -- (a click on an empty place: only the selection goes)
+      R.tab_sel, R.tab_add = nil, nil
+    elseif not playing then -- (a double-click on an empty 16th of a string: a box for the fret of a new note)
       local b, ln = tab.bars[hit.bi], Tab.line_of(tab, hit.bi)
       local q = r.TimeMap2_timeToQN(R.proj, r.TimeMap2_beatsToTime(R.proj, 0, b.m)) + hit.slot * 0.25
       if Tab.free(tab, q) then

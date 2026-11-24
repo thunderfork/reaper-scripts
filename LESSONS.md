@@ -36,6 +36,22 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-24 | Tab Viewer | imgui-input | a click on the tab, then a click on another place opened the note box, as if
+  it was a double-click
+  Cause: a single click on an empty place of a string opened the box of a new note (copied from Note Detective),
+    and the double-click of a note did not check that both clicks were on the same place.
+  Why the tests missed it: the click rule was inside the UI code (no test reaches it); the tests only checked the
+    edits behind the box.
+  Test: "a click on the tab: selects; only a double-click on the same place opens the box" (tests\tabviewer.lua);
+    the rule is now the plain function Tabs.click (it did not exist before, so the test could not run on the old code).
+  Other scripts: searched; Note Detective had the same (UI.draw_tab): changed the same way (the user's choice,
+    24 November 2026; no test: its click rule is still in the UI code).
+  Stronger fix (imgui-input, 2 entries): click rules into plain functions with a test; the user asked for the benefit
+    (24 November 2026), not decided yet.
+  Status: Tab Viewer confirmed (24 November 2026); Note Detective fixed, not confirmed
+```
+
+```
 2026-11-23 | Tab Viewer | timing | after Set tempo with Beats from a track (a bass stem), the tab started at the
   first bass note: its 5 empty bars before the first note were left out, so the tab was late (from the tab: right)
   Cause: Find tempo makes the first beat with sound bar 1 of the song; Tabs.set_tempo put bar 1 of the tab on that
