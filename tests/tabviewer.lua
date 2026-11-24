@@ -658,6 +658,7 @@ test("your time signature: the notes fit the bar, the tempo keeps its time; this
   eq(tl[3].tempos[1], nil, "the same fit: no new tempo"); near(tl[4].tempos[1].bpm, 125, 1e-9, "the file's tempo again")
   Tabs.meters(doc, nil)
   eq(mb[2].num .. "/" .. mb[2].den, "4/4", "without your changes: the file's again"); eq(mb[2].fit, nil)
+  eq(Tabs.bpm_txt(93.75) .. " " .. Tabs.bpm_txt(125) .. " " .. Tabs.bpm_txt(93.5), "93.75 125 93.5", "the tempo texts")
   local pe = Project.parse("tab=x.gp\nmeter=12 6/8\nmeter=13 6/8\n").tabs[1]
   eq(pe.meters[13][1] .. "/" .. pe.meters[13][2], "6/8", "read")
   eq(Project.serialize(Project.parse("tab=x.gp\nmeter=12 6/8\n")), "tab=x.gp\nmeter=12 6/8\n", "written")
@@ -668,6 +669,15 @@ test("your time signature: the notes fit the bar, the tempo keeps its time; this
   eq(R.loop, nil, "the bars changed: the loop ends (checkup 24 November 2026)")
   eq(Tabs.cur().meters[R.tab.bars[1].wb][1], 6); eq(R.tab.bars[1].len, 3, "3 quarter notes")
   eq(select(2, Tabs.set_meter(1, 6, 7, false)), "A time signature from 1 to 32 over 2, 4, 8 or 16, please.")
+  -- a fix in a fitted bar: saved in the places of the file's bar, shown fitted (checkup 24 November 2026)
+  local wb1, fit = R.tab.bars[1].wb, R.doc.mbars[R.tab.bars[1].wb].fit
+  local last = #R.tab.bars[1].notes
+  local q_shown = R.tab.bars[1].notes[last].q
+  ok(Tabs.set_fret(1, last, 7), "a fix")
+  local saved = Tabs.edits()[wb1]
+  near(saved[#saved].q, q_shown / fit, 1e-6, "saved in the file's places")
+  near(R.tab.bars[1].notes[last].q, q_shown, 1e-6, "shown where it was")
+  ok(Tabs.undo(-1), "Ctrl+Z the fix")
   ok(Tabs.undo(-1), "Ctrl+Z"); eq(Tabs.cur().meters, nil)
   R.undo, R.redo = {}, {}
   Project.save()
@@ -1329,7 +1339,9 @@ test("line breaks as in Guitar Pro: & pulls the next line's first bar up, Ctrl+E
   eq(table.concat(l, " "), "6", "& on bar 3: my break before bar 4 goes"); eq(table.concat(j, " "), "4", "bar 4 joins")
   l, j = Tabs.line_starts(tab, 6, "enter", nil, { 7 })
   eq(table.concat(l, " "), "7", "Ctrl+Enter on a joined bar: the break wins"); eq(j, nil)
-  eq(select(2, Tabs.line_starts(tab, 3, "enter")), "This bar ends its line already.")
+  eq(table.concat(Tabs.line_starts(tab, 3, "enter"), " "), "4", "the last bar of a line: the break becomes mine")
+  eq(select(2, Tabs.line_starts(tab, 3, "enter", { 4 })), "Your line break is here already.")
+  eq(select(2, Tabs.line_starts(tab, 8, "enter")), "This is the last bar of the tab.")
   eq(select(2, Tabs.line_starts(tab, 6, "&")), "This is the last line: no bar below to pull up.")
   eq(select(2, Tabs.line_starts(tab, 99, "&")), "Select a note in the tab first.")
   local pe = Project.parse("tab=x.gp\nlines=5 9 14\njoins=3\n").tabs[1]

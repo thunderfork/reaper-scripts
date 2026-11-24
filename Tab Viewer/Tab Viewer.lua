@@ -467,11 +467,13 @@ function Tabs.build()
           at[string.format("%.4f/%d", n.q, n.s)] = n
         end
         b.notes = {}
+        local fit = R.doc.mbars[b.wb].fit or 1 -- (your time signature: the saved places fit the bar, as the file's)
         for i, n in ipairs(list) do
-          local f = at[string.format("%.4f/%d", n.q, n.s)]
+          local q, len = n.q * fit, n.len * fit
+          local f = at[string.format("%.4f/%d", q, n.s)]
           if f and f.fx and f.fx.dead and f.fret ~= n.fret then f = nil end -- (a dead note with a new fret: a note)
-          b.notes[i] = { q = n.q, s = n.s, fret = n.fret, len = n.len, w = n.len,
-            mine = not file[string.format("%.4f/%d/%d", n.q, n.s, n.fret)], fx = f and f.fx }
+          b.notes[i] = { q = q, s = n.s, fret = n.fret, len = len, w = len,
+            mine = not file[string.format("%.4f/%d/%d", q, n.s, n.fret)], fx = f and f.fx }
         end
       end
       for _, nt in ipairs(b.notes) do nt.txt = Tabs.note_txt(nt, S.pmarks) end -- (the texts drawn every frame: made once)
@@ -572,10 +574,14 @@ function Tabs.line_starts(tab, bi, op, lines, joins)
     if not nxt then return false, "This is the last line: no bar below to pull up." end
     vp = nxt.first
   else
-    if b.vp >= tab.lines[li].last then return false, "This bar ends its line already." end
+    -- (the last bar of a line: the break there becomes yours, so it stays in a wider window; checkup 24 November 2026)
+    if b.vp >= tab.lines[#tab.lines].last then return false, "This is the last bar of the tab." end
     vp = b.vp + 1
   end
   local wb = tab.bars[Tabs.vbar(tab, vp)].wb
+  for _, x in ipairs(op == "&" and (joins or {}) or (lines or {})) do
+    if x == wb then return false, op == "&" and "This bar joins the line above already." or "Your line break is here already." end
+  end
   -- (a break and a join on 1 bar: the newer one wins)
   local add, drop = lines or {}, joins or {}
   if op == "&" then add, drop = drop, add end
@@ -648,6 +654,10 @@ function Tabs.set_meter(bi, num, den, following)
   Tabs.loop_off(); Tabs.unselect() -- (the bars have other times now: as "<" / ">")
   Tabs.build()
   return true
+end
+-- A tempo as text: at most 2 decimals, no trailing zeros ("125", "93.75").
+function Tabs.bpm_txt(v)
+  return (string.format("%.2f", v):gsub("%.?0+$", ""))
 end
 -- The Undo step of the lines of tab entry e (its breaks, joins and Layout).
 function Tabs.lines_state(e)
@@ -979,6 +989,10 @@ function Tabs.edit(bi, fn)
   local list = copy_notes(b.notes)
   if fn(list) == false then return false end
   table.sort(list, by_place)
+  local f = R.doc and R.doc.mbars[b.wb] and R.doc.mbars[b.wb].fit
+  if f then -- (your time signature: saved in the places of the file's bar, so it fits again: Tabs.build)
+    for _, n in ipairs(list) do n.q, n.len = n.q / f, n.len / f end
+  end
   local ed = Tabs.edits(true)
   if not ed then return false end
   Tabs.undo_push({ e = Tabs.cur(), tr = Tabs.track(), wb = b.wb, list = ed[b.wb] })
@@ -2072,7 +2086,9 @@ function UI.draw_meter()
     ImGui.EndCombo(ctx)
   end
   UI.tip("The following bars: up to the next time signature change of the file.")
-  ImGui.TextColored(ctx, COL.TEXT_DIM, "The notes fit into the bar; the bar keeps its time (the tempo changes with it).")
+  local new_bpm = m.bpm * (m.num / m.den) / ((mb.num0 or mb.num) / (mb.den0 or mb.den))
+  ImGui.TextColored(ctx, COL.TEXT_DIM, string.format("Tempo: %s -> %s BPM. The notes fit into the bar; the bar keeps its time.",
+    Tabs.bpm_txt(m.bpm), Tabs.bpm_txt(new_bpm)))
   UI.vgap(8)
   if UI.button("OK", 80, nil, "primary") then
     local done, why = Tabs.set_meter(m.bi, m.num, m.den, m.following)
@@ -2651,7 +2667,15 @@ function UI.draw_tab(h)
     local b = tab.bars[R.bar_menu or 0]
     if b and ImGui.MenuItem(ctx, "Time signature...") then
       local mb = R.doc.mbars[b.wb]
-      R.meter = { bi = R.bar_menu, num = mb.num, den = mb.den, following = false, open = true }
+      local bpm = 120 -- (the file's tempo at the start of the bar: the tempo shown without your fit)
+      for j, x in ipairs(GP.timeline(R.doc)) do
+        if j == R.bar_menu then
+          if x.tempos[1] and x.tempos[1].q < 1e-6 then bpm = x.tempos[1].bpm end
+          break
+        end
+        if x.tempos[1] then bpm = x.tempos[#x.tempos].bpm end
+      end
+      R.meter = { bi = R.bar_menu, num = mb.num, den = mb.den, following = false, open = true, bpm = bpm / (mb.fit or 1) }
     end
     ImGui.EndPopup(ctx)
   end

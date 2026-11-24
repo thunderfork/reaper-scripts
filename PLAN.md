@@ -43,7 +43,8 @@
   a test; recommended "Later").
 - Then: the release of Tab Viewer (debug-time, README, ReaPack). Later: the list from the tab (step 5, Note
   Detective), chord detection (6), drums (on hold), Note Detective's Find tempo as in Tab Viewer.
-- Last checkup: 24 November 2026, Tab Viewer only (full). The other scripts: none as 1 full run yet.
+- Last checkup: 24 November 2026, Tab Viewer only (full); a 2nd one the same day on e2dc5ed..a953bd1 (steps 1-4
+  done: 1 bug fixed (8d94164), 1 tidy (eb3c835); proposals and file findings answered in the session). The other scripts: none as 1 full run yet.
 
 ### Other scripts (the facts that still hold from the handoffs before; their history: git)
 
@@ -191,8 +192,9 @@ skipped or failed test stays here; remove it when it passed.
 27. Set-aside test (Note Detective, Set tempo aligns, 23 November 2026): Find tempo, Set tempo: the notice says how far
     the audio moved; the first bass note sits on a beat (zoom in); the other stems moved with it, other songs and a
     long backing track did not; one Ctrl+Z takes back the grid and the move. With a list: it moved too. In the tab: select the 2nd piece of a split note, press J.
-28. Note Detective and tremolo picking (decided 24 November 2026): keep 1 marker per written note (not the picked
-    notes); do it when the user works on Note Detective again.
+28. Manual test (Tab Viewer, 6/8 and Set tempo, 24 November 2026): in the tab with your 6/8 bars, Find tempo > From
+    tab, then Set tempo: REAPER's tempo changes to 93.75 at the first 6/8 bar and back to 125 after the last one; the
+    tab stays on the music while it plays. (REAPER counts the tempo in quarter notes: not checked with a 6/8 tab.)
 
 ## Later
 

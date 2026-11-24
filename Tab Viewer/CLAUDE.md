@@ -136,8 +136,10 @@ lengths, fixes of the tab (saved in the project), loop and speed. Chart Cue look
   `mb.den` (the file's in `num0` / `den0`) and `mb.fit` (new length / old): the notes stay in their bar and fit it
   (`GP.notes`), the tempo times fit (`GP.timeline`: the bar lasts as long). `Tabs.meter_bars` (this bar, or up to the
   file's next change: decided), `Tabs.set_meter` (1 Undo step). Segment 2: right-click a bar > Time signature...
-  (`R.bar_menu`, `UI.draw_meter`, `R.meter`). "Keep their time (move bar lines)": PLAN.md > Later (the user). An
-  edited bar keeps its saved places (not fitted).
+  (`R.bar_menu`, `UI.draw_meter`, `R.meter`). "Keep their time (move bar lines)": PLAN.md > Later (the user). A fix in
+  a fitted bar is saved in the places of the file's bar (`Tabs.edit` divides by fit, `Tabs.build` multiplies), so it
+  fits too; the window shows the tempo before and after (`R.meter.bpm`, `Tabs.bpm_txt`). Checkup 24 November 2026:
+  Ctrl+Enter on the last bar of a line makes that break yours.
 - The tab on the song (step 2b, 23 November 2026): `P.bar` (`bar=`, only when not 1; a new Open tab clears it) = the
   song bar (REAPER's, from 1) of bar 1 of the tab; `Tabs.set_bar` ("<" / ">", `UI.repeat_button`: hold = repeat),
   `Tabs.relabel` (the bar numbers = the song's, the bar line text). From that bar the tab follows the project's
