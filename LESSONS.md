@@ -36,6 +36,24 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-25 | Tab Viewer | edge-case | (debug-time) Undo in the Note Detection tab after Write did nothing, with no message
+  Cause: List.undo takes back a Write, Clear or Export only while it is REAPER's last step (Undo_CanUndo2); with a
+  newer REAPER step (an item moved after Write) it skipped it silently.
+  Why the tests missed it: the test covered "undone in REAPER already" (silent is right there), not a newer step.
+  Test: "undo: 1 undo for the list and Write ..." (tests\notes.lua), failed before the fix
+  Other scripts: searched (Undo_CanUndo2): FX Link reads it only to notice an undo; Tempo.untry takes back its own try
+  step silently (right: the next try or Set tempo replaces it)
+  Status: confirmed
+
+2026-11-25 | Tab Viewer | stale-state | (debug-time) a bar loop and a line loop at the same time: after both, repeat stayed on and the time selection was lost
+  Cause: the Tab tab (Tabs.loop) and the Note Detection tab (UI.play_row) each save REAPER's repeat and time selection
+  as "before". The 2nd loop saved the 1st one's as "before"; when the 1st ended first (Tab Viewer closes: the bar
+  loop first), the 2nd gave back the loop's repeat and selection.
+  Why the tests missed it: each loop had its own test; none had both loops on.
+  Test: "a bar loop (Tab tab) and a line loop ..." (tests\tabviewer.lua), failed before the fix
+  Other scripts: searched (GetSetRepeat): Chart Cue and Segue have 1 owner each, MIDI Pilot and SFX Drop none
+  Status: confirmed
+
 2026-11-24 | Tab Viewer | edge-case | Tab Viewer 1.1 stopped with a script error while it drew the tab ("field 'x'")
   Cause: a palm-mute run through a repeat that ends in a later pass of a bar (|: 1 2 :| all palm-muted): UI.tab_pm
   used that pass, which is not drawn and has no x. The case "back to the left" was handled, "on to the right" not.

@@ -1,17 +1,15 @@
 # Thunderfork scripts: plan
 
-## Handoff (24 November 2026, late night)
+## Handoff (25 November 2026)
 
-- Released today: Tab Viewer 1.1 (the Note Detection tab, Settings as in Chart Cue) and 1.1.1 (the P.M. crash).
-- NOT COMMITTED (deployed, all Tab Viewer tests passed: 125; Notes.lua, Tab Viewer.lua, NOTES.md, tests\notes.lua):
-  the musician review of the Note Detection tab, UX 1-9 (decided 24 November 2026), 4 segments, all passed the
-  user's manual tests: (1) Tempo row and Track row (named Track; `Find.track`, not saved); (2) a click on a line
-  loops it, 1 undo for the list and Write / Clear / Export; (3) Write + "Written (n markers)", More... with Export and
-  "Done: clean up..." (was Finish); (4) the suggested key (`Key.guess`), a new Tuning hears only the affected notes
-  again (`Find.retune`), the words Repeats / not sure, the Markers example. Plus 2 fixes of the found notes' tab
-  (the user kept them, 24 November 2026): no rest under an 8th (`Imp.legato`), the 8th grid with the scoop / double
-  rule (`Imp.grid`). Details: NOTES.md "The musician review". Next: commit (1 commit per segment group), then a
-  debug-time round, then release 1.2.
+- Tab Viewer since 1.1.1, committed: the musician review of the Note Detection tab (UX 1-9, passed the user's
+  manual tests), the developer review Dev 1 (a bar or track that can not be shown: a notice, not a script error;
+  passed) and Dev 2 (the alignment test), the full simplify run (manual test open: Open now 20).
+- Committed: the debug-time round of 25 November 2026 (passed the user's manual test): (1) a bar loop and a line loop
+  at the same time: 1 loop at a time now (`Notes.loop_off`, `host.loop_off`); (2) Undo after Write with a newer
+  REAPER step: an orange notice; (3) the undo name "Tab Viewer: clean up the song"; (4) the Tempo row follows the
+  cursor. (1) and (2) in LESSONS.md. Next: the manual test 20, then release 1.2 (the `release` skill).
+- Lessons: `stale-state` has 5 entries now: propose a stronger fix (lessons skill, step 4) at the next session start.
 - Detection research (24 November 2026, all in a test copy, now deleted; nothing of it in git): pYIN-style paths,
   prime-harmonic octave, review fixes E1/E2/E4/M1/M2, the probabilistic rhythm grid (rhythm first, attacks as x,
   then rhythm + pitch), the librosa / Boeck onset limit, a 16 kHz click band, no whole-16th offset: none was better
@@ -27,13 +25,14 @@
   the Notes list (for example Drop A 5-string) imports with Standard's fingering names; the old deployed "Note
   Detective" folder in REAPER's Scripts is still there (outside the repository: delete it yourself, or ask me). The
   version line under Settings is gone.
-- Open: Open now 14 (6/8), 15-17 (the older manual tests of the Note Detection tab), 18 (1.1.1).
+- Open: Open now 14 (6/8), 15-17 (the older manual tests of the Note Detection tab), 18 (1.1.1), 19 (real
+  .gpx / .gp3 / .gp4 files), 20 (the simplify run).
 - Not fixed (low risk): the speed of a project left with another project tab stays (REAPER has no call for a
   project that is not active); in the reader: 2 voices sharing a tie, tempo automations out of order, a repeat
   without a start mark (uncertain).
 - The user's question still open: the stronger fix for the tag `imgui-input` (click rules into plain functions with
   a test; recommended "Later").
-- Next: commit the uncommitted work, the manual tests 14-18, the detection decision above.
+- Next: the manual test 20, release 1.2; then the manual tests 14-18 and the detection decision above.
   Open question: the stronger fix for `edge-case` (3 entries): 1 function for the x of a bar, which gives the drawn
   pass for a bar that is not drawn. Later: chord detection, drums (on
   hold), "Keep their time (move bar lines)".
@@ -161,6 +160,9 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says.
+20. Manual test (Tab Viewer, the simplify run, 24 November 2026): the Note Detection tab: Join, Split, + Add, Delete,
+    Undo work as before; Find notes shows "Wait for Find tempo." while Find tempo listens; the found notes in the Tab
+    tab: move an item: the tab stays; change the tempo: the tab moves to the new bars.
 
 ## Later
 
@@ -178,9 +180,7 @@ Ideas, not started.
     Cue starts (roadmap step 8). (Dev 4, "later", decided 24 November 2026) 1 project watcher: Tab Viewer's
     `Project.update` tells the Note Detection tab, so the order (its list first, then the tab) is in code, not in a
     comment (`stale-state`).
-  - From the full simplify run of 24 November 2026 (skipped: larger, or a change of behaviour): for the debug-time
-    round: a bar loop (Tab tab) and a row loop (Note Detection tab) at the same time: the 2nd saves the 1st's repeat
-    as "before", so repeat can stay on (`Tabs.loop` / `UI.play_row`: 1 shared loop helper); Notes' `Project.save`
+  - From the full simplify run of 24 November 2026 (skipped: larger, or a change of behaviour): Notes' `Project.save`
     does not update its `R.state_cc` (with Dev 4). Later, each small: "play from" 3 times (`UI.play_at`,
     `UI.play_from`, `Tempo.try`), "is it an audio take" 5 times, the start of `GP.tab` copied in `Imp.found_doc`
     (the 16th count rule twice), `Tabs.start_qn` and text sizes measured every frame, the P.M. runs scanned per line,

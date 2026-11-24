@@ -570,6 +570,15 @@ test("undo: 1 undo for the list and Write, in the order they happened; Write und
   List.undo(); List.undo()
   eq(texts(), "C | F", "no 2nd REAPER undo for a step that is gone")
   eq(#R.undo, 0)
+  -- a newer REAPER step after Write (debug-time 25 November 2026): Undo leaves the markers, and the notice says why
+  Out.write("markers")
+  r.InsertTrackAtIndex(r.CountTracks(0), false)
+  r.Undo_OnStateChange2(0, "test: a newer step")
+  eq(r.Undo_CanUndo2(0), "test: a newer step", "REAPER's last step")
+  TR.notice = nil
+  List.undo()
+  ok(markers() ~= "", "the markers stay")
+  ok(TR.notice and TR.notice.warn and TR.notice.text:find("Undo History", 1, true), "the notice: " .. tostring(TR.notice and TR.notice.text))
 end)
 
 test("key: a suggestion from the found notes (major, minor, the usual names); too few notes: none", function()

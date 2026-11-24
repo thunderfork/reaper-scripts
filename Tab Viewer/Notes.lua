@@ -136,6 +136,7 @@ local R = {
   trk_for = nil,     -- project changes)
   trk_def = nil,     -- the default track (false: none; nil: not looked for yet)
   tempo_lbl = nil,
+  tempo_bpm = nil,   -- the tempo at the cursor that tempo_lbl shows (the label again when it changes)
   finish = nil,      -- the open Done: clean up window (More...)
   export = nil,      -- the open Export window: { item, file, step (Rhythm), open }
 }
@@ -1166,7 +1167,11 @@ function List.undo()
   R.written_lbl = nil
   local txt = e
   if type(e) == "table" then
-    if r.Undo_CanUndo2(R.proj) == e.reaper then r.Main_OnCommand(40029, 0) end -- Edit: Undo (else: already undone)
+    if r.Undo_CanUndo2(R.proj) == e.reaper then r.Main_OnCommand(40029, 0) -- Edit: Undo
+    else -- (REAPER has newer steps, or it was undone in REAPER already: say so, nothing seems to happen)
+      UI.notice("Undo can not take back \"" .. (e.reaper:match(": (.+)$") or e.reaper) .. "\" here: REAPER has newer "
+        .. "steps since then (or you took it back already). Use Edit > Undo History in REAPER.", true)
+    end
     txt = e.list
     if not txt then return end
   end
@@ -1921,7 +1926,7 @@ function Out.finish(f)
     for _, c in ipairs(f.clicks) do if r.ValidatePtr2(R.proj, c.tr, "MediaTrack*") then Out.delete_track(c.tr) end end
   end
   r.PreventUIRefresh(-1)
-  r.Undo_EndBlock2(R.proj, CFG.UNDO_NAME .. ": finish the song", -1)
+  r.Undo_EndBlock2(R.proj, CFG.UNDO_NAME .. ": clean up the song", -1)
   r.TrackList_AdjustWindows(false)
   r.UpdateArrange()
   List.step() -- (the Undo button brings the list back while the window is open)
@@ -2433,12 +2438,12 @@ function UI.play_row(i)
   local t0, t1 = List.row_span(i)
   if not t0 then return end
   R.sel = i
+  host.loop_off() -- (the bar loop of the Tab tab ends first: 1 loop at a time, so both give back what was before)
   local old = R.loop or { rep = r.GetSetRepeatEx(R.proj, -1), ts = { r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false) } }
   R.loop = { proj = R.proj, rep = old.rep, ts = old.ts, t0 = t0, t1 = t1, since = r.time_precise() }
   r.GetSet_LoopTimeRange2(R.proj, true, true, t0, t1, false)
   r.GetSetRepeatEx(R.proj, 1)
   UI.play_at(t0)
-  host.loop_off() -- (the bar loop of the Tab tab ends first: 1 loop at a time, so both give back what was before)
 end
 -- Ends the loop of a row: repeat and the time selection as before (the time selection only when it is still the
 -- loop's: one that you made meanwhile stays).
@@ -2708,9 +2713,10 @@ function UI.draw_song()
   local fw = UI.field_w()
   -- Tempo: the 1st step (the markers land on the bars of the song); the same Find tempo as in the toolbar
   UI.field("Tempo")
-  if not R.tempo_lbl then
-    R.tempo_lbl = r.CountTempoTimeSigMarkers(R.proj) == 0 and "Not set"
-      or string.format("%.4g BPM, set", r.TimeMap2_GetDividedBpmAtTime(R.proj, r.GetCursorPositionEx(R.proj)))
+  local bpm = r.TimeMap2_GetDividedBpmAtTime(R.proj, UI.cursor()) -- (at the cursor: a song with tempo changes)
+  if not R.tempo_lbl or bpm ~= R.tempo_bpm then
+    R.tempo_bpm = bpm
+    R.tempo_lbl = r.CountTempoTimeSigMarkers(R.proj) == 0 and "Not set" or string.format("%.4g BPM, set", bpm)
   end
   UI.row_text(R.tempo_lbl, R.tempo_lbl == "Not set" and COL.YELLOW or COL.TEXT_DIM)
   UI.tip("Find tempo first: then the markers land on the real bars of the song.")
@@ -2786,7 +2792,7 @@ function UI.draw_song()
   ImGui.TextColored(ctx, COL.TEXT_DIM, MODE_EXAMPLE[P.mode] or "")
 end
 
--- The number of rows and Next doubtful (under the "Notes" heading).
+-- The number of rows and Next not sure (under the "Notes" heading).
 function UI.draw_head(v)
   local aw = ImGui.GetContentRegionAvail(ctx)
   if #P.rows == 0 then return end
@@ -3037,14 +3043,14 @@ function N.save(mouse_down)
   if R.pdirty then Project.save() end
   if R.sdirty and not mouse_down then Util.save_settings() end
 end
+-- Ends the loop of a row (Tab Viewer: before its bar loop starts).
+function N.loop_off() UI.loop_off() end
 function N.exit()
   UI.loop_off()
   Find.cancel()
   if R.pdirty then Project.save() end
   if R.sdirty then Util.save_settings() end
 end
--- Ends the loop of a row (Tab Viewer: before its bar loop starts).
-function N.loop_off() UI.loop_off() end
 function N.busy() return R.find ~= nil end -- (Find notes listens)
 -- Import to list (Tab Viewer's Tab tab; list and open: Imp.apply): asks first when the list has notes. done(n): after
 -- the import (n: the number of notes).
