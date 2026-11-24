@@ -41,7 +41,7 @@ YYYY-MM-DD | Script | tag | what the user saw
   Why the tests missed it: the new test did not have a loop on.
   Test: "your time signature: ..." (tests\tabviewer.lua), failed before the fix
   Other scripts: no other script changes bar lengths
-  Status: fixed, not confirmed
+  Status: confirmed
 
 2026-11-24 | Tab Viewer | file-format | tremolo picking did not show on the bass of a real tab
   Cause: .gp writes the tremolo as a part of a quarter note ("1/2" = 8ths); the reader expected "1/8" = 8ths (a guess).
