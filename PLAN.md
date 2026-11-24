@@ -1,6 +1,36 @@
 # Thunderfork scripts: plan
 
-## Handoff (23 November 2026)
+## Handoff (24 November 2026)
+
+- Branch `script/tab-viewer`. NOT COMMITTED (all deployed, all manual tests PASSED, Tab Viewer 31 tests, Note
+  Detective 72): the layout review of Tab Viewer (1 label column, Tab and Track together, chord names that do not
+  overlap, Start row, Remove / Undo all as submenus, min window 400 x 340); Find tempo as a toolbar button (menu: From
+  tab, the tracks; the fine controls in it; a blue Set tempo after a result; ExtState `tempo` removed); the editable
+  tab (segments 1-3: select, keys, the note box, new notes, saved `edit=`, Ctrl+Z / Undo in the window, Undo all
+  changes, green fixes, Settings > Tab > Mark my fixes); the click fix in Tab Viewer and Note Detective (lessons
+  24 November 2026). The user commits when they ask: then 1 commit per change (layout, Find tempo, editable tab,
+  click fix; LESSONS / PLAN / CLAUDE.md with them).
+- .gpx (segment 1b): done (the user, 24 November 2026).
+- Next (decided 24 November 2026), before the release of Tab Viewer, each a segment, ask before each:
+  - A: loop and speed. Shift+click a bar: loop from the selected note (or the edit cursor) to the end of that bar
+    (REAPER time selection + repeat; a blue band over the bar numbers); Shift+click the same place again or Escape
+    ends it (repeat as it was). Speed dropdown on the Start row (100 / 90 / 75 / 60 / 50%, REAPER's play rate,
+    pitch kept), back to 100% when Tab Viewer closes.
+  - B: playing marks (h, p, / \, b, ~, PM, <12>, x dead notes; small and grey; Settings > Tab > Playing marks, on;
+    fixed notes keep their marks, new notes none).
+  - C1: note lengths drawn under the tab (stems, 8ths / 16ths joined per beat, dots, rests, the "3" of triplets;
+    Settings > Tab > Note lengths, on); a bar with a 32nd gets 2 columns per 16th (only that bar wider).
+  - C2: the keys of a selected note (or in its box): + / - double / halve (32nd ... whole; never past the next note
+    on its string or the bar end: a notice), "." dotted on / off (x1.5), "/" turns the beat of the note into a
+    triplet (its notes to the 3 (or 6) triplet places; a new note or a move there uses those places), "/" again back
+    to 16ths. A new note stays 1 16th.
+  The user's question still open: the stronger fix for the tag `imgui-input` (click rules into plain functions with
+  a test; recommended "Later").
+- Then: the release of Tab Viewer (debug-time, README, ReaPack). Later: the list from the tab (step 5, Note
+  Detective), chord detection (6), drums (on hold), Note Detective's Find tempo as in Tab Viewer.
+- Last checkup: none as 1 full run (see below).
+
+### The handoff before (23 November 2026)
 
 - State: 8 scripts; REAPER 7 ReaScript, Lua 5.4, ReaImGui pinned to 0.9.3 (the shim). Chart Cue is Windows only.
 
@@ -115,7 +145,19 @@
   delayed, the user thinks about it. Step 3 built 24 November 2026 (only chords that ring at least 1 beat get a
   name from the notes: decided 24 November 2026); tests pass (Tab Viewer 26, Note Detective 72); deployed; NOT
   COMMITTED; manual test PASSED (the user, 24 November 2026). The stopped position line is blue too (no dashed
-  line; decided 24 November 2026). Next (ask first): the editable tab.
+  line; decided 24 November 2026). Layout review and Find tempo in the toolbar (24 November 2026): deployed, NOT
+  COMMITTED; manual test PASSED (the user, 24 November 2026). The editable tab, decided 24 November 2026: the written bar changes (repeats too), a new
+  note the easiest length, the new saved key `edit=` (approved), Undo all changes = the track in the window, undo =
+  Ctrl+Z in the window and an Undo button. Segment 1 built 24 November 2026 (select, Left / Right, Up / Down, fret,
+  Delete, saved, Undo / Redo); tests pass (Tab Viewer 28); deployed; NOT COMMITTED; manual test PASSED (the user,
+  24 November 2026). Segment 2 built 24 November 2026 (the note box: fret, Left / Right moves inside the bar; a click
+  on an empty place: a new note, 1 16th); tests pass (Tab Viewer 29); deployed; NOT COMMITTED; manual test: the
+  box opened after 2 clicks on different places (lessons, fixed 24 November 2026: only a double-click on the same
+  place opens it, also for a new note; Tab Viewer 30 tests); the other steps PASSED; the re-test PASSED (24 November 2026). Note Detective got the same
+  fix (the user's choice); its manual test PASSED (24 November 2026). Segment 3 built 24 November 2026 (Tab dropdown >
+  Undo all changes, the green fixed notes, Settings > Tab > Mark my fixes, on); tests pass (Tab Viewer 31); deployed;
+  NOT COMMITTED; manual test PASSED (24 November 2026). The editable tab is complete. .gpx (segment 1b): done
+  (the user, 24 November 2026).
 - Step 0 done 23 November 2026: Note Detective committed as it was (the user's choice, without the debug-time round
   first: it is the rollback point before the Guitar Pro work). The debug-time round comes before its release.
 - 23 November 2026, new direction (decided by the user): the Guitar Pro tab becomes the main feature, the detection
@@ -372,7 +414,9 @@ Ideas, not started.
   segments 1a (.gp, the shared reader, the window), 1c before 1b (.gp5, .gp3, .gp4 first, then .gpx). The opened tab
   is copied into a "Tabs" folder of the project folder (an unsaved project: the original path, the copy at the 1st
   save).
-- Note Detective (1.0 built 23 November 2026). Later: the tab's position line blue when stopped too, as in Tab Viewer
+- Note Detective (1.0 built 23 November 2026). Later: Find tempo as in Tab Viewer (decided 24 November 2026): a
+  toolbar button instead of the "Tempo and bars" section, its menu = the tracks (a choice starts at once), then the fine
+  controls; a blue Set tempo next to it after a result. Later too: the tab's position line blue when stopped too, as in Tab Viewer
   (no dashed line; decided 24 November 2026); the complete song as the source (doubtful lines), a large "Now / Next" view, larger text in the Notes track items, the 40 ms of a separated file.
   The trials that its detection comes from: trial 1, 23 November 2026, on 1 finished project (86 markers made by hand), in plain Lua, no plugin: first note
   right 83 / 86; about 125 of 131 marker notes found (the 6 missed ones are in fast fills); 10 s for 196 s of audio;

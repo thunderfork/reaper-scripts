@@ -25,8 +25,12 @@ dropdown, the tab on the bars of the song (step 2).
   shift, written, set_extra. Note Detective and Tab Viewer use it (both @provides and `Uses`).
   Its tests are Note Detective's (tests\notedetective.lua: the beats, the plan, Set tempo, Play with click), and the
   tab part in tests\tabviewer.lua.
-- Segment 2e (23 November 2026): Tab Viewer's "Tempo and bars" section above Track (`UI.draw_tempo`, `S.tempo`,
-  ExtState `tempo`, open). Beats from: "The tab (its tempo)" first (`R.tsrc_audio` false), then the tracks.
+- Segment 2e (23 November 2026), redesigned 24 November 2026: Find tempo is a toolbar button next to Open tab...
+  (`UI.draw_find_tempo`): its menu (`UI.draw_tempo_menu`) has "From tab" (`R.tsrc_audio` false), a separator, then
+  the tracks; a choice starts at once. With a result the menu also has the fine controls (`UI.draw_tempo_fine`) and
+  the toolbar a blue Set tempo (it clears `R.tempo`: the button goes away, the notice is the feedback); while it
+  listens: the progress and Cancel. The panel rows Tab, Track, the file line, Start share the label column
+  (`CFG.LABEL_W`, `UI.field`).
   From the tab: `GP.timeline(doc)` (the bars as they play: len, num, den, tempos { q, bpm }; from `doc.tmap`: .gp
   Tempo automations with Bar / Position (a part of the bar) and the unit (1 an 8th ... 5 a dotted half; the unit
   was not checked on a real file); .gp3/4/5 mix table tempos at their bar and place), `Tempo.from_tab` (bar 1 =
@@ -114,8 +118,22 @@ dropdown, the tab on the bars of the song (step 2).
   the list (no 2nd read). The project then shows as changed once more (the new place): kept so, decided 23 November
   2026. `Tabs.show` puts a tab (or why not) into the window. A missing file: a grey line in the window (`R.err`); a file that can not be
   read at Open tab...: an orange notice, the project does not change.
-- `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `tempo`.
-- `R.rows` / `R.info` (`Tabs.rows`): the Track dropdown texts and the line below the tab, made once per tab. Another project tab:
+- The editable tab (step 4, segment 1 built 24 November 2026; decided: the written bar changes, so its repeats too;
+  undo in the window): `edit=<track> <written bar> q/s/fret/len ...` in the tab's block (`e.edits[track][wb]` = the
+  notes of that bar, replacing the file's; `GP.tab` gives each played bar its `wb`). `Tabs.edit(bi, fn)` (1 step of
+  `R.undo`; `Tabs.undo(-1 / 1)`, this session only: REAPER's undo does not restore ProjExtState), `Tabs.set_fret`,
+  `Tabs.move_string`, `Tabs.delete`, `Tabs.next_note`, `Tabs.note_at`. Stopped: a click selects a note (`R.tsel`
+  = bi, q, s) and moves the edit cursor; playing: a click plays from there. `UI.tab_keys` (Ctrl+Z / Ctrl+Shift+Z: the
+  tab edits first, then REAPER's), the Undo ghost button on the Start row. Segment 2: `UI.tab_box` (`R.tbox`; a double-click:
+  the selected note's fret, Left / Right = `Tabs.move` inside its bar; a double-click on an empty place of a string: a new
+  note, `Tabs.add`, 1 16th). `Tabs.click` decides (a plain function, tested): the box opens only on a double-click on
+  the same place (`R.tlast`; lessons 24 November 2026). Segment 3: `Tabs.undo_all` (Tab dropdown > Undo all changes > Undo
+  all fixes of this track; 1 Undo step: `R.undo` entry with `all`), `nt.mine` (a note of an edited bar that the file
+  does not have at that place, string and fret) drawn green when `S.marks` (Settings > Tab > Mark my fixes, ExtState
+  `marks`, on).
+- `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks` (`tempo` removed 24 November 2026 with
+  the Tempo and bars section).
+- `R.rows` / `R.info` (`Tabs.rows`): the Track dropdown texts and the grey line under it, made once per tab. Another project tab:
   its tab is read again (0.3 s for a 2 MB score; no cache: decided in the simplify round, 23 November 2026).
 
 ## Deployment and tests

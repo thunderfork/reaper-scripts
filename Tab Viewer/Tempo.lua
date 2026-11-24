@@ -365,7 +365,7 @@ function TP.new(host)
     local song, t0, t1 = host.song()
     if not song then host.notice(t0, true); return end
     local it = tr and r.ValidatePtr2(R.proj, tr, "MediaTrack*") and Tempo.item_on(tr, t0, t1)
-    if not it then host.notice("That track has no audio while the song plays. Pick another track in Beats from.", true); return end
+    if not it then host.notice("That track has no audio while the song plays. Pick another track.", true); return end
     local pos = r.GetMediaItemInfo_Value(it, "D_POSITION")
     local a, b = math.max(t0, pos), math.min(t1, pos + r.GetMediaItemInfo_Value(it, "D_LENGTH"))
     Tempo.untry()

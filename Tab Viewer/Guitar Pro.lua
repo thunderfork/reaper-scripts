@@ -794,7 +794,8 @@ function GP.tab(doc, track)
   local q = 0
   for _, k in ipairs(GP.order(doc.mbars)) do
     local len = 4 * doc.mbars[k].num / doc.mbars[k].den
-    tab.bars[#tab.bars + 1] = { q0 = q, len = len, n16 = math.max(1, math.ceil(len * 4 - 1e-9)), notes = {}, chords = {} }
+    tab.bars[#tab.bars + 1] = { q0 = q, len = len, n16 = math.max(1, math.ceil(len * 4 - 1e-9)), notes = {}, chords = {},
+      wb = k } -- (wb: the written bar; a repeat plays it again)
     q = q + len
   end
   local notes, names = GP.notes(doc, track)

@@ -632,10 +632,130 @@ test("the tab on the window: a click on a place gives its bar and 16th, and the 
   near(Tabs.time_of(2, 1), 2.5, 1e-9, "bar 2 + 1 quarter note at 120 BPM")
 end)
 
+test("fix the tab: a fret, another string, delete; the written bar (its repeats too), saved, Undo and Redo", function()
+  Tabs.open(src)
+  local file_txt = Project.serialize(C.get_P())
+  local b1 = R.tab.bars[1]
+  local n1 = b1.notes[1]
+  ok(n1, "the bass has a note in bar 1")
+  local s1, f1, wb = n1.s, n1.fret, b1.wb
+  -- a new fret
+  ok(Tabs.set_fret(1, 1, 7), "fret 7")
+  eq(R.tab.bars[1].notes[1].fret, 7); eq(R.tab.bars[1].notes[1].txt, "7", "the text drawn")
+  for _, b in ipairs(R.tab.bars) do
+    if b.wb == wb then eq(b.notes[1].fret, 7, "each place where the written bar plays") end
+  end
+  eq(Tabs.set_fret(1, 1, 25), false, "above CFG.FRETS: no change")
+  eq(#R.undo, 1, "1 Undo step")
+  local txt = Project.serialize(C.get_P())
+  ok(txt:find("\nedit=1 " .. wb .. " ", 1, true), "saved: " .. txt)
+  eq(Project.parse(txt).tabs[1].edits[1][wb][1].fret, 7, "read back")
+  -- another string at the same pitch, or a reason
+  local open = R.doc.tracks[1].open
+  local dir = open[s1 + 1] and 1 or -1
+  local done, why = Tabs.move_string(1, 1, dir)
+  if done then
+    local i = Tabs.note_at(R.tab, 1, n1.q, s1 + dir)
+    ok(i, "on the next string")
+    eq(R.tab.bars[1].notes[i].fret, 7 + open[s1] - open[s1 + dir], "the same pitch")
+  else ok(type(why) == "string", "a reason") end
+  eq(Tabs.move_string(1, Tabs.note_at(R.tab, 1, n1.q, done and s1 + dir or s1), 99), nil, "no string there")
+  -- delete
+  local count = #R.tab.bars[1].notes
+  Tabs.delete(1, 1)
+  eq(#R.tab.bars[1].notes, count - 1, "deleted")
+  -- the next note in the order they play
+  eq(Tabs.next_note(R.tab, 1, 1, -1), nil, "before the first note: none")
+  -- Undo all the steps: the file's notes again, nothing saved
+  while Tabs.undo(-1) do end
+  eq(R.tab.bars[1].notes[1].fret, f1); eq(R.tab.bars[1].notes[1].s, s1)
+  eq(Project.serialize(C.get_P()), file_txt, "no edit line")
+  ok(Tabs.undo(1), "Redo"); eq(R.tab.bars[1].notes[1].fret, 7, "the fret again")
+  -- the saved fix after a reload of the project data
+  Project.load(Project.serialize(C.get_P()))
+  eq(R.tab.bars[1].notes[1].fret, 7, "loaded from the project"); eq(#R.undo, 0, "a new session: no Undo")
+  Tabs.cur().edits = nil
+  Tabs.build()
+  Project.save()
+end)
+
+test("a click on the tab: selects; only a double-click on the same place opens the box (a note's or a new note's)", function()
+  Tabs.open(src)
+  local tab = R.tab
+  local n1 = tab.bars[1].notes[1]
+  local s, q = n1.s, n1.q
+  local free
+  for k = 0, tab.bars[1].n16 - 1 do if not Tabs.note_at(tab, 1, k / 4, s) then free = k / 4; break end end
+  -- a single click on a note: selected, no box
+  local sel, box, nq, last = Tabs.click(tab, 1, q, s, false, nil)
+  ok(sel and sel.s == s, "selected"); eq(box, nil, "no box"); eq(nq, q)
+  -- then a click on an empty place (ImGui may call it a double-click: the time was short): no box (the bug)
+  sel, box, nq, last = Tabs.click(tab, 1, free, s, true, last)
+  eq(sel, nil); eq(box, nil, "another place: no box")
+  -- a real double-click on that empty place: the box of a new note
+  sel, box = Tabs.click(tab, 1, free, s, true, last)
+  ok(box and box.new, "the box of a new note")
+  -- a double-click on the note: its box
+  local _, _, _, l2 = Tabs.click(tab, 1, q, s, false, nil)
+  sel, box = Tabs.click(tab, 1, q, s, true, l2)
+  ok(box and not box.new and box.txt == n1.txt, "the note's box")
+  -- between the strings: no box
+  _, box = Tabs.click(tab, 1, free, nil, true, { bi = 1, q = math.floor(free * 4), s = nil })
+  eq(box, nil, "not on a string")
+end)
+
+test("fix the tab: my notes are marked; Undo all changes (only this track) and its Undo", function()
+  Tabs.open(src)
+  local n1 = R.tab.bars[1].notes[1]
+  local f1 = n1.fret
+  eq(n1.mine, nil, "the file's note: not marked")
+  Tabs.set_fret(1, 1, f1 == 9 and 8 or 9)
+  ok(R.tab.bars[1].notes[1].mine, "the fixed note: marked")
+  for k = 2, #R.tab.bars[1].notes do ok(not R.tab.bars[1].notes[k].mine, "the other notes of the bar: not marked") end
+  Tabs.cur().edits[2] = { [1] = {} } -- (a fix of another track: stays)
+  ok(Tabs.undo_all(), "Undo all changes")
+  eq(R.tab.bars[1].notes[1].fret, f1, "the file's fret"); eq(Tabs.cur().edits[1], nil, "nothing saved for the track")
+  ok(Tabs.cur().edits[2], "the other track keeps its fixes")
+  eq(Tabs.undo_all(), false, "nothing to undo now")
+  ok(Tabs.undo(-1), "Ctrl+Z"); ok(R.tab.bars[1].notes[1].fret ~= f1, "the fixes are back")
+  ok(Tabs.undo(1), "Redo"); eq(R.tab.bars[1].notes[1].fret, f1)
+  Tabs.cur().edits = nil
+  R.undo, R.redo = {}, {}
+  Tabs.build()
+  Project.save()
+end)
+
+test("fix the tab: a new note (1 16th), never on another note; a note moves a 16th in its bar, never over another", function()
+  Tabs.open(src)
+  local b = R.tab.bars[1]
+  local n1 = b.notes[1]
+  local s, q = n1.s, n1.q
+  eq(select(2, Tabs.add(1, q, s, 3)), "A note is already there.")
+  eq(select(2, Tabs.add(1, 0, s, 30)), "A fret from 0 to 24, please.")
+  -- a free 16th on that string
+  local free
+  for k = 0, b.n16 - 1 do if not Tabs.note_at(R.tab, 1, k / 4, s) then free = k / 4; break end end
+  ok(free, "a free 16th in bar 1")
+  ok(Tabs.add(1, free, s, 5), "added")
+  local i = Tabs.note_at(R.tab, 1, free, s)
+  eq(R.tab.bars[1].notes[i].fret, 5); eq(R.tab.bars[1].notes[i].len, 0.25)
+  -- move it: to the start of the bar only when free; never out of the bar
+  eq(select(2, Tabs.move(1, i, -(free + 1))), "A note stays in its bar.")
+  local nq = Tabs.move(1, i, 0.25)
+  if nq then eq(nq, free + 0.25); ok(Tabs.note_at(R.tab, 1, nq, s), "moved")
+  else ok(Tabs.note_at(R.tab, 1, free + 0.25, s) or free + 0.25 > b.len - 0.25, "blocked by a note or the bar end") end
+  while Tabs.undo(-1) do end
+  eq(Tabs.note_at(R.tab, 1, free, s), nil, "Undo: the new note goes")
+  Tabs.cur().edits = nil
+  R.redo = {}
+  Tabs.build()
+  Project.save()
+end)
+
 test("bar 1 of the tab = bar N of the song: the times, the play position, the bar numbers, saved; < stops at 1", function()
   Tabs.open(src)
   Tabs.set_bar(3)
-  eq(Tabs.cur().bar, 3); eq(R.bar_txt, "Bar 1 of the tab = bar 3 of the song")
+  eq(Tabs.cur().bar, 3); eq(R.bar_txt, "Bar 3 of the song")
   eq(R.tab.bars[1].label .. " " .. R.tab.bars[4].label, "3 6", "the song's bar numbers")
   eq(Project.serialize(C.get_P()), "tab=Tabs/Song.gp\nbar=3\n")
   eq(Project.parse("tab=x.gp\nbar=3\n").tabs[1].bar, 3, "read back")
@@ -717,7 +837,7 @@ test("tabs per region: Open tab for the region at the edit cursor, the tab moves
   eq(done, true); eq(g and g.label, 'Region ' .. i1 .. ' "Song One"', "the region at the edit cursor")
   eq(#C.get_P().tabs, n0 + 1, "a new tab"); ok(Tabs.cur().rgn, "linked by GUID")
   near(Tabs.time_of(1, 0), 8, 1e-9, "bar 1 of the tab on the region's start")
-  eq(R.bar_txt, "Bar 1 of the tab = bar 1 of the region")
+  eq(R.bar_txt, "Bar 1 of the region")
   Tabs.set_bar(2)
   near(Tabs.time_of(1, 0), 10, 1e-9, "bar 2 of the region"); eq(R.tab.bars[1].label, "2", "the region's bar numbers")
   r.SetEditCurPos2(proj, 22, false, false)
@@ -797,6 +917,19 @@ test("tabs per region: the window follows the play or edit cursor; Find tempo ta
   Tabs.regions(); Tabs.select(whole); R.follow_last = nil
   r.SetEditCurPos2(proj, 0, false, false)
   Project.save()
+end)
+
+test("chord names: centred over their chord, pushed past the name before, cut before the next chord", function()
+  local function bar(x, chords) return { x = x, pad = 0, sw = 10, n16 = 16, chords = chords } end
+  local tab = { bars = { bar(0, { { q = 0, name = "Am" }, { q = 0.25, name = "Cmaj7" }, { q = 2, name = "G" } }) },
+    lines = { { first = 1, last = 1 } } }
+  local width = function(t) return #t * 6 end -- (6 px a letter)
+  local fit = function(t, w) return t:sub(1, math.max(1, w // 6)) end
+  Tabs.place_chords(tab, width, fit)
+  local c = tab.bars[1].chords
+  eq(c[1].x, 0); eq(c[1].txt, "A")       -- (at the left edge: cut before Cmaj7's chord at 15 px)
+  eq(c[2].x, 12); eq(c[2].txt, "Cmaj7")  -- (pushed past "A"; ends before G at 85 px)
+  eq(c[3].x, 82); eq(c[3].txt, "G")      -- (centred: 85 - 3)
 end)
 
 for _, t in ipairs(tests) do
