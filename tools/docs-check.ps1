@@ -12,8 +12,8 @@ $docs = @("CLAUDE.md", "README.md", "PLAN.md", "LESSONS.md", "LESSONS-RULES.md")
   ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
 $docs += Get-ChildItem (Join-Path $root ".claude\skills") -Recurse -Filter "SKILL.md" | ForEach-Object { $_.FullName }
 $skills = Get-ChildItem (Join-Path $root ".claude\skills") -Directory | ForEach-Object { $_.Name }
-$code = @($names | ForEach-Object { "$_\$_.lua" }) |
-  ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } | ForEach-Object { Get-Content $_ -Raw }
+$code = @($names | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } |
+  ForEach-Object { Get-ChildItem -Path $_ -Filter "*.lua" } | ForEach-Object { Get-Content $_.FullName -Raw }) # (every .lua of a script: Tab Viewer's Notes.lua too)
 $allCode = $code -join "`n"
 # the Settings section names of the scripts (SETTINGS_SECTIONS = { { "Viewer", ... }, ... })
 $sections = @()

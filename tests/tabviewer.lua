@@ -1390,7 +1390,74 @@ test("repeats as written in the window: the test song's repeated bar 2 drawn onc
   eq(#R.tab.view, n, "off: all the bars again")
 end)
 
+-- THE NOTES TAB (Notes.lua) ------------------------------------------------
+
+test("notes tab: Import to list takes the notes of the tab as they play, in project time, with their strings", function()
+  Tabs.open(src)
+  local list, open = Tabs.notes_of_tab()
+  ok(#list > 0, "notes"); eq(#open, #R.doc.tracks[Tabs.track()].open)
+  for k = 2, #list do ok(list[k].t >= list[k - 1].t, "in order") end
+  local first = list[1]
+  near(first.t, Tabs.time_of(1, R.tab.bars[1].notes[1].q), 1e-9, "the first note at its place on the song")
+  eq(first.midi, open[first.s] + R.tab.bars[1].notes[1].fret, "the pitch of its string and fret")
+  local N = C.Notes
+  N.set_P(N.List.default())
+  N.Imp.apply(list, open)
+  eq(#N.get_P().notes, #list, "the list has them")
+end)
+
+test("notes tab: no Guitar Pro tab here: the found notes as a tab; a fix is saved with the list; Undo of the list", function()
+  local N = C.Notes
+  Project.load("") -- (no Guitar Pro tab in this project)
+  local p = N.List.default()
+  local function note(t, t1, midi) return { t = t, t1 = t1, pc = midi % 12, midi = midi } end
+  p.notes = { note(2, 2.4, 36), note(2.5, 2.9, 43) } -- (120 BPM: bar 2)
+  N.set_P(p)
+  R.notes_dirty = true
+  Tabs.notes_step()
+  ok(R.doc and R.doc.found, "the found notes in the window"); ok(R.tab, "as a tab")
+  eq(Tabs.bar(), 2, "the tab starts at the bar of the first note")
+  near(Tabs.time_of(1, R.tab.bars[1].notes[1].q), 2, 1e-6, "the first note at its time")
+  eq(Tabs.cur(), N.get_P().tab, "its entry is in the list")
+  ok(Tabs.edit(1, function(list) list[1].fret = 5 end), "a fix")
+  eq(R.tab.bars[1].notes[1].fret, 5)
+  local txt = N.List.serialize(N.get_P())
+  ok(txt:find("tab.edit=1 1 ", 1, true), "saved with the list: " .. txt)
+  local q = N.List.parse(txt)
+  eq(q.tab.edits[1][1][1].fret, 5, "and read back")
+  local list, open = Tabs.notes_of_tab()
+  eq(list[1].midi, open[list[1].s] + 5, "Import to list takes the fix")
+  R.undo, R.redo = {}, {}
+  N.set_P(N.List.default())
+  R.notes_dirty = true
+  Tabs.notes_step()
+  eq(R.doc, nil, "no notes: no tab")
+end)
+
+test("settings: the folded sections and hidden tabs are saved as a list of numbers; wrong numbers are left out", function()
+  local U, EXT = C.Util, C.CFG.EXT
+  r.DeleteExtState(EXT, "test_set", true)
+  eq(next(U.load_set("test_set", 4)), nil, "nothing saved: none")
+  U.save_set("test_set", { [1] = true, [4] = true }, 4)
+  eq(r.GetExtState(EXT, "test_set"), "1 4")
+  local s = U.load_set("test_set", 4)
+  ok(s[1] and s[4] and not s[2], "read back")
+  U.save_set("test_set", {}, 4)
+  eq(r.GetExtState(EXT, "test_set"), "", "all open again: an empty list")
+  r.SetExtState(EXT, "test_set", "0 2 9 x", false)
+  s = U.load_set("test_set", 4)
+  ok(s[2] and not s[0] and not s[9], "only 1-4")
+  r.DeleteExtState(EXT, "test_set", true)
+end)
+
+local nloaded, nerr = pcall(function() -- (the tests of the Note Detection tab)
+  dofile(here .. "\\notes.lua")({ test = test, eq = eq, ok = ok, near = near, TV = C })
+end)
+if not nloaded then test("load tests\\notes.lua", function() error(nerr) end) end
+
 for _, t in ipairs(tests) do
+  local pf = io.open(here .. "\\result_tabviewer.txt", "w") -- (so far: shows where a crash or a hang of REAPER stopped)
+  if pf then pf:write(table.concat(out, "\n"), "\nRUNNING " .. t[1] .. "\n"); pf:close() end
   local good, e = pcall(t[2])
   if good then passed = passed + 1; log("ok    " .. t[1])
   else failed = failed + 1; log("FAIL  " .. t[1] .. ": " .. tostring(e)) end

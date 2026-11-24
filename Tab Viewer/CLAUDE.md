@@ -2,28 +2,34 @@
 
 Guitar Pro tabs in the project (the Guitar Pro direction, decided 23 November 2026): Open tab... (a tab per
 region), the Track dropdown, the tab on the bars of the song (Find tempo, Start), chord names, playing marks, note
-lengths, fixes of the tab (saved in the project), loop and speed. Chart Cue look, 1 window, no tabs. Drums: later.
+lengths, fixes of the tab (saved in the project), loop and speed. Chart Cue look, 1 window. Drums: later.
+The Note Detection tab (the script Note Detective, moved in 24 November 2026): the bass notes as markers to learn the part. Its
+own notes: `Tab Viewer/NOTES.md` (read it before work on the Note Detection tab).
+The tab strip (24 November 2026): `UI.draw_tabs` as in MIDI Pilot: Tab, Note Detection, then Settings (gear) and Help ("?")
+(`R.page`, not saved; `PAGE_NAMES`, `UI.PAGE_NOTES`, `UI.PAGE_SETTINGS`, `UI.PAGE_HELP`); icons when narrow
+(`UI.draw_page_icon`); right-click a text tab > Hide this tab, Settings > Look > Tabs (`S.tab_hide`, ExtState
+`tab_hide`). The toolbar keeps Open tab..., Find tempo (always, also without a tab) and play. The tab keys work only
+in the Tab tab, the list keys only in the Note Detection tab.
 
 ## Files
 
 - Formats: .gp (Guitar Pro 7 / 8), .gpx (Guitar Pro 6, segment 1b), .gp5, .gp4, .gp3 (segment 1c); 23 November 2026.
 - `Tab Viewer.lua`; no actions. Version: `@version` and `CFG.VERSION` together. Release: tag `tabviewer-vX.Y`, title
   "Tab Viewer X.Y" (the `release` skill). Not released: `@noindex`.
-- `Guitar Pro.lua`: the 1 shared Guitar Pro reader (plain Lua 5.4, no REAPER calls; a plain `lua` runs it). Note
-  Detective uses it too: its `@provides` takes it from here (`[nomain] ../Tab Viewer/Guitar Pro.lua > Guitar Pro.lua`),
-  so ReaPack installs a copy next to each script (each package needs its own target name: the ReaPack index refuses 2
-  packages with the same file; checked in the reapack-index source, 23 November 2026; the ReaPack client itself is
-  checked at the first release). `tools\scripts.psd1` `Uses` makes `deploy.ps1` and `release.ps1` copy it too (both
-  copy `<Name>*.lua`, then the `Uses` files). Each script loads it from its own folder (`debug.getinfo`); the Note
-  Detective tests hand it over (`NoteDetectiveTest.GP`).
+- `Guitar Pro.lua`: the Guitar Pro reader (plain Lua 5.4, no REAPER calls; a plain `lua` runs it). Another script
+  can use it with `[nomain] ../Tab Viewer/Guitar Pro.lua > Guitar Pro.lua` in its `@provides` (each package needs its
+  own target name: the ReaPack index refuses 2 packages with the same file; checked in the reapack-index source, 23
+  November 2026). `tools\scripts.psd1` `Uses` makes `deploy.ps1` and `release.ps1` copy it (both copy `<Name>*.lua`,
+  then the `Uses` files). Tab Viewer loads it from its own folder (`debug.getinfo`).
+- `Notes.lua`: the Note Detection tab (NOTES.md), loaded the same way (`[nomain]`, `Uses`).
 
 - `Tempo.lua` (`TP`, segment 2d, 23 November 2026): Tempo and bars, moved from Note Detective unchanged (find the
   beats: `TP.Beat`; the audio reader `TP.reader`; `TP.first_sound`; `TP.new(host)` = the section's functions: Find
   tempo in steps, 1/2 x2, bar 1, short bars, Play with click, Set tempo with `hold` / `map` / `align`). The host gives
   R (the state lives in R.tempo, R.tsrc, R.tsrc_sel), name, undo_try, note, notice, song, and optionally first_note,
-  shift, written, set_extra. Note Detective and Tab Viewer use it (both @provides and `Uses`).
-  Its tests are Note Detective's (tests\notedetective.lua: the beats, the plan, Set tempo, Play with click), and the
-  tab part in tests\tabviewer.lua.
+  shift, written, set_extra (Tab Viewer: first_note, shift, set_extra from the Notes list, `Notes.first_note` ...).
+  Its tests: `tests\notes.lua` (the beats, the plan, Set tempo, Play with click) and the tab part in
+  `tests\tabviewer.lua`.
 - Segment 2e (23 November 2026), redesigned 24 November 2026: Find tempo is a toolbar button next to Open tab...
   (`UI.draw_find_tempo`): its menu (`UI.draw_tempo_menu`) has "From tab" (`R.tsrc_audio` false), a separator, then
   the tracks; a choice starts at once. With a result the menu also has the fine controls (`UI.draw_tempo_fine`) and
@@ -215,15 +221,19 @@ lengths, fixes of the tab (saved in the project), loop and speed. Chart Cue look
   project clears the selection (`Tabs.unselect`); another project, "<" / ">" and Set tempo end the loop; the loop
   gives back the old time selection only when it is still the loop's. `Util.grid`: the places read from `edit=` on
   the 1/48 grid. `GP.notes`: a tie joins only the note that ends where it starts.
-- `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks`, `lengths`, `written` (`tempo` removed 24 November 2026 with
-  the Tempo and bars section).
+- `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks`, `lengths`, `written`, `tab_hide`,
+  `closed` (the folded Settings sections, 1-4 in `SETTINGS_SECTIONS`: Tab, Note Detection, Look, Window; 24 November
+  2026, the Settings rows as in Chart Cue: `UI.heading`, `UI.set_toggle`, `UI.set_combo`) (`tempo` removed 24 November 2026 with the Tempo and bars section). The Note Detection tab keeps its own keys in the same
+  section (NOTES.md), and its list in ProjExtState "Tab Viewer"/"notes". `Project.entry_line` / `Project.entry_text`:
+  1 tab's block (also the tab of the found notes, saved with the list).
 - `R.rows` / `R.info` (`Tabs.rows`): the Track dropdown texts and the grey line under it, made once per tab. Another project tab:
   its tab is read again (0.3 s for a 2 MB score; no cache: decided in the simplify round, 23 November 2026).
 
 ## Deployment and tests
 
-- `.\tools\deploy.ps1` copies `Tab Viewer.lua` and `Guitar Pro.lua` to `Scripts\Thunderfork Scripts\Tab Viewer\`
-  (ReaPack), else `Scripts\Tab Viewer\`.
+- `.\tools\deploy.ps1` copies `Tab Viewer.lua`, `Guitar Pro.lua`, `Tempo.lua` and `Notes.lua` to
+  `Scripts\Thunderfork Scripts\Tab Viewer\` (ReaPack), else `Scripts\Tab Viewer\`.
+- The Note Detection tab's tests: `tests\notes.lua`, run at the end of `tests\tabviewer.lua` (NOTES.md).
 - Tests: `tests\tabviewer.lua` (`.\tools\test.ps1 -Script "Tab Viewer"`): the reader (deflate: stored, fixed and
   dynamic blocks; zip; tracks; notes; tunings; the errors; a small .gp3 / .gp4 / .gp5 (5.00 and 5.10) song that
   `old_file` in the test writes: repeats with 2 endings, 3/4, ties, dead notes, triplets, chords, effects, a tempo

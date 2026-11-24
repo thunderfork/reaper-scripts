@@ -11,10 +11,7 @@ Scripts for playing live and for studio work with REAPER, installed and updated 
 - **SFX Drop:** puts impacts, risers, drops and atmospheres from your library exactly on the beat of your backing tracks.
 -->
 - **Mono Merge:** joins 2 mono items (for example Kick In and Kick Out) into 1 stereo file.
-<!-- Note Detective: hidden until its release
-- **Note Detective:** finds the notes of a separated bass track and writes them as markers, for a player who learns the part in REAPER.
--->
-- **Tab Viewer:** shows a Guitar Pro tab of your guitar or bass part on the bars of the song, and follows it while the song plays.
+- **Tab Viewer:** shows a Guitar Pro tab of your guitar or bass part on the bars of the song, and follows it while the song plays. Its Note Detection tab turns the bass notes into markers, to learn the part.
 
 # Chart Cue
 
@@ -225,10 +222,11 @@ Tab Viewer shows a Guitar Pro tab inside REAPER, on the bars of your song, and f
 - **Practise:** Shift+click a bar to loop it, and play slower (pitch kept).
 - **Fix the tab:** select a note and type a fret, move it, change its length, or add new notes; your fixes are green and saved in the project (the file never changes). Right-click a bar to correct its time signature.
 - **Your layout:** your own line breaks (& and Ctrl+Enter, as in Guitar Pro) and a fixed number of bars per line.
+- **Note Detection tab:** the bass notes as markers (or text items on a "Notes" track) to learn the part: "Import to list" takes them from the tab, or "Find notes" listens to a separated bass track (no tab needed; the found notes then show as a tab too). Check the list, then Write; the note names fit the key, high notes get their string and fret. Export to MIDI for Guitar Pro.
 
 Install with ReaPack (search "Tab Viewer"), then run "Script: Tab Viewer.lua". Needs ReaImGui 0.9.3 or newer.
 
-Tab Viewer saves its tabs, fixes and layout in the project, and a copy of each tab in a "Tabs" folder next to the project file; its settings are saved on this computer.
+Tab Viewer saves its tabs, fixes, layout and the Notes list in the project, and a copy of each tab in a "Tabs" folder next to the project file; its settings are saved on this computer.
 
 ## Zips
 

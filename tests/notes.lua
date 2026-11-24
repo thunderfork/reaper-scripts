@@ -1,50 +1,30 @@
 -- @noindex
--- Note Detective tests. Run with .\tools\test.ps1 -Script "Note Detective" (it starts the portable test REAPER in
--- C:\REAPERtest). Loads Note Detective.lua without its window, runs each test, writes tests\result_notedetective.txt,
--- quits REAPER.
+-- The tests of Tab Viewer's Note Detection tab (Tab Viewer\Notes.lua; it was the script Note Detective). tests\tabviewer.lua
+-- runs them after its own (.\tools\test.ps1 -Script "Tab Viewer"): this file returns a function that adds them to its
+-- list (T: test, eq, ok, near, TV = TabViewerTest). The first one opens their own saved test project.
+return function(T)
 local r = reaper
-local here = ({ r.get_action_context() })[2]:match("^(.*)[/\\]")
-local out = {}
-local passed, failed = 0, 0
-local function log(s) out[#out + 1] = s end
-local function eq(a, b, what)
-  if a ~= b then error((what or "value") .. ": expected " .. tostring(b) .. ", got " .. tostring(a), 2) end
-end
-local function ok(v, what) if not v then error((what or "check") .. " failed", 2) end end
-local function near(a, b, tol, what) ok(math.abs(a - b) <= tol, (what or "value") .. ": " .. tostring(a) .. " is not about " .. tostring(b)) end
-local tests = {}
-local function test(name, fn) tests[#tests + 1] = { name, fn } end
+local test, eq, ok, near, TV = T.test, T.eq, T.ok, T.near, T.TV
+local C = TV.Notes -- (the modules of Notes.lua)
+local TR = TV.R    -- (Tab Viewer's state: Find tempo, the notices)
 
 -- a saved test project
-local tmp = r.GetResourcePath() .. "\\NoteDetectiveTests"
-r.RecursiveCreateDirectory(tmp, 0)
+local tmp = r.GetResourcePath() .. "\\NotesTests"
 local proj_file = tmp .. "\\test.rpp"
 local function empty_project(path)
   local pf = io.open(path, "w")
   if pf then pf:write("<REAPER_PROJECT 0.1\n  TEMPO 120 4 4\n>\n"); pf:close() end
 end
-empty_project(proj_file)
-r.Main_openProject("noprompt:" .. proj_file)
-
-local function finish()
-  log(string.format("%d passed, %d failed", passed, failed))
-  local f = io.open(here .. "\\result_notedetective.txt", "w")
-  if f then f:write(table.concat(out, "\n"), "\n"); f:close() end
-  r.Main_SaveProject(0, false)
-  r.defer(function() r.Main_OnCommand(40004, 0) end) -- File: Quit REAPER
-end
-
-NoteDetectiveTest = { GP = dofile(here .. "\\..\\Tab Viewer\\Guitar Pro.lua"), -- (the shared files: in the repository)
-  TP = dofile(here .. "\\..\\Tab Viewer\\Tempo.lua") }
-local loaded, err = pcall(dofile, here .. "\\..\\Note Detective\\Note Detective.lua")
-local C = NoteDetectiveTest
-if not loaded or not C.Project then
-  log("FAIL  load Note Detective.lua: " .. tostring(err)); failed = 1; finish(); return
-end
 local Key, Group, List, Project, Find, Out, R = C.Key, C.Group, C.List, C.Project, C.Find, C.Out, C.R
-log(string.format("REAPER %s in %s, Note Detective %s loaded", r.GetAppVersion(), r.GetResourcePath(), C.CFG.VERSION))
-C.S.simple = false -- (the tests check the extras; Simple mode has a test of its own)
-Project.update()
+
+test("notes: the test project of the Note Detection tab opens", function()
+  r.RecursiveCreateDirectory(tmp, 0)
+  empty_project(proj_file)
+  r.Main_openProject("noprompt:" .. proj_file)
+  C.S.simple = false -- (the tests check the extras; Simple mode has a test of its own)
+  Project.update()
+  TV.Project.update()
+end)
 
 local function texts(rows)
   local t = {}
@@ -489,7 +469,7 @@ test("find: in steps, as in the window", function()
   ok(R.find, "running")
   local n = 0
   while R.find and n < 2000 do Find.step(); n = n + 1 end
-  ok(n > 1, "more than 1 step (" .. tostring(R.notice and R.notice.text) .. ")")
+  ok(n > 1, "more than 1 step (" .. tostring(TR.notice and TR.notice.text) .. ")")
   eq(texts(), "C | F (D 3)")
 end)
 
@@ -666,9 +646,6 @@ end)
 test("settings: defaults and bad values", function()
   C.Util.apply_setting("out", "both"); eq(C.S.out, "both")
   C.Util.apply_setting("out", "x"); eq(C.S.out, "markers")
-  C.Util.apply_setting("dock", "x"); eq(C.S.dock, 0)
-  C.Util.apply_setting("tempo", "0"); eq(C.S.tempo, false)
-  C.Util.apply_setting("tempo", "1")
   C.Util.apply_setting("frets", "0"); eq(C.S.frets, false)
   C.Util.apply_setting("frets", "1")
   C.Util.apply_setting("finger", "0"); eq(C.S.finger, false)
@@ -678,7 +655,7 @@ test("settings: defaults and bad values", function()
   C.Util.apply_setting("counts", "1")
   C.Util.apply_setting("slide", "x"); eq(C.S.slide, "slash")
   C.Util.apply_setting("simple", "1"); eq(C.S.simple, true)
-  eq(table.concat(C.Util.settings_lines(), " "), "light=0 dock=0 out=markers tempo=1 frets=1 finger=1 strings=letters counts=1 export_dir= slide=slash simple=1 splits=1")
+  eq(table.concat(C.Util.settings_lines(), " "), "out=markers frets=1 finger=1 strings=letters counts=1 export_dir= slide=slash simple=1 splits=1")
   C.Util.apply_setting("simple", "0")
   C.Util.apply_setting("export_dir", " D:\\Songs ")
   eq(C.S.export_dir, "D:\\Songs")
@@ -731,36 +708,31 @@ test("clear: the list and what Note Detective wrote go; Undo and Ctrl+Z bring th
   eq(markers(), "mine@7.0", "only my own marker stays")
   eq(track_names(), "Bass:0", "no Notes track, no Bass MIDI track")
   eq(#C.get_P().rows, 0); eq(#C.get_P().notes, 0)
-  eq(r.Undo_CanUndo2(0), "Note Detective: clear")
+  eq(r.Undo_CanUndo2(0), "Tab Viewer: clear")
   List.undo()
   eq(texts(), "C | F", "the Undo button: the list")
   r.Main_OnCommand(40029, 0)
   ok(markers():find("C@1.0", 1, true), "Ctrl+Z: the markers " .. markers())
 end)
 
-test("tab: the found notes on the 16th grid, in bars, with the fingering; the lines fit the width", function()
+test("found notes as a tab: the bars from the bar of the first note, the 16th grid, the fingering of the list", function()
   clear_project(); clear_tempo()
   local p = set_rows({ { 2, "C" } })
   -- 120 BPM: bar 2 from 2 s; notes on 1, 1&, 4 (bar 2) and 1 of bar 4 (bar 3 is empty)
   p.notes = notes({ { 0, 2, 2.2 }, { 3, 2.25, 2.45 }, { 5, 3.5, 3.9 }, { 7, 6, 6.4, true } })
   for k, m in ipairs({ 36, 39, 41, 43 }) do p.notes[k].midi = m end
-  local tab = C.Tab.build()
-  eq(#tab.bars, 3, "bars 2, 3 (empty) and 4")
-  eq(tab.bars[1].m + 1, 2); eq(tab.bars[2].m + 1, 3); eq(#tab.bars[2].notes, 0)
+  local doc = C.Imp.found_doc()
+  eq(doc.m0 + 1, 2, "bar 1 of the tab = bar 2 of the song")
+  eq(#doc.mbars, 3, "bars 2, 3 (empty) and 4"); eq(doc.tracks[1].kind, "bass")
+  local tab = doc.tab()
+  eq(#tab.bars, 3); eq(#tab.bars[2].notes, 0); near(tab.bars[3].q0, 8, 1e-6, "bar 4: 8 quarter notes after bar 2")
   local s = {}
-  for _, nt in ipairs(tab.bars[1].notes) do s[#s + 1] = string.format("%d:%s%d", nt.slot, tab.names[nt.s], nt.f) end
-  eq(table.concat(s, " "), "0:A3 2:A6 12:D3", "slots and places (the hand stays in 3rd position)")
-  eq(tab.bars[3].notes[1].doubt, true, "a doubtful note stays doubtful")
-  local bw = 16 * C.CFG.TAB_SLOT + C.CFG.TAB_PAD
-  local lines = C.Tab.layout(tab, C.CFG.TAB_LEFT + 2 * bw)
-  eq(#lines, 2, "2 bars per line"); eq(lines[2].first, 3)
-  near(tab.bars[2].x, bw, 1e-6, "bar 2 right after bar 1 (no stretch: the line is full)")
-  lines = C.Tab.layout(tab, C.CFG.TAB_LEFT + 2.5 * bw)
-  eq(#lines, 2)
-  ok(tab.bars[1].sw > C.CFG.TAB_SLOT, "a wider window: the bars stretch")
-  near(tab.bars[2].x, 16 * tab.bars[1].sw + tab.bars[1].pad, 1e-6, "bar 2 after the stretched bar 1")
-  lines = C.Tab.layout(tab, 50)
-  eq(#lines, 3, "a narrow window: 1 bar per line")
+  for _, nt in ipairs(tab.bars[1].notes) do s[#s + 1] = string.format("%g:%s%d", nt.q, tab.names[nt.s], nt.fret) end
+  eq(table.concat(s, " "), "0:A3 0.5:A6 3:D3", "places and frets (the hand stays in 3rd position)")
+  near(tab.bars[1].notes[1].len, 0.5, 1e-6, "a note ends where the next one starts (the export's grid)")
+  ok(doc.tab() ~= tab, "a new tab each time (Tab Viewer changes it)")
+  C.set_P(List.default())
+  eq(C.Imp.found_doc(), nil, "no notes: no tab")
 end)
 
 test("slides: a glide into a note is 1 note with a slide mark; a plain note change is not (generated WAV)", function()
@@ -894,145 +866,46 @@ test("simple mode: only the notes and the string of a high note; no fingering of
   eq(texts(Group.rows(list, bars(2, 2), "C minor", List.opt())), "F (D 3) - Eb (D 1) - C (A 3) - Bb (A 1) | /G (G 0)")
 end)
 
-test("tab corrections: octave up / down, another string, delete; saved; the list and the tab use the same place", function()
+test("strings of the notes: a note with its string (from a tab) keeps it; the list and the found tab use that place", function()
   clear_project(); clear_tempo()
   local p = set_rows({ { 2, "C" } })
   p.notes = notes({ { 0, 2, 2.4 }, { 7, 2.5, 2.9 } })
   p.notes[1].midi, p.notes[2].midi = 36, 43
   eq(C.List.places()[2].s, 3, "G2 after C2: D 5")
-  List.note_edit(2, { s = 4 })
-  eq(C.List.places()[2].s, 4, "the chosen string stays (the open G)")
+  p.notes[2].s = 4
+  R.places = nil
+  eq(C.List.places()[2].s, 4, "its string stays (the open G)")
   eq(texts(Group.rows(p.notes, bars(2, 2), "", List.opt())), "C - G (G 0)", "the list uses the same place")
-  local q = List.parse(List.serialize(C.get_P()))
-  eq(q.notes[2].s, 4, "saved")
-  List.note_edit(1, { midi = 48 })
-  eq(C.get_P().notes[1].midi, 48); eq(C.get_P().notes[1].pc, 0, "the same name, an octave up")
-  List.note_edit(2, { midi = 31 })
-  eq(C.get_P().notes[2].s, nil, "an octave change: the string goes back to the fingering")
-  List.note_delete(1)
-  eq(#C.get_P().notes, 1)
-  List.undo(); List.undo(); List.undo()
-  eq(C.get_P().notes[1].midi, 36, "Undo"); eq(C.get_P().notes[2].midi, 43)
+  eq(List.parse(List.serialize(C.get_P())).notes[2].s, 4, "saved")
+  local tab = C.Imp.found_doc().tab()
+  eq(tab.bars[1].notes[2].s, 4, "the found tab too"); eq(tab.bars[1].notes[2].fret, 0)
 end)
 
-test("tab editing: add, move, other string, fret; a note of the tab is not moved by the delay; update the list", function()
-  clear_project(); clear_tempo()
-  local p = set_rows({ { 2, "C" } })
-  -- 120 BPM; 2 found notes 0.035 s early (the delay of the export takes it away)
-  p.notes = notes({ { 0, 2 - 0.035, 2.4 }, { 7, 3 - 0.035, 3.4 } })
-  p.notes[1].midi, p.notes[2].midi = 36, 43
-  local n = List.note_add(5.5, 2, 5) -- (bar 2, beat 2&: QN 5.5, the A string, fret 5 = D2)
-  eq(n.midi, 38); eq(n.s, 2); eq(n.man, true)
-  near(n.t1, 3 - 0.035, 1e-6, "until the next note")
-  local list = C.Export.notes(C.get_P().notes, 0.25)
-  local q = {}
-  for k, x in ipairs(list) do q[k] = string.format("%.2f", x.q0) end
-  eq(table.concat(q, " "), "4.00 5.50 6.00", "the found notes on their beats, the new note where it was put")
-  local tab = C.Tab.build()
-  local nt
-  for _, x in ipairs(tab.notes) do if x.note == n then nt = x end end
-  ok(nt, "the new note is in the tab"); eq(nt.slot, 6); eq(nt.s, 2); eq(nt.f, 5)
-  List.note_move(n, nt.q0, nt.q1, 0.25)
-  near(r.TimeMap2_timeToQN(0, n.t), 5.75, 1e-9, "1 16th later")
-  List.note_fret(n, 2, 7)
-  eq(n.midi, 40); eq(n.pc, 4)
-  eq(List.note_string(n, 2, 1), true); eq(n.s, 3, "E2 on the D string (fret 2)")
-  eq(List.note_string(n, 3, 1), false, "the G string has no E2")
-  local saved = List.parse(List.serialize(C.get_P()))
-  local man = 0
-  for _, x in ipairs(saved.notes) do if x.man then man = man + 1 end end
-  eq(man, 1, "saved: the note of the tab")
-  List.from_notes()
-  eq(texts(), "C - E (D 2) - G (D 5)", "the list again from the notes (with the string of the tab)")
-  List.undo()
-  eq(texts(), "C", "Undo")
-end)
-
-test("tab: what is under the mouse (a note, an empty 16th of a string, nothing)", function()
-  clear_project(); clear_tempo()
-  local p = set_rows({ { 2, "C" } })
-  p.notes = notes({ { 0, 2, 2.4 } })
-  p.notes[1].midi = 36
-  local tab = C.Tab.build()
-  tab.lines, tab.h = C.Tab.layout(tab, 600)
-  local b = tab.bars[1]
-  local x = C.CFG.TAB_LEFT + b.x + b.pad + 0.5 * b.sw
-  local y_a = C.CFG.TAB_TOP + (tab.nstr - 2) * C.CFG.TAB_LINE -- (the A string)
-  local h = C.Tab.hit(tab, x, y_a)
-  ok(h and h.nt, "the note"); eq(h.nt.f, 3)
-  h = C.Tab.hit(tab, x + 4 * b.sw, y_a - C.CFG.TAB_LINE)
-  ok(h and not h.nt, "an empty 16th"); eq(h.slot, 4); eq(h.s, 3, "the D string")
-  eq(C.Tab.hit(tab, x, y_a + C.CFG.TAB_LINE * 3), nil, "below the low string")
-end)
-
--- (the Guitar Pro reader itself: tests\tabviewer.lua)
-test("import tab: the bass track of a tab; the tunings of the list", function()
-  local Imp = C.Imp
-  eq(Imp.bass_track({ tracks = { { kind = "guitar" }, { kind = "drums" }, { kind = "bass" } } }), 3)
-  eq(Imp.bass_track({ tracks = { { kind = "guitar" } } }), 1, "no bass track: the 1st")
-  eq(Imp.tuning({ 24, 31, 36, 41 }).id, "dropc"); eq(Imp.tuning({ 1, 2, 3 }), nil)
+-- (the Guitar Pro reader itself, and the notes of Tab Viewer's tab: tests\tabviewer.lua)
+test("import to list: the tunings of the list", function()
+  eq(C.Imp.tuning({ 24, 31, 36, 41 }).id, "dropc"); eq(C.Imp.tuning({ 1, 2, 3 }), nil)
   ok(C.GP and C.GP.read, "the shared Guitar Pro reader is loaded")
 end)
 
-test("import tab: the first note of the tab exactly on the first found note (lessons, 23 November 2026)", function()
-  clear_project(); clear_tempo()
-  local p = set_rows({ { 4, "E" } })
-  -- the tab: 2 empty bars, then E, G (bar 3), A (bar 4); the first found note at 6.04 s (40 ms after a beat: 120 BPM)
-  local list = { { q = 8, len = 0.5, midi = 40 }, { q = 9, len = 1, midi = 43 }, { q = 12, len = 4, midi = 45 } }
-  p.notes = notes({ { 4, 6.04, 6.4 }, { 7, 6.55, 7 }, { 9, 8.04, 9 } })
-  local q0, found = C.Imp.start(list)
-  eq(found, true)
-  C.Imp.apply(list, { 28, 33, 38, 43 }, q0)
-  local P2 = C.get_P()
-  near(P2.notes[1].t, 6.04, 1e-6, "the first tab note on the first found note")
-  near(P2.notes[2].t, 6.54, 1e-6, "the next one a quarter note (0.5 s) later")
-  near(P2.notes[3].t, 8.04, 1e-6)
-  -- an import again: the notes of that import (man) do not count, only the found notes
-  R.tempo = nil
-  r.SetEditCurPos(4.5, false, false)
-  local q2, found2 = C.Imp.start(list)
-  eq(found2, false, "no found notes: nothing to line up with")
-  near(q2, 8, 1e-6, "no found notes and no Set tempo: bar 1 of the tab on the bar of the edit cursor (bar 3: 4 s)")
-  List.undo()
-  q2 = C.Imp.start(list)
-  near(q2, 12.08 - 8, 1e-6, "Undo: the found notes again")
-  -- the very first found note, whatever it is (decided by the user): a wrong early note too
-  p = C.get_P()
-  table.insert(p.notes, 1, notes({ { 0, 3.5, 3.6 } })[1])
-  near(C.Imp.start(list), 7 - 8, 1e-6, "the first tab note on the note at 3.5 s")
-end)
-
-test("import tab: the notes replace the found ones from bar 1 of the song; strings, tuning, the list; Undo", function()
+test("import to list: the notes of the tab replace the list; strings, tuning, the fixes of the found tab go; Undo", function()
   clear_project(); clear_tempo()
   local p = set_rows({ { 2, "F" } })
   p.notes = notes({ { 5, 2, 2.5 } })
   p.notes[1].midi = 41
   p.tuning = "dropc"
-  -- the small made-up tab of the reader's tests: a held C, an E twice, a G
-  local doc = C.GP.parse(dofile(here .. "\\tabviewer_data.lua").GPIF)
-  local list = C.GP.notes(doc, 1)
-  local q0 = C.Imp.start(list)
-  near(q0, 4, 1e-6, "the first tab note (bar 1) on the found note at 2 s")
-  local n = C.Imp.apply(list, doc.tracks[1].open, q0)
+  p.tab = { edits = { [1] = { [1] = {} } } } -- (a fix of the found notes' tab)
+  local list = { { t = 2, t1 = 4, midi = 36, s = 2 }, { t = 4, t1 = 4.5, midi = 40, s = 3 }, { t = 4.5, t1 = 5, midi = 40, s = 3 },
+    { t = 5, t1 = 6, midi = 43, s = 4 } }
+  local n = C.Imp.apply(list, { 28, 33, 38, 43 })
   eq(n, 4)
   local P2 = C.get_P()
   eq(P2.tuning, "std", "the tuning of the tab")
-  near(P2.notes[1].t, 2, 1e-9, "bar 1 of the tab at bar 2 (120 BPM: 2 s)"); near(P2.notes[1].t1, 4, 1e-9)
-  near(P2.notes[2].t, 4, 1e-9); eq(P2.notes[2].s, 3, "the string of the tab"); eq(P2.notes[2].man, true)
+  near(P2.notes[1].t, 2, 1e-9); near(P2.notes[1].t1, 4, 1e-9)
+  eq(P2.notes[2].s, 3, "the string of the tab"); eq(P2.notes[2].man, true); eq(P2.tab, nil, "the fixes are in the notes now")
   ok(#P2.rows > 0, "the list is made again")
   List.undo()
-  eq(C.get_P().notes[1].midi, 41, "Undo: the found notes"); eq(C.get_P().tuning, "dropc")
-end)
-
-test("tab: J joins a split piece with the note before (the same note)", function()
-  clear_project(); clear_tempo()
-  local p = set_rows({ { 2, "C" } })
-  p.notes = notes({ { 0, 2, 2.4 }, { 0, 2.5, 3 } })
-  p.notes[1].midi, p.notes[2].midi = 36, 36
-  List.note_join(p.notes[1], p.notes[2])
-  eq(#C.get_P().notes, 1); near(C.get_P().notes[1].t1, 3, 1e-9)
-  List.undo()
-  eq(#C.get_P().notes, 2, "Undo")
+  eq(C.get_P().notes[1].midi, 41, "Undo: the notes before"); eq(C.get_P().tuning, "dropc")
+  ok(C.get_P().tab and C.get_P().tab.edits, "and the fixes of the found tab")
 end)
 
 test("string names: letters or numbers as in tab books", function()
@@ -1138,11 +1011,12 @@ end)
 
 test("tempo: a project switch during Play with click puts the metronome back", function()
   local before = r.GetToggleCommandStateEx(0, 40364)
-  R.tempo = { click = before, click_seen = true }
+  TR.tempo = { click = before, click_seen = true }
   r.Main_OnCommand(40364, 0) -- (Play with click turned it over)
-  Project.load("")
+  TR.proj = nil -- (Tab Viewer sees another project)
+  TV.Project.update()
   eq(r.GetToggleCommandStateEx(0, 40364), before, "the metronome as before")
-  eq(R.tempo, nil)
+  eq(TR.tempo, nil)
 end)
 
 test("export: notes that are all found a little early stay on their 16th, not 1 16th earlier (lessons, 23 November 2026)", function()
@@ -1208,7 +1082,7 @@ test("export: the MIDI item on the Bass MIDI track and the .mid file; again: rep
   ok(data:find("Far Away - Bass", 1, true), "the track name")
   C.Export.run({ item = true, file = false, step = 0.25 })
   eq(r.CountTrackMediaItems(mt), 1, "again: replaced")
-  eq(r.Undo_CanUndo2(0), "Note Detective: export MIDI")
+  eq(r.Undo_CanUndo2(0), "Tab Viewer: export MIDI")
   os.remove(path)
 end)
 
@@ -1240,7 +1114,7 @@ test("fingering: a row of 4 notes gets every place, the other rows the high note
   eq(List.opt().runs, true)
 end)
 
-local Beat, Tempo = C.Beat, C.Tempo
+local Beat, Tempo = C.TP.Beat, TV.Tempo -- (Tab Viewer's Find tempo, with the hooks of the list)
 -- the bar and the beat in it at a time ("bar.beat", the beat with 2 decimals)
 local function where(t)
   local beat, m = r.TimeMap2_timeToBeats(0, t)
@@ -1256,15 +1130,15 @@ test("tempo: a click track (generated WAV): its tempo, its beats and bar 1", fun
   add_item(click, click_wav("click.wav", 150, 1.0, 1, 30), 2) -- bar 1 at the first click: 1 s (3 s in the project)
   add_track("Drums")
   r.SetMediaItemSelected(it, true)
-  R.tsrc = nil
+  TR.tsrc = nil
   local src = Tempo.sources()
   eq(src[1].label, "2: Metronome", "the metronome first")
   eq(#src, 2, "only tracks with items")
   Tempo.begin(Tempo.source().tr)
   local n = 0
-  while R.tempo and R.tempo.run and n < 5000 do Tempo.step(); n = n + 1 end
-  local tm = R.tempo
-  ok(tm and tm.beats, "beats found (" .. tostring(R.notice and R.notice.text) .. ")")
+  while TR.tempo and TR.tempo.run and n < 5000 do Tempo.step(); n = n + 1 end
+  local tm = TR.tempo
+  ok(tm and tm.beats, "beats found (" .. tostring(TR.notice and TR.notice.text) .. ")")
   ok(n > 1, "more than 1 step")
   near(tm.bpm, 150, 0.3, "tempo")
   near(tm.beats[tm.i0], 3.0, 0.03, "bar 1")
@@ -1279,15 +1153,15 @@ end)
 
 test("tempo: Find tempo needs the song and a track with audio", function()
   clear_project(); clear_tempo()
-  R.tempo = nil
+  TR.tempo = nil
   local tr = add_track("Drums")
   Tempo.begin(tr)
-  eq(R.tempo, nil); ok(R.notice.text:find("bass item", 1, true), "asks for the bass item")
+  eq(TR.tempo, nil); ok(TR.notice.text:find("song's audio", 1, true), "asks for the song")
   local bass = add_track("Bass")
   local it = add_item(bass, bass_wav("song2.wav", { { nil, 6 } }), 0)
   r.SetMediaItemSelected(it, true)
   Tempo.begin(tr)
-  eq(R.tempo, nil); ok(R.notice.text:find("no audio", 1, true), "the track is empty")
+  eq(TR.tempo, nil); ok(TR.notice.text:find("no audio", 1, true), "the track is empty")
 end)
 
 test("tempo: the plan of 1 tempo and of Follow the song, with a short bar", function()
@@ -1311,12 +1185,12 @@ test("tempo: the plan of 1 tempo and of Follow the song, with a short bar", func
   eq(n, 1, "at least 1 beat")
 end)
 
--- R.tempo by hand: the song from t0 to t1, beats every per s from first (step: the change of each beat)
+-- TR.tempo by hand: the song from t0 to t1, beats every per s from first (step: the change of each beat)
 local function tempo_by_hand(item, t0, t1, first, per, step, style)
   local _, guid = r.GetSetMediaItemInfo_String(item, "GUID", "", false)
   local beats, t, p = {}, first, per
   while t < t1 + 2 do beats[#beats + 1] = t; t = t + p; p = p + (step or 0) end
-  R.tempo = { song = { guid = guid, t0 = t0, t1 = t1 }, beats = beats, i0 = 1, short = {}, bpm = 60 / per,
+  TR.tempo = { song = { guid = guid, t0 = t0, t1 = t1 }, beats = beats, i0 = 1, short = {}, bpm = 60 / per,
     steady = style ~= "follow", style = style or "steady" }
   Tempo.labels()
   return beats
@@ -1355,7 +1229,7 @@ test("tempo: Set tempo puts bar 1 on the song; other songs, items, markers and e
   near(t60, 60, 1e-6, "the tempo marker of song 2"); near(bpm60, 130, 1e-6)
   eq(where(60), where(60):match("^%d+") .. ".0.00", "song 2 starts on a bar line")
   near(r.TimeMap_GetDividedBpmAtTime(50), 120, 0.01, "between the songs: the old tempo")
-  eq(r.Undo_CanUndo2(0), "Note Detective: set the tempo")
+  eq(r.Undo_CanUndo2(0), "Tab Viewer: set the tempo")
   r.Main_OnCommand(40029, 0) -- Edit: Undo
   near(r.TimeMap_GetDividedBpmAtTime(20), 120, 0.01, "undo: the old tempo")
   it = r.GetMediaItem(0, 0)
@@ -1379,8 +1253,8 @@ test("tempo: Set tempo moves the song's audio so its first bass note is on the n
   near(r.GetMediaItemInfo_Value(mix, "D_POSITION"), 10 + d, 1e-9, "the mix with it")
   near(r.GetMediaItemInfo_Value(set, "D_POSITION"), 0, 1e-9, "a backing track of the whole set stays")
   near(r.GetMediaItemInfo_Value(other, "D_POSITION"), 60, 1e-9, "song 2 stays")
-  ok(R.notice.text:find("ms earlier: the first bass note is on the beat", 1, true), R.notice.text)
-  eq(r.Undo_CanUndo2(0), "Note Detective: set the tempo", "1 undo step")
+  ok(TR.notice.text:find("ms earlier: the first note is on the beat", 1, true), TR.notice.text)
+  eq(r.Undo_CanUndo2(0), "Tab Viewer: set the tempo", "1 undo step")
   r.Main_OnCommand(40029, 0) -- Edit: Undo
   near(r.GetMediaItemInfo_Value(C.Util.item_by_guid(guid), "D_POSITION"), 10, 1e-9, "Ctrl+Z: the audio back")
   -- with found notes of this item: the first found note decides, and the list moves with the audio
@@ -1401,7 +1275,7 @@ test("tempo: Follow the song puts every bar on its beat; a short bar; Set tempo 
   local it = add_item(add_track("Bass"), bass_wav("song5.wav", { { nil, 30 } }), 2)
   local beats = tempo_by_hand(it, 2, 32, 2.9, 0.36, 0.0004, "follow") -- it slows down a little
   Tempo.set_short(beats[9] + 0.1, true) -- bar 3 has 3 beats
-  eq(#R.tempo.short_list, 1); ok(R.tempo.short_list[1].text:find("^Bar 3"), R.tempo.short_list[1].text)
+  eq(#TR.tempo.short_list, 1); ok(TR.tempo.short_list[1].text:find("^Bar 3"), TR.tempo.short_list[1].text)
   Tempo.set()
   local m0 = where(beats[1]):match("^%d+")
   eq(where(beats[1]), m0 .. ".0.00", "bar 1")
@@ -1410,13 +1284,13 @@ test("tempo: Follow the song puts every bar on its beat; a short bar; Set tempo 
   eq(where(beats[12]), (m0 + 3) .. ".0.00", "bar 4 after the short bar")
   eq(where(beats[40]), (m0 + 10) .. ".0.00", "bar 11")
   Tempo.nudge(1) -- bar 1 a beat later; Set tempo again
-  eq(R.tempo.short[10], true, "the short bar moves with it")
+  eq(TR.tempo.short[10], true, "the short bar moves with it")
   Tempo.set()
   local m1 = where(beats[2]):match("^%d+")
   eq(where(beats[2]), m1 .. ".0.00", "the new bar 1")
   eq(where(beats[41]), (m1 + 10) .. ".0.00", "bar 11")
   Tempo.remove_short(10)
-  eq(#R.tempo.short_list, 0)
+  eq(#TR.tempo.short_list, 0)
 end)
 
 test("tempo: Play with click is taken back by the next try and by Set tempo", function()
@@ -1425,25 +1299,18 @@ test("tempo: Play with click is taken back by the next try and by Set tempo", fu
   tempo_by_hand(it, 1, 21, 1.5, 0.4)
   local click = r.GetToggleCommandStateEx(0, 40364)
   Tempo.try()
-  eq(r.Undo_CanUndo2(0), C.CFG.UNDO_TRY)
+  eq(r.Undo_CanUndo2(0), TV.CFG.UNDO_TRY)
   eq(r.GetToggleCommandStateEx(0, 40364), 1, "the metronome is on")
   Tempo.nudge(1) -- a change: the try starts again
-  eq(r.Undo_CanUndo2(0), C.CFG.UNDO_TRY)
+  eq(r.Undo_CanUndo2(0), TV.CFG.UNDO_TRY)
   r.OnStopButtonEx(0)
   Tempo.set()
   eq(r.GetToggleCommandStateEx(0, 40364), click, "the metronome as before")
-  eq(r.Undo_CanUndo2(0), "Note Detective: set the tempo")
+  eq(r.Undo_CanUndo2(0), "Tab Viewer: set the tempo")
   r.Main_OnCommand(40029, 0)
-  ok(r.Undo_CanUndo2(0) ~= C.CFG.UNDO_TRY, "no try left behind")
+  ok(r.Undo_CanUndo2(0) ~= TV.CFG.UNDO_TRY, "no try left behind")
   near(r.TimeMap_GetDividedBpmAtTime(10), 120, 0.01, "1 undo: the old tempo")
-  R.tempo = nil
+  TR.tempo = nil
 end)
 
-for _, t in ipairs(tests) do
-  local pf = io.open(here .. "\\result_notedetective.txt", "w") -- (so far: shows where a crash of REAPER stopped)
-  if pf then pf:write(table.concat(out, "\n"), "\nRUNNING " .. t[1] .. "\n"); pf:close() end
-  local good, e = pcall(t[2])
-  if good then passed = passed + 1; log("ok    " .. t[1])
-  else failed = failed + 1; log("FAIL  " .. t[1] .. ": " .. tostring(e)) end
 end
-finish()
