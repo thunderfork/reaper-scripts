@@ -880,13 +880,6 @@ function Dev.free_units()
   end
   return out
 end
--- A detected unit that no device uses yet, or nil.
-function Dev.free_unit()
-  for _, p in ipairs(R.ports) do
-    if Dev.model_from_port(p.name) and not Dev.port_used(p.name) then return p.name end
-  end
-  return nil
-end
 
 -- The device name that a track name gives: without "MIDI " at the start ("MIDI QC Bass" -> "QC Bass").
 function Dev.name_from_track(name)
@@ -2122,11 +2115,6 @@ function Midi.start_time(d, rg)
   end
   return math.max(0, Midi.shift(rg.start, when_sign(w), "sc"))
 end
--- The next song after a song (in timeline order), or nil.
-function Midi.next_song(rg)
-  for i, x in ipairs(R.regions) do if x == rg then return R.regions[i + 1] end end
-  return nil
-end
 -- The start scene of a song: its first scene change, when it is in its first CFG.START_WINDOW seconds
 -- (or before its new start scene time).
 function Midi.start_scene(d, rg)
@@ -3317,6 +3305,15 @@ function UI.trunc(text, max_w)
   end
   return "..."
 end
+-- UI.trunc, kept per text until the width changes (the rows of the lists: not cut again every frame).
+function UI.trunc_c(text, w)
+  R.tc = R.tc or {}
+  local e = R.tc[text]
+  if e and e.w == w then return e.s end
+  local cut = UI.trunc(text, w)
+  R.tc[text] = { w = w, s = cut }
+  return cut
+end
 
 -- Button kinds: "primary" (blue: an action), "ghost" (text only), "danger" (red text), nil (grey).
 function UI.button(label, w, h, kind)
@@ -4220,7 +4217,7 @@ function UI.draw_song_row(d, i, rg, aw)
     end
   end
   ImGui.PushFont(ctx, bold)
-  local title = UI.trunc(rg.name ~= "" and rg.name or "(unnamed region)", math.max(20, name_area - 30 - lw - 16))
+  local title = UI.trunc_c(rg.name ~= "" and rg.name or "(unnamed region)", math.max(20, name_area - 30 - lw - 16))
   ImGui.PopFont(ctx)
   ImGui.DrawList_AddTextEx(dl, bold, CFG.FONT_SIZE, x + 30, ty, on_arrow and COL.TEXT_BRIGHT or COL.TEXT_MAIN, title)
   ImGui.DrawList_AddText(dl, x + name_area - lw - 6, ty, COL.TEXT_DIM, len)
@@ -5411,8 +5408,8 @@ function UI.draw_lanes_tab()
           local w1 = ImGui.CalcTextSize(ctx, "LFO")
           ImGui.DrawList_AddText(dl, x + 16, UI.text_y(y), col, "LFO")
           UI.wave(dl, x + 22 + w1, y + 5, 16, fh - 10, LFO_ICONS[G.shape + 1], col)
-          ImGui.DrawList_AddText(dl, x + 44 + w1, UI.text_y(y), col, UI.trunc(G.lab2, lw - 46 - w1))
-        else ImGui.DrawList_AddText(dl, x + 16, UI.text_y(y), col, UI.trunc(lab, lw - 18)) end
+          ImGui.DrawList_AddText(dl, x + 44 + w1, UI.text_y(y), col, UI.trunc_c(G.lab2, lw - 46 - w1))
+        else ImGui.DrawList_AddText(dl, x + 16, UI.text_y(y), col, UI.trunc_c(lab, lw - 18)) end
         if hov then
           ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand())
           ImGui.SetTooltip(ctx, lab .. " (" .. (G.i1 - G.i0 + 1) .. " values).\nClick to " .. (open and "hide" or "show") .. " its values.")
@@ -6270,10 +6267,10 @@ function UI.draw_device_list()
     elseif hov then ImGui.DrawList_AddRectFilled(dl, x - 6, y - 2, x + aw - 4, y + fh + 2, COL.ROW_HOVER, 4) end
     local ty = UI.text_y(y)
     ImGui.DrawList_AddTextEx(dl, sel and bold or font, CFG.FONT_SIZE, x, ty, sel and COL.ACCENT_HOVER or COL.TEXT_MAIN,
-      UI.trunc(d.name, 150))
+      UI.trunc_c(d.name, 150))
     local info = MODELS[d.model].name .. "  -  " .. (d.chan == 0 and "All channels" or ("channel " .. d.chan))
     local tr = Dev.track(d)
-    ImGui.DrawList_AddText(dl, x + 160, ty, COL.TEXT_DIM, UI.trunc(info .. "  -  " .. (tr and Dev.track_name(tr) or "no track"),
+    ImGui.DrawList_AddText(dl, x + 160, ty, COL.TEXT_DIM, UI.trunc_c(info .. "  -  " .. (tr and Dev.track_name(tr) or "no track"),
       math.max(20, aw - 170)))
     ImGui.PopID(ctx)
   end

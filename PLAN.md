@@ -1,70 +1,216 @@
 # Thunderfork scripts: plan
 
-## Handoff (21 November 2026)
+## Handoff (24 November 2026)
 
-- State: 7 scripts; REAPER 7 ReaScript, Lua 5.4, ReaImGui pinned to 0.9.3 (the shim). Chart Cue is Windows only.
+- Branch `script/tab-viewer`. Segments A (loop, speed), Play / Stop and B (playing marks) are committed. NOT
+  COMMITTED (deployed): segment C1 (note lengths, PASSED), segment C2 (length keys; the whole chord changes, the saved
+  len = the written length: decided 24 November 2026; "/" failed, fixed (lessons), re-test PASSED), and the checkup.
+- Checkup of Tab Viewer only (full, the user 24 November 2026): step 1 (debug-time, 3 review agents) DONE: 8 bugs
+  fixed (the loop and the selection on another project / tab / track / bars; my own time selection kept; triplet
+  places read back exact; "/" with a held note; a tie that joined an old note; a too long rest; the speed item),
+  5 text fixes, and 4 proposals built (all decided by the user, 24 November 2026): Up / Down selects on the next
+  string (Alt+Up / Down moves the note) and an empty place can be selected (a number adds a note); a new note as
+  long as the note before it; the speed yellow below 100% and a notice at load; the Undo button always there.
+  Tab Viewer 38 tests, Note Detective 72. Manual test of step 1: PASSED (24 November 2026).
+  Step 2 (simplify: 4 agents, code checker) DONE: Tabs.x_of / x_end / line_of (b.ln), UI.tab_item (1 drawing of
+  notes and held parts, text sizes measured once), the ghost buttons drawn as in Chart Cue, button widths measured
+  once, R.tsrc_audio and UI.trunc_c removed, 1 fret check, 1 undo push, the settings switches in 1 list, GP.tab
+  bar_at, GP.fx search texts made once, old comments; no new checker warnings. Steps 3 (review) and 4
+  (housekeeping) DONE; the user said "do all" (24 November 2026): built the bar widths from the texts
+  (`Tabs.min_slot`, the user's screenshot), the held notes grey, the loop that moves with its bars, R.playing, the
+  notes tidied; manual test PASSED (24 November 2026). Items 1-2 (whole-number places, a cached tab): "Later". Item
+  5 (brighter playing marks): not needed (the user, 24 November 2026). NOT COMMITTED (the user did not answer the
+  commit question).
+- After the checkup (24 November 2026, from the user's Guitar Pro screenshots): the triplet bracket as in Guitar Pro;
+  repeats as written (|: :|, x3, endings 1. 2.; default on, Settings > Tab > Repeats as written; written bar numbers;
+  a click while stopped = the first pass; decided 24 November 2026). Tab Viewer 40 tests; deployed; NOT COMMITTED;
+  manual test PASSED (24 November 2026).
+- Line breaks as in Guitar Pro (& and Ctrl+Enter; saved per tab as `lines=`, a new saved value approved; a too wide
+  line shrinks; your own lines fill the width: the user, 24 November 2026): built, Tab Viewer 41 tests, deployed,
+  manual test PASSED (24 November 2026).
+- Section names (manual test PASSED), then tempo marks, time signatures and the final double bar (the user: "do",
+  24 November 2026): built, Tab Viewer 42 tests, deployed, committed (e2dc5ed; all the work above too). Manual test
+  PASSED (24 November 2026). The 2 not checked items (made-up data only, a tempo change in a later pass): not
+  relevant (the user, 24 November 2026). NEXT: the release of Tab Viewer (see "Then" below).
+- After e2dc5ed (24 November 2026, all manual tests PASSED, NOT COMMITTED): rests inside the strings, lines to the right
+  edge, a frame, endings of 2+ bars (`GP.endings`, Note Detective too), tremolo picking (slashes; Settings > Tab >
+  Tremolo as notes, on), line breaks that keep only yours (`joins=`), Tab dropdown > Layout... (`layout=`), right-click
+  a bar > Time signature... (`meter=`, the notes fit). Tab Viewer 43 tests, Note Detective 72.
+- Not fixed (low risk): the speed of a project left with another project tab stays (REAPER has no call for a
+  project that is not active); in the reader: 2 voices sharing a tie, tempo automations out of order, a repeat
+  without a start mark (uncertain).
+- The user's question still open: the stronger fix for the tag `imgui-input` (click rules into plain functions with
+  a test; recommended "Later").
+- Then: the release of Tab Viewer (debug-time, README, ReaPack). Later: the list from the tab (step 5, Note
+  Detective), chord detection (6), drums (on hold), Note Detective's Find tempo as in Tab Viewer.
+- Last checkup: 24 November 2026, Tab Viewer only (full); a 2nd one the same day on e2dc5ed..a953bd1 (steps 1-4
+  done: 1 bug fixed (8d94164), 1 tidy (eb3c835); proposals and file findings answered in the session). The other scripts: none as 1 full run yet.
 
-  | Script | Version | State |
-  |---|---|---|
-  | Chart Cue | 1.7 | released 11 November 2026 |
-  | Segue | 1.3.1 | released 11 November 2026 |
-  | MIDI Pilot | 1.4 | released 11 November 2026 |
-  | FX Link | 1.1.1 | released 11 November 2026 |
-  | Session Prep | 1.0.1 | released 17 November 2026 |
-  | SFX Drop | 1.0 | committed, not released (hidden with @noindex; the user wants more work first) |
-  | Mono Merge | 1.0 | released 17 November 2026 |
+### Other scripts (the facts that still hold from the handoffs before; their history: git)
 
-- 21 November 2026: the project follows the newest global process (from the Athens Bus project): Size full,
-  `LESSONS-RULES.md` loaded by CLAUDE.md, this PLAN.md format, the rules from Claude's memory moved into the
-  CLAUDE.md files, a pre-commit hook with the checks and tests. Together with the 19 November 2026 process changes
-  (Users section, release checks instead of the global checkup, security review before a push): committed
-  21 November 2026, not pushed. The duplicate rules in Claude's memory were deleted (the user's choice).
-- Last checkup: none as 1 full run (17 November 2026: housekeeping and a full Session Prep review).
-- More than 3 manual tests are open: no new feature until they are tested (global rule).
-- Next decision: the manual tests (Open now 1-9), then the SFX Drop work or the Mono Merge drop window.
+- Versions: Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1 (released 11 November 2026); Session Prep
+  1.0.1, Mono Merge 1.0 (released 17 November 2026); SFX Drop 1.0 committed, not released (the user wants more work
+  first); Note Detective 1.0 committed (branch `script/note-detective`), not released; Tab Viewer 1.0 on
+  `script/tab-viewer`, not released.
+- The checkup of 21 November 2026 (all scripts) stopped before the user's answers: Open now 9.
+- Note Detective: the new detection stays for now; no more detection work until the user brings it up (decided
+  23 November 2026). The Guitar Pro tab is the main feature, the detection the second (decided 23 November 2026).
+  Its debug-time round comes before its release. Segment 2 (Set tempo moves the song's items): fixed, not yet
+  retested (Open now 27).
+- More than 3 manual tests open: no new feature in that script (the open Note Detective tests 15-26 may go out of
+  date with the Guitar Pro work: the user decides then).
 
 ## Open now
 
 Answer by number. Manual tests: in question windows, 1 question per test (Passed / Failed / Skip for now); a
 skipped or failed test stays here; remove it when it passed.
 
-1. Manual test (MIDI Pilot, 8 November 2026): read the rewritten Help topics and tooltips (Set up songs, Tools
-   items, scene list, Lanes, Settings): are they clear? Note the unclear ones.
-2. Manual test (Session Prep, 12 November 2026): Mono button on a fake stereo track (grey -> orange on click; Apply
+1. Manual test (Session Prep, 12 November 2026): Mono button on a fake stereo track (grey -> orange on click; Apply
    plays one side; Ctrl+Z undoes it). Skipped twice.
-3. Manual test (Session Prep, 12 November 2026): file check: a 44.1 kHz file in a 48 kHz project (or an item that
+2. Manual test (Session Prep, 12 November 2026): file check: a 44.1 kHz file in a 48 kHz project (or an item that
    starts later) shows an orange "44.1k" / "late" tag in the Prep table.
-4. Manual test (Session Prep, 12 November 2026): dual pan: a track in dual pan (or a project whose default pan mode
+3. Manual test (Session Prep, 12 November 2026): dual pan: a track in dual pan (or a project whose default pan mode
    is dual pan) with its knobs not at full L / R shows "kept" and keeps its pans after Apply.
-5. Manual test (Session Prep, 17 November 2026): Gain staging on, Scan with hi-hat / OH / cymbal tracks: no
+4. Manual test (Session Prep, 17 November 2026): Gain staging on, Scan with hi-hat / OH / cymbal tracks: no
    "silent" tag, normal Gain values.
-6. Manual test (Session Prep, 17 November 2026): a client's return (no items, receives a send): no "empty" tag, no
+5. Manual test (Session Prep, 17 November 2026): a client's return (no items, receives a send): no "empty" tag, no
    Delete button.
-7. Manual test (Session Prep, 17 November 2026): rename a return to empty, then to "Delay" (taken): the old name
+6. Manual test (Session Prep, 17 November 2026): rename a return to empty, then to "Delay" (taken): the old name
    comes back each time.
-8. Manual test (Session Prep, 17 November 2026): "Electric Piano" / "Acoustic Piano" become KEYS / PIANO.
-9. Manual test (Session Prep, 17 November 2026): Scan speed with Gain staging on (a large session; the 1st Scan of
+7. Manual test (Session Prep, 17 November 2026): "Electric Piano" / "Acoustic Piano" become KEYS / PIANO.
+8. Manual test (Session Prep, 17 November 2026): Scan speed with Gain staging on (a large session; the 1st Scan of
    new files builds peaks).
-10. A first full `checkup` (no full run yet; the release skill covers the checks before a push).
-11. Lessons rule (`stale-state`, accepted 17 November 2026): add an "another project" test to Chart Cue, Segue,
+9. Checkup of 21 November 2026: the findings, waiting for the user's answer (numbers as given to the user).
+   Bugs (fix after a "go", each with a test first):
+   - 9.1 Segue (`Setlist.read_cmds`, start) and FX Link (`Link.read_cmds`, start): old `cmd_q` presses run at the
+     start; clear `cmd_q` at the start (and in Segue's on_exit), as Chart Cue does.
+   - 9.2 MIDI Pilot `Project.update`: File > Open in the same tab not seen (only the pointer); use the file name /
+     saved text check as FX Link / Segue.
+   - 9.3 SFX Drop loop: spots and a running Find compare only the pointer (use proj + file name); `R.check` not
+     cleared on a project switch.
+   - 9.4 Chart Cue `Project.remap_pdf` / `remove_from_library`: `P.assign2` not remapped or cleared; also
+     `UI.ask_remove_pdf` and `Project.region_use_count` count only PDF 1.
+   - 9.5 Chart Cue + Segue `draw_now_view`: the pause bar uses the nearest pause row (also a skipped one): keep
+     `sec` in the hold at song_ended. `Setlist.length` counts pauses that never play.
+   - 9.6 Chart Cue + Segue `Setlist.next_cmd`: on a REAPER pause it resumes the current song (the Next button goes
+     to the next song); press Play only after the setlist's own stop. Fix the Help line too.
+   - 9.7 MIDI Pilot `Midi.take_at`: extends the first item over all later items (use the nearest item before t).
+   - 9.8 MIDI Pilot `Util.reset_settings`: undocks and jumps to Songs (keep S.dock, S.tab, R.dock_req).
+   - 9.9 MIDI Pilot track mode change: `Dev.apply_latency` with latency 0 wipes the user's playback offset (guard
+     `d.latency > 0` as in `Dev.use_selected_track`). Channel combo in Settings > Devices does not clear `R.pcs`.
+   - 9.10 MIDI Pilot: empty undo points (`Midi.fill_item_starts` in scene_edit, fill_starts, match_* with n == 0).
+   - 9.11 FX Link `Link.learn` / `Link.tick`: the knob touched last before Learn is never added (store its value).
+   - 9.12 FX Link `UI.draw_picker`: R.pnames of the old group after a group change (keep R.pick_g); changes in the
+     0.75 s after a snapshot recall are lost (`Link.snap_tick` calls group_changed).
+   - 9.13 Session Prep `Prep.add_chain`: `^%s*<FXCHAIN` also matches `<FXCHAIN_REC` (use `^%s*<FXCHAIN%s*$`).
+   - 9.14 Session Prep `Rules.undo`: no `Rules.update_dirty(p)`; undo of a rule rename does not restore tfx / bus
+     members / return Out.
+   - 9.15 Session Prep `UI.draw_returns`: rename moves `p.sends` on every key (move once at deactivation).
+   - 9.16 Session Prep `Prep.apply_rows`: Delete without `row.on`; a Delete row still renamed, put in a folder,
+     routed (empty folder stays).
+   - 9.17 Session Prep: equal final names in `Prep.plan` (add each row's final name to the used set); the "send
+     skipped" count counts rows (`R.loops`); the Pan L / R switch does not call `Rules.changed()`.
+   - 9.18 Session Prep: a deleted bus leaves returns with Out "b:<name>" (set them to "m"); a bus named like a
+     folder shares `p.fx`.
+   - 9.19 SFX Drop `Drop.targets` / `Spots.find_begin`: the Soundcheck region counts as a song (and its tracks).
+   - 9.20 SFX Drop `UI.draw_sc`: Source combo enabled during Build; `Sc.build` uses the new source (use `sc.tr`).
+   - 9.21 SFX Drop `Chk.run`: Soundcheck items not checked for library files; `Drop.copy_target` reuses a copy by
+     name + size only.
+   - 9.22 SFX Drop: `Drop.find_folder` needs depth 1 (FX folder made twice); `UI.keys` Enter repeats
+     (`IsKeyPressed(..., false)`); Sort by Hit not updated (`Lib.changed()` in `UI.sound_menu` / `Drop.learn`);
+     `UI.sort_header` 2-value call not wrapped; `Spots.analyse` labels a region before the selection "Bar 1".
+   - 9.23 Mono Merge `Merge.run`: a failed glue leaves the folder depth moved (put it back before DeleteTrack); the
+     undo point is made also on a failure; raw path `"\\Mono Merge.lua"`; raw `place_copy` length can be <= 0.
+   - 9.24 Per-frame costs: Chart Cue (region_counts, tab strip variants, draw_status parts, mode_hint, cue list
+     entries, lib_name_w key), MIDI Pilot (scene strip blocks, scene list rows + sort, Preset list UI.trunc),
+     FX Link (picker labels, "Missing" strings, A/B table; UI.trunc_c key without the font, never cleared),
+     Session Prep (`r.file_exists` per return per frame), SFX Drop (`Drop.find_folder` in Settings > Insert, tables
+     at the chips / headers / copies), Segue (row names cut every frame).
+   Saved data (ask): 9.25 FX Link `Project.save`: an empty project still writes "version=1", so Open automatically
+   still opens it (write ""). 9.26 Session Prep: the prep mark is the same on client tracks and made tracks, so
+   `Prep.find_track` can reuse a client's "Delay" (a "made:" mark).
+   Tidy (after a "go"): 9.27 dead code (Chart Cue `UI.button_pair2` now unused, CUE_START twice; Segue and FX Link
+   `UI.draw_ask` OK branch; FX Link `R.picked_cache`; Session Prep `t.guid`, `CFG.PEAK_MARGIN`; SFX Drop
+   `R.sc_scan.tr/proj`), repeated code and old comments in all scripts.
+   Improvements (the user chooses): 9.28 Chart Cue "Close Chart Cue" in the right-click menu while playing, no
+   question. 9.29 Chart Cue: a missing PDF during playback keeps the old chart, warning hidden. 9.30 Chart Cue:
+   empty-region PDF buttons clickable while playing / locked. 9.31 Chart Cue: blue as the "on" state (Lock, Hide
+   panel, Play). 9.32 Segue: no pcall guard around the loop. 9.33 Segue: no "move only by title bar" option.
+   9.34 MIDI Pilot "Check new MIDI items" changes the device channel; the Help says the reverse. 9.35 MIDI Pilot:
+   no empty / taken check for device, folder, Preset names and control CCs (rule `saved-data`). 9.36 FX Link: the
+   same for group names. 9.37 FX Link: a group click changes the track selection and marks the project changed.
+   9.38 SFX Drop: a new library folder drops the favourites and own hit points without a question. 9.39 SFX Drop:
+   the Soundcheck copy has no sends (in-ears). 9.40 Help text errors in Chart Cue, MIDI Pilot, FX Link, Session
+   Prep (orange vs teal Mono button) and SFX Drop.
+   Notes (housekeeping): 9.41 `Chart Cue/CLAUDE.md` "6 scripts" -> 7. 9.42 root CLAUDE.md test list: add
+   `monomerge.lua`. 9.43 2 commits here and 4 in the global repository are not pushed.
+10. Lessons rule (`stale-state`, accepted 17 November 2026): add an "another project" test to Chart Cue, Segue,
     MIDI Pilot and FX Link for the data they keep from a project.
-12. Session Prep feedback, not decided yet (17 November 2026): deleting a return does not ask (a bus does); the Prep
+11. Session Prep feedback, not decided yet (17 November 2026): deleting a return does not ask (a bus does); the Prep
     table does not show a row's bus, sends or Track FX (the Help promises "you see everything first").
-13. SFX Drop, before its release: Find spots reads at 2000 Hz and Soundcheck at 500 Hz, so cymbal parts count too
+12. SFX Drop, before its release: Find spots reads at 2000 Hz and Soundcheck at 500 Hz, so cymbal parts count too
     little (found 17 November 2026). Lessons rule (`audio-measure`): its measurements get tests with generated WAV
     files.
-14. SFX Drop, before its release: the flaky test "find spots on real tracks" failed once ("a rise at bar 5") in a
+13. SFX Drop, before its release: the flaky test "find spots on real tracks" failed once ("a rise at bar 5") in a
     full `test.ps1 -Coverage` run, then passed 3 times (17 November 2026). Find the cause (the WAV peaks not ready
     yet?).
-15. MIDI Pilot (19) and FX Link (10) call UI.trunc in the UI loop: check which are in lists (use UI.trunc_c there).
-16. Dead code, to remove with the next real change of each script (no version only for this): Chart Cue
-    `UI.button_pair`, MIDI Pilot `Dev.free_unit` and `Midi.next_song`, FX Link `CFG.FORM_MAX_W`; also the
-    "4 scripts" comments in Chart Cue, FX Link and Session Prep (now 7).
+14. Note Detective's manual tests 15-27 are set aside until its next version (decided 23 November 2026). Then
+    check which of them are still relevant.
+15. Set-aside test (Note Detective, 23 November 2026): click a line (plays), double-click and type, "Change all", Join,
+    Split, + Add, Undo, the keys (Up / Down, N, Space, F2, Delete).
+16. Set-aside test (Note Detective, 23 November 2026): Write with Markers, Notes track and both; Ctrl+Z; are the text items
+    readable for the learner?
+17. Set-aside test (Note Detective, 23 November 2026): Finish on a copy: the region, the plugins, the metronome track; Ctrl+Z.
+18. Set-aside test (Note Detective, 23 November 2026): a song with no steady tempo, Markers = "About 2 seconds".
+19. Set-aside test (Note Detective, lessons, 23 November 2026): Export the song with the 16ths that were 1 16th off and
+    open the .mid in Guitar Pro again: on the right 16th now? (The repeated 16ths are still 1 note: not fixed.)
+20. Set-aside test (Note Detective, bass review 3, 5, 2, 23 November 2026): right-click a line > New key from here > a
+    key: the blue "Key: ..." line, the names after it; Write with Markers and Notes track: the "Key: ..." marker and
+    the beat counts ("1 F · 2& Eb") in the text items; Settings > Notes > String names = Numbers, Find notes again.
+21. Set-aside test (Note Detective, 23 November 2026): Export > Folder > Change... (a folder of your own), Export; Clear...
+    (asks; then Undo and Ctrl+Z); Set tempo on a song with a count-in (bars before bar 1 from the item start); View >
+    Tab: click a note, play (the blue note, the line follows); close and reopen the project: the tab is still there.
+22. Set-aside test (Note Detective, slides and 8ths / 16ths, 23 November 2026): Set tempo, Find notes on a song with slides
+    and pumping 8ths: are the "/G" marks real slides (very short slides are missed)? "C (8ths)" and "8ths: Ab - A"
+    right? View > Tab and the .mid: the repeated notes as separate notes? Try Settings > Notes > Slide mark.
+23. Set-aside test (Note Detective, 23 November 2026): Simple mode (the default): Find notes, the markers only notes and
+    "E (A 7)"-style places; the window without Tempo and bars, Tab and Export. Simple mode off: View > Tab, right-click
+    a note (Octave up / down, another string, Delete); Undo. A song that had beat 1 on 4a: on beat 1 now?
+24. Set-aside test (Note Detective, tab editing, changed 23 November 2026 by the user's wishes; the user runs the tests):
+    stopped, View > Tab: click a note (blue box, the edit cursor goes there); Left / Right = the note before / after;
+    Up / Down; type 1 then 2 (fret 12); Delete; double-click a note: its box (Enter = new fret, Left / Right move it,
+    never onto another note); click an empty place on a string, type a fret, Enter (not on a 16th that has a note);
+    Undo; play: the blue line; "Update the list", then Write.
+25. Set-aside test (Note Detective, "1 2 3", 23 November 2026): Simple mode off. Set tempo and Find notes on Burning
+    Roads, then "Import tab..." with its .gp: the bass track chosen, bar 1 right at once (bar 5 of the tab on the
+    first bass note), Import; the tab
+    and the list follow the song; Undo brings the found notes back. Turn off Settings > Notes > Split repeated notes, Find
+    notes: no split held notes. A tab with "%" bars (repeat bar): those bars have their notes.
+26. Set-aside test (Note Detective, the new detection, 23 November 2026): Find notes on 2-3 songs (Simple mode on and
+    off): fast repeated notes (16ths) as separate notes, held notes not cut, the octaves; point at a yellow line: the
+    reason; the time of Find notes (song 2: 16 s). A song with a soft part: its notes found too.
+27. Set-aside test (Note Detective, Set tempo aligns, 23 November 2026): Find tempo, Set tempo: the notice says how far
+    the audio moved; the first bass note sits on a beat (zoom in); the other stems moved with it, other songs and a
+    long backing track did not; one Ctrl+Z takes back the grid and the move. With a list: it moved too. In the tab: select the 2nd piece of a split note, press J.
+28. Manual test (Tab Viewer, 6/8 and Set tempo, 24 November 2026): in the tab with your 6/8 bars, Find tempo > From
+    tab, then Set tempo: REAPER's tempo changes to 93.75 at the first 6/8 bar and back to 125 after the last one; the
+    tab stays on the music while it plays. (REAPER counts the tempo in quarter notes: not checked with a 6/8 tab.)
 
 ## Later
 
 Ideas, not started.
 
+- Tab Viewer and Note Detective (moved from Open now at the checkup, 24 November 2026):
+  - Segment 2c (Note Detective List | Tab) later (decided 23 November 2026). The song inside a .gp file (its audio
+    and sync points) as the alignment reference: not wanted (the user).
+  - Time signature, "Keep their time (move bar lines)" (segment 3; put here by the user, 24 November 2026): the notes
+    keep their place in the song and the bar lines move; needs new bars that the file does not have (repeats, fixes,
+    line breaks, bar numbers). "Fit into the bar" is built.
+  - The shared alignment test (the tab's first note on the song's first note, empty bars and a pickup, a random item
+    position) for Tab Viewer and Note Detective; the user checks Note Detective's import for the same error with
+    segment 2c (decided 23 November 2026).
+  - From the checkup of 24 November 2026 (larger changes, each a segment; ask first): note places as whole numbers
+    (48 per beat); a cached copy of the file's tab, so a fix rebuilds only its bar.
 - On hold (do NOT ask until the user brings it up):
   - SFX Drop: Find spots "does not work well with what I had in mind; work on it later" (13 November 2026): ask what
     they expect when they bring it up.
@@ -72,7 +218,121 @@ Ideas, not started.
     7 November 2026).
   - Session Prep: full run on a real client multitrack (Scan all, Apply, 1x Ctrl+Z, speed) ("skip until i say so,
     don't bring it up", 12 November 2026).
-- API name check (not built, the user's choice, 17 November 2026): a generator of the REAPER and ReaImGui 0.9.3
+- Note Detective, asked 23 November 2026 (feedback given, not approved): (1) find the tempo and set it, (2) line the
+  song up with the bars, (3) octaves / strings ("E" or "E (A 7)"), (4) a comfortable fingering for runs, (5) export as
+  MIDI / MusicXML. Trial 4: beats from the drums (attack curve of the log level, Fourier tempo, dynamic programming):
+  song 1 166.35 (by hand 166.56 / 166.23 / 165.26; it drifts: the grid by hand is up to 0.1 s off the drums), song 2
+  159.99 (true 160); bar 1 from the bass changes: right in 1 of 2 songs. Octave from the odd harmonics (1, 3, 5) of
+  the low octave against 2, 4, 6 (limit -6 dB, chosen afterwards): song 1 fret texts 16 / 18 (before 9 / 18), song 2
+  962 / 1002 (the YIN octave 98.6%). Fingering (dynamic programming; move 0.5, shift 3, string 0.3, high 0.2, open 1,
+  stretch 0.3; 4 frets per hand): 398 / 410 the same place as the score (3 settings tried on this 1 song).
+  The user's answers (23 November 2026): tunings vary, mostly standard (default: standard); a project can hold more
+  than 1 song (the tempo change stays inside the song; other songs keep their places); order: tempo and bars first.
+  Beat source: the Moises metronome track when the project has one (Finish already finds it), else the drums.
+  Step 1 approved 23 November 2026: a foldable "Tempo and bars" section above Find notes (Beats from, Find tempo,
+  Tempo with 1/2 and x2, Style, Bar 1 with 1 beat earlier / later and Play with click, Short bars + Add, Set tempo);
+  bar 1 = a new bar line (tempo and time signature marker at beat 1; the audio does not move); Style: the script
+  suggests (steady: 1 tempo; drifting: 1 tempo marker per bar), a dropdown changes it. Step 1 passed the user's
+  manual test 23 November 2026.
+  Step 2 approved 23 November 2026: octaves and strings. A Tuning dropdown next to Key, per song (project data key,
+  default Standard; Half step down, Drop D, Drop C, 5-string); the lowest octave keeps the plain name, a higher note
+  gets "(string fret)" on the lowest string with fret 7 or less ("E (A 7)", "G (D 5)"); doubtful octave = yellow;
+  Settings > Notes > "String and fret for high notes" (on by default). Built 23 November 2026 (41 tests; real songs:
+  song 1 54 / 57 octaves right, song 2 94%, half of the wrong ones yellow); not looked at on the screen: the user
+  decided 23 November 2026 to add more features first, then take the screenshots and test.
+  Step 3 approved 23 November 2026: fingering for runs. A row with 4 notes or more: every note gets its string and fret
+  from the fewest hand moves over the whole song ("F (D 3) - Eb (D 1) - C (A 3) - Bb (A 1)"); other rows: the step 2
+  rule. Settings > Notes > "Fingering for runs" (on by default). Built 23 November 2026 (43 tests; 398 / 410 the same
+  place as the Guitar Pro score of song 2), deployed, not committed, not looked at on the screen.
+  Step 4 approved 23 November 2026: MIDI export. "Export..." next to Finish: a MIDI item on a "Bass MIDI" track
+  (no plugin) and a .mid file in the project folder; the found notes, quantized to 16th notes (a Rhythm dropdown in
+  the Export window). MusicXML later, after a test in the user's Guitar Pro. Built 23 November 2026 (45 tests; the
+  .mid file of song 1 read back: the same 622 notes and times as the MIDI item), deployed, not committed.
+- Note Detective, bass player review (23 November 2026), decided the same day: Bass 1 yes with an off switch (a held
+  note or pumping 8ths: "C (8ths)"; after the repeated-notes fix), Bass 2 yes with an off switch (the beat of each
+  note in the Notes track text items), Bass 3 yes (a key change from a line), Bass 4 yes with an off switch (ghost
+  notes as "x"), Bass 5 yes (string names "E A D G" or "4 3 2 1" in Settings). No answer: Bass 6 (hammer-on /
+  pull-off), Bass 7 (a single note keeps the hand position of the run), Bass 8 (velocity from the level).
+  Details decided 23 November 2026: Bass 2 counts "1 e & a" ("1 F · 2& Eb · 3 C", Notes track items only); Bass 3 =
+  right-click a line > New key from here: a blue line "Key: D major" in the list and a marker "Key: D major" at Write
+  (saved in the project data); the 3 new switches on by default; order 3, 5, 2, then 4 and 1 (measured first).
+  Bass 3, 5, 2 built 23 November 2026 (52 tests, screenshots checked), deployed, not committed. Bass 4 (ghost notes
+  "x") and Bass 1 ("C (8ths)"): later (decided 23 November 2026).
+- Note Detective, decided 23 November 2026: (a) Export folder: Change... in the Export window, saved on this computer
+  (ExtState), empty = the project folder; (b) "Clear..." asks, then removes the list (with key changes) and what Note
+  Detective wrote (its markers, Notes track items, Bass MIDI item; 1 undo step); (c) Set tempo covers the whole bass
+  item: steady song tempo in whole bars before bar 1, back to the item start; (d) a Tab view (View: List / Tab):
+  the found notes as tab on the 16th grid with the fingering, click plays, the playing note blue, read only; (e) the
+  found notes are saved in the project data with the list (`note=` lines, about 10-20 KB per song). All 5 built
+  23 November 2026 (55 tests, screenshots checked), deployed, NOT COMMITTED.
+- Note Detective, decided 23 November 2026: slides ("/C", Settings > Notes > Slide mark: "/C", "sl. C", "C (slide)",
+  Off; no slides in the 2 songs to measure: generated notes and the user's ear) and the 8th / 16th notes: repeated
+  notes split on the 16th grid (only when the project has a tempo marker, e.g. after Set tempo; trial 6d song 2:
+  dip + 0.5 x rise >= 4 dB: 47% of the repeats found, 4% of held 16ths split wrongly), separate in the tab and the
+  export, and the label "C (8ths)" / "(16ths)" in the markers (Settings switch, on).
+- Note Detective, tab review decided 23 November 2026: yes to Dev 3 (right-click a note in the tab: Octave up / down,
+  Other string, Delete; saved in the notes), Dev 1 + Bass 3 (an unsure octave from the neighbouring notes; never a
+  clear pattern; measured first), Dev 2 (1 fingering for the list and the tab), Dev 5 (a tab hint without a tempo);
+  no to the time-aware fingering and open strings. Bug: notes 1 16th early in the tab (beat 1 on 4a). The 8th / 16th
+  labels leave the markers (the repeats stay for the tab and export only). Simple mode (Settings > Notes, ON by
+  default): the markers show only the notes and the string and fret of high notes; the window hides Tempo and bars,
+  View (Tab) and Export. Built 23 November 2026 (60 tests, screenshots checked), deployed, NOT COMMITTED. The octave
+  from the neighbours: built, measured (no gain: song 2 902 -> 902-903, song 1 the same), removed.
+- Note Detective, decided 23 November 2026: editing the tab while stopped (full mode): click an empty 16th on a
+  string, type the fret, Enter (the note lasts until the next one, at most 1 bar); click a note = select (blue box),
+  Left / Right = 1 16th, Up / Down = the same pitch on the next string, Delete, digits = a new fret; double-click =
+  play from it; right-click = the menu. The play position is a blue line (no note highlight); stopped: a grey line
+  at the edit cursor. "Update the list" makes the list again from the notes (asks; Undo). Built 23 November 2026
+  (62 tests, screenshots: the selected note, the dashed edit cursor, the blue play line), deployed, NOT COMMITTED.
+- Note Detective, decided 23 November 2026 (after trial 7 on song 2): (1) Settings > Notes > Split repeated notes (full
+  mode, on by default); (2) J in the tab joins the selected note with the note before (the same pitch); (3) "Import
+  tab..." next to Find notes (full mode): a .gp (Windows unpacks it) or MusicXML file, its bass track; bar 1 of the tab =
+  bar 1 of the song (Set tempo's bar 1, else the bar of the first found note); the repeats played out; the found notes
+  are replaced by the tab's notes, strings and frets, the tuning from the tab; Undo brings them back.
+- Note Detective, 23 November 2026: the .mid file works in Guitar Pro; 2 problems there (lessons): repeated 16ths as
+  1 note (open, see LESSONS.md) and notes 1 16th off (fixed: Export.delay, song 2 70.9% -> 86.6%). The slide mark:
+  a choice in Settings (decided 23 November 2026). Next (not approved yet): bar lengths and time signatures, pickup
+  notes, slides; repeated notes with the rhythm grid; each measured on the song 2 score (trial 6, scratchpad).
+- Note Detective, asked 23 November 2026 (steps 2-4 tested by the user the same day): more accurate detection. The user: a repeat can really differ, so never correct it
+  (only a hint); odd meters and a single 2/4 bar in the middle break the bars; a slide or pickup notes before bar 1 /
+  before a bar line. Ideas given (not approved): a measurement against the song 2 score first; any bar length and a
+  song time signature in Tempo and bars, with suggested places (the user confirms); pickup notes join the next bar;
+  slides as 1 note with a mark; an odd repeat yellow only when the detection was unsure too.
+- Guitar Pro direction (decided 23 November 2026 by the user). The workflow: a client asks for a song; stems or the
+  full song go in; the script finds the tempo (1 tempo with a click, else 1 marker per bar); it finds the bass notes
+  or the chords (the user's choice); a Guitar Pro file when there is one; any track of it in a Tab tab (guitar and
+  bass tunings); the list updated from the tab. The window: List and Tab as 2 tabs, a track dropdown in the Tab tab.
+  Later: the same in Chart Cue and in a standalone script (like Segue). The answers: (1) the tab goes on by bars (tab
+  bar 1 = Set tempo's bar 1, the song's tempo map wins) with a "Tab bar 1 = song bar N" control; (2) the guitar tab is
+  editable; (3) .gp5 and .gpx too (a plain-Lua unpacker: no PowerShell); (4) the project keeps the path of the .gp
+  file, and the import copies the file into the project folder; (5) 1 shared Guitar Pro file for the 3 scripts, the
+  standalone script first; (6) the markers of a guitar part = the chord names. Chords: from the Guitar Pro file first
+  (its names, else named from the notes); chord detection from audio later. Drums: a drum grid, last. Order: 0 commit,
+  1 the shared Guitar Pro part, 2 the window (2 tabs, the track dropdown, bars), 3 chords in the tab, 4 the list from
+  the tab, 5 chord detection, 6 drums, 7 the standalone script, then Chart Cue. The name "Note Detective" may change
+  (before the first release). The detection review of 23 November 2026 (not approved, for later): measure on the
+  user's finished marker projects; start at a pluck or at a pitch change (kick bleed); each layer off once.
+  Step 1 decided 23 November 2026: the standalone script is "Tab Viewer"; its 1st window = Open tab..., the file name,
+  1 line per track (name, instrument and strings, tuning, capo), the bars, time signature and tempo of the file;
+  segments 1a (.gp, the shared reader, the window), 1c before 1b (.gp5, .gp3, .gp4 first, then .gpx). The opened tab
+  is copied into a "Tabs" folder of the project folder (an unsaved project: the original path, the copy at the 1st
+  save).
+- Note Detective (1.0 built 23 November 2026). Later: Find tempo as in Tab Viewer (decided 24 November 2026): a
+  toolbar button instead of the "Tempo and bars" section, its menu = the tracks (a choice starts at once), then the fine
+  controls; a blue Set tempo next to it after a result. Later too: the tab's position line blue when stopped too, as in Tab Viewer
+  (no dashed line; decided 24 November 2026); the complete song as the source (doubtful lines), a large "Now / Next" view, larger text in the Notes track items, the 40 ms of a separated file.
+  The trials that its detection comes from: trial 1, 23 November 2026, on 1 finished project (86 markers made by hand), in plain Lua, no plugin: first note
+  right 83 / 86; about 125 of 131 marker notes found (the 6 missed ones are in fast fills); 10 s for 196 s of audio;
+  tuning measured right (441 Hz). Method: take accessor at 4000 Hz mono, YIN (window 200 samples, hop 40, lags 8-130,
+  threshold 0.15), pitch class only, the most common of 7 frames, notes of 80 ms or more. The octave is not reliable
+  (string / fret texts right 9 / 18: half of them an octave low). The user's answers (23 November 2026): about 1 marker
+  per bar; the same notes again at each section; note names correct for the key; the learner uses REAPER on a screen.
+  Trial 2 (same day, detector unchanged, a steady 160 BPM song with fast 8th notes, against a Guitar Pro score of
+  1040 notes): pitch right 96.4%, of these the octave right 98.6% (so the octave depends on the song); in the note
+  changes 31 missed, 8 extra, 24 wrong of 606; 16th notes 24 / 32; a fading low C is heard as its 3rd harmonic (G).
+  Trial 3 (same song, the complete mix): the YIN detector 62.5% of the score notes; with a 180 Hz low-pass 77.9%; a
+  harmonic sum (notes C1-B2, harmonics 1-4, 150 ms Hann window, weights 1 / 0.8 / 0.5 / 0.4) 90.0%, and 95.8% on the
+  isolated bass. So: isolated bass first, the mix only as a fallback. The separated file starts about 40 ms late.- API name check (not built, the user's choice, 17 November 2026): a generator of the REAPER and ReaImGui 0.9.3
   function names from the test REAPER, so the check reports a wrong function name. Build it only when such a bug
   appears (the `lessons` skill). No maintained ready-made definition files exist.
 - Coverage (17 November 2026, `test.ps1 -Coverage`): Chart Cue 27%, Segue 36%, Session Prep 45%, FX Link 51%,

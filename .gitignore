@@ -21,6 +21,8 @@ tests/result_fxlink.txt
 tests/result_sessionprep.txt
 tests/result_sfxdrop.txt
 tests/result_monomerge.txt
+tests/result_notedetective.txt
+tests/result_tabviewer.txt
 # coverage (test.ps1 -Coverage) and its temporary wrapper
 tests/coverage_*.txt
 tests/_cov_*.lua

@@ -11,6 +11,12 @@ Scripts for playing live and for studio work with REAPER, installed and updated 
 - **SFX Drop:** puts impacts, risers, drops and atmospheres from your library exactly on the beat of your backing tracks.
 -->
 - **Mono Merge:** joins 2 mono items (for example Kick In and Kick Out) into 1 stereo file.
+<!-- Note Detective: hidden until its release
+- **Note Detective:** finds the notes of a separated bass track and writes them as markers, for a player who learns the part in REAPER.
+-->
+<!-- Tab Viewer: hidden until its release
+- **Tab Viewer:** opens a Guitar Pro tab in your project and shows its guitar and bass tracks on the song's bars.
+-->
 
 # Chart Cue
 

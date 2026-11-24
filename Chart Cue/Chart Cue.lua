@@ -4108,7 +4108,7 @@ function UI.heading(ctx, text, help, scope, fold, big)
 end
 
 -- "+ Add" on a heading line, at its right (left of the "?"): a ghost button (as in FX Link) that opens a
--- dropdown menu (the template of all 4 scripts). Call it right after UI.heading. Returns the click, and the
+-- dropdown menu (the template of all the scripts). Call it right after UI.heading. Returns the click, and the
 -- position for the menu (below the button, right-aligned).
 function UI.heading_add(ctx, id, tip)
   local hr = R.heading_row
@@ -5275,12 +5275,7 @@ end
 
 -- Pair of actions: 2 equal halves of the control column. The pair stacks when the column is
 -- narrow or when a label does not fit in its half (so a button text never clips).
-function UI.button_pair(ctx, la, lb, kind, row_label)
-  return UI.button_pair2(ctx, la, kind, lb, kind, nil, nil, row_label)
-end
-
--- Like UI.button_pair, but each button has its own kind (e.g. blue "primary" next to red "danger")
--- and its own optional tooltip (ta, tb).
+-- Each button has its own kind (e.g. blue "primary" next to red "danger") and its own optional tooltip (ta, tb).
 function UI.button_pair2(ctx, la, ka, lb, kb, ta, tb, row_label)
   local cx, cw = UI.row_start(ctx, row_label)
   local w = math.max(UI.std_w(ctx, la), UI.std_w(ctx, lb)) -- the standard width (both the same)

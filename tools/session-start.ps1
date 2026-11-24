@@ -48,17 +48,19 @@ $plan = Join-Path $root "PLAN.md"
 if (Test-Path $plan) {
   $lines = Get-Content $plan -Encoding UTF8
   # "Open now": the numbered items; the manual tests start with "Manual test"
-  $sec = $false; $open = 0; $tests = 0; $planned = $false
+  $sec = $false; $open = 0; $tests = 0; $planned = $false; $per = [ordered]@{}
   foreach ($l in $lines) {
     if ($l -match '^## ') { $sec = ($l -match '^## Open now'); continue }
     if ($sec -and $l -match '^\d+\. ') {
       $open++
-      if ($l -match '^\d+\. Manual test') { $tests++ }
+      if ($l -match '^\d+\. Manual test \(([^,)]+)') { $tests++; $per[$Matches[1]] = 1 + [int]$per[$Matches[1]] }
       if ($l -match '`checkup`') { $planned = $true }
     }
   }
   $out += "  Open now: $open item(s), $tests of them manual tests (PLAN.md)"
-  if ($tests -gt 3) { $out += "  -> more than 3 open manual tests: no new feature until they are tested" }
+  foreach ($k in $per.Keys) {
+    if ($per[$k] -gt 3) { $out += "  -> $k has $($per[$k]) open manual tests: no new feature in $k until they are tested" }
+  }
   # the last checkup: "Last checkup: <day> <month> <year>" in the handoff; none or older than 30 days: a checkup
   $lc = $lines | Where-Object { $_ -match 'Last checkup:' } | Select-Object -First 1
   $m = [regex]::Match("$lc", 'Last checkup:\s*(\d{1,2} [A-Z][a-z]+ \d{4})')
