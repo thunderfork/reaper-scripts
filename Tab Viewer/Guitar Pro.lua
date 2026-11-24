@@ -566,17 +566,19 @@ function GP.read_old(data)
     p = at; skip(v >= 400 and 106 or 124)
     return name
   end
-  local function beat_effects()
+  local function beat_effects() -- (returns true for a vibrato of the beat: its notes get the mark)
     if v < 400 then
       local f = u8()
       if f & 0x20 ~= 0 then skip(5) end -- (slap or tremolo bar)
       if f & 0x40 ~= 0 then skip(2) end -- (stroke)
+      return f & 0x03 ~= 0
     else
       local f1, f2 = u8(), u8()
       if f1 & 0x20 ~= 0 then skip(1) end
       if f2 & 0x04 ~= 0 then bend() end -- (tremolo bar)
       if f1 & 0x40 ~= 0 then skip(2) end
       if f2 & 0x02 ~= 0 then skip(1) end -- (pick stroke)
+      return f1 & 0x03 ~= 0
     end
   end
   local function mix_table()
@@ -598,25 +600,36 @@ function GP.read_old(data)
     if v >= 500 then skip(1) end -- (wah)
     if v > 500 then ibstr(); ibstr() end -- (the RSE effect and its category)
   end
-  local function note_effects()
+  -- The playing marks of a note (GP.fx): ho (hammer-on / pull-off), slide (the flags of GP.SLIDE), bend, vib, pm, harm.
+  local SLIDE4 = { [-2] = 32, [-1] = 16, [1] = 1, [2] = 2, [3] = 4, [4] = 8 } -- (Guitar Pro 4: a value, not flags)
+  local function note_effects(fx)
     if v < 400 then
       local f = u8()
-      if f & 0x01 ~= 0 then bend() end
+      if f & 0x01 ~= 0 then bend(); fx.bend = true end
+      if f & 0x02 ~= 0 then fx.ho = true end
+      if f & 0x04 ~= 0 then fx.slide = 2 end
       if f & 0x10 ~= 0 then skip(4) end -- (grace note)
       return
     end
     local f1, f2 = u8(), u8()
-    if f1 & 0x01 ~= 0 then bend() end
+    if f1 & 0x01 ~= 0 then bend(); fx.bend = true end
+    if f1 & 0x02 ~= 0 then fx.ho = true end
     if f1 & 0x10 ~= 0 then skip(v >= 500 and 5 or 4) end
+    if f2 & 0x02 ~= 0 then fx.pm = true end
     if f2 & 0x04 ~= 0 then skip(1) end -- (tremolo picking)
-    if f2 & 0x08 ~= 0 then skip(1) end -- (slide)
+    if f2 & 0x08 ~= 0 then -- (slide)
+      local s = i8()
+      fx.slide = v >= 500 and (s & 0x3F) or SLIDE4[s]
+    end
     if f2 & 0x10 ~= 0 then -- (harmonic)
       local h = i8()
+      fx.harm = true
       if v >= 500 and h == 2 then skip(3) elseif v >= 500 and h == 3 then skip(1) end
     end
     if f2 & 0x20 ~= 0 then skip(2) end -- (trill)
+    if f2 & 0x40 ~= 0 then fx.vib = true end
   end
-  local function note(st, gs, pos, len, out)
+  local function note(st, gs, pos, len, out, vib)
     local f = u8()
     local typ = f & 0x20 ~= 0 and u8() or 1 -- (1 normal, 2 tied, 3 dead)
     if v < 500 and f & 0x01 ~= 0 then skip(2) end
@@ -627,13 +640,13 @@ function GP.read_old(data)
       if f & 0x01 ~= 0 then skip(8) end
       skip(1)
     end
-    if f & 0x08 ~= 0 then note_effects() end
+    local fx = { vib = vib or nil, dead = typ == 3 or nil }
+    if f & 0x08 ~= 0 then note_effects(fx) end
     if typ == 2 then fret = st.last[gs] or fret end -- (a tied note keeps the fret of the note before on its string)
     st.last[gs] = fret
-    if typ ~= 3 then
-      local s = st.n - gs + 1 -- (1 = the lowest string)
-      out[#out + 1] = { pos = pos, len = len, midi = (st.open[s] or 0) + fret, s = s, fret = fret, tie = typ == 2 }
-    end
+    local s = st.n - gs + 1 -- (1 = the lowest string)
+    out[#out + 1] = { pos = pos, len = len, midi = (st.open[s] or 0) + fret, s = s, fret = fret, tie = typ == 2,
+      fx = next(fx) and fx or nil }
   end
   local function beat(st, pos, out)
     local f = u8()
@@ -654,11 +667,11 @@ function GP.read_old(data)
       end
     end
     if f & 0x04 ~= 0 then ibstr() end -- (text)
-    if f & 0x08 ~= 0 then beat_effects() end
+    local vib = f & 0x08 ~= 0 and beat_effects()
     if f & 0x10 ~= 0 then mix_table() end
     local sf = u8()
     for gs = 1, st.n do
-      if sf & (1 << (7 - gs)) ~= 0 then note(st, gs, pos, len, out) end
+      if sf & (1 << (7 - gs)) ~= 0 then note(st, gs, pos, len, out, vib) end
     end
     if v >= 500 and i16() & 0x0800 ~= 0 then skip(1) end
     return empty and 0 or len
@@ -705,9 +718,25 @@ function GP.order(mbars)
   return order
 end
 
+-- The playing marks of a note of a .gp / .gpx file (its XML text): { ho (hammer-on / pull-off from it), slide (flags:
+-- 1 shift, 2 legato, 4 out down, 8 out up, 16 in from below, 32 in from above; the same in .gp5), bend, vib, pm
+-- (palm mute), harm (harmonic), dead }, or nil (none).
+local FX_PROPS = { ho = "HopoOrigin", bend = "Bended", pm = "PalmMuted", harm = "HarmonicType", dead = "Muted" }
+function GP.fx(n)
+  if not n:find("<Property", 1, true) and not n:find("<Vibrato>", 1, true) then return nil end
+  local fx
+  for k, name in pairs(FX_PROPS) do
+    if n:find('<Property name="' .. name .. '"', 1, true) then fx = fx or {}; fx[k] = true end
+  end
+  local sl = tonumber(n:match('<Property name="Slide">%s*<Flags>(%d+)</Flags>') or "")
+  if sl and sl > 0 then fx = fx or {}; fx.slide = sl end
+  if n:find("<Vibrato>", 1, true) then fx = fx or {}; fx.vib = true end
+  return fx
+end
+
 local NOTE_VALUE = { Zero = 0, Whole = 4, Half = 2, Quarter = 1, Eighth = 0.5, ["16th"] = 0.25, ["32nd"] = 0.125, ["64th"] = 0.0625 }
 -- The notes of 1 bar, voice after voice: { { pos (quarter notes from the start of the bar), len, midi, s (1 = the
--- lowest string), fret, tie } }; muted (dead) notes and grace notes are left out. bar: the text of a bar of a .gp
+-- lowest string), fret, tie, fx (GP.fx; a muted (dead) note: fx.dead) } }; grace notes are left out. bar: the text of a bar of a .gp
 -- file, or the list itself (an older file: GP.read_old makes it). open: the tuning of the track (a note with only its
 -- string and fret, as in Guitar Pro 6, gets its pitch from it). diag: the chord names of the track by id. The chord
 -- names of the bar: out.chords = { { pos, name } } (nil: none).
@@ -737,9 +766,9 @@ function GP.bar_notes(doc, bar, open, diag)
         local s = tonumber(n:match('<Property name="String">%s*<String>(%d+)</String>') or "")
         local fret = tonumber(n:match('<Property name="Fret">%s*<Fret>(%d+)</Fret>') or "")
         if not midi and s and fret and open and open[s + 1] then midi = open[s + 1] + fret end
-        if midi and not n:find('<Property name="Muted"', 1, true) then
+        if midi then
           out[#out + 1] = { pos = pos, len = len, midi = midi, s = s and s + 1, fret = fret,
-            tie = n:match('<Tie origin="%a+" destination="true"') ~= nil }
+            tie = n:match('<Tie origin="%a+" destination="true"') ~= nil, fx = GP.fx(n) }
         end
       end
       pos = pos + len
@@ -751,9 +780,10 @@ end
 -- The notes of a track in the order they play: { { q, len (quarter notes from the start of bar 1), midi, s (1 = the
 -- lowest string), fret } }; ties join the note before. A repeat bar mark (%, the SimileMark of a bar) plays the bar
 -- that played 1 bar before (Simple) or 2 bars before (FirstOfDouble, SecondOfDouble). Second value: the chord names
--- of the file in the order they play: { { q, name } }.
+-- of the file in the order they play: { { q, name } }. dead: keep the muted (dead) notes (the tab shows them as x;
+-- Note Detective leaves them out); each note has its playing marks (fx, as GP.fx) when it has any.
 local SIMILE_BACK = { Simple = 1, FirstOfDouble = 2, SecondOfDouble = 2 }
-function GP.notes(doc, track)
+function GP.notes(doc, track, dead)
   local out, q, last, played, seen, names = {}, 0, {}, {}, {}, {}
   local tr = doc.tracks[track]
   local open, diag = tr and tr.open, tr and tr.diag
@@ -767,9 +797,14 @@ function GP.notes(doc, track)
     for _, c in ipairs(bar and seen[bar] and seen[bar].chords or {}) do names[#names + 1] = { q = q + c.pos, name = c.name } end
     for _, x in ipairs(bar and seen[bar] or {}) do
       local prev = last[x.midi]
-      if x.tie and prev then prev.len = q + x.pos + x.len - prev.q -- (a tie: the note goes on)
+      if x.fx and x.fx.dead then
+        if dead then out[#out + 1] = { q = q + x.pos, len = x.len, midi = x.midi, s = x.s, fret = x.fret, fx = x.fx } end
+      elseif x.tie and prev then -- (a tie: the note goes on; ties: where its held parts start, for the tab)
+        prev.len = q + x.pos + x.len - prev.q
+        prev.ties = prev.ties or {}
+        prev.ties[#prev.ties + 1] = q + x.pos
       else
-        local n = { q = q + x.pos, len = x.len, midi = x.midi, s = x.s, fret = x.fret }
+        local n = { q = q + x.pos, len = x.len, midi = x.midi, s = x.s, fret = x.fret, fx = x.fx }
         out[#out + 1] = n
         last[x.midi] = n
       end
@@ -798,7 +833,7 @@ function GP.tab(doc, track)
       wb = k } -- (wb: the written bar; a repeat plays it again)
     q = q + len
   end
-  local notes, names = GP.notes(doc, track)
+  local notes, names = GP.notes(doc, track, true)
   -- the chords: by place (in 48ths of a quarter note), the file's name or the notes there
   local at, places = {}, {}
   local function place(qq)
@@ -812,7 +847,16 @@ function GP.tab(doc, track)
     while tab.bars[b + 1] and n.q >= tab.bars[b + 1].q0 - 1e-9 do b = b + 1 end
     local bar = tab.bars[b]
     if bar and n.s and n.fret then
-      bar.notes[#bar.notes + 1] = { q = n.q - bar.q0, len = n.len, s = n.s, fret = n.fret }
+      bar.notes[#bar.notes + 1] = { q = n.q - bar.q0, len = n.len, s = n.s, fret = n.fret, fx = n.fx }
+      for _, tq in ipairs(n.ties or {}) do -- (the held parts of a tied note: drawn "(4)", in the bar where they start)
+        local tb = b
+        while tab.bars[tb + 1] and tq >= tab.bars[tb + 1].q0 - 1e-9 do tb = tb + 1 end
+        local tbar = tab.bars[tb]
+        tbar.ties = tbar.ties or {}
+        tbar.ties[#tbar.ties + 1] = { q = tq - tbar.q0, s = n.s, fret = n.fret, tie = true }
+      end
+    end
+    if bar and n.s and n.fret and not (n.fx and n.fx.dead) then
       local x = place(n.q)
       x.midis[#x.midis + 1] = n.midi
       x.len = math.max(x.len or 0, n.len)

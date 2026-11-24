@@ -2,23 +2,16 @@
 
 ## Handoff (24 November 2026)
 
-- Branch `script/tab-viewer`. NOT COMMITTED (all deployed, all manual tests PASSED, Tab Viewer 31 tests, Note
-  Detective 72): the layout review of Tab Viewer (1 label column, Tab and Track together, chord names that do not
-  overlap, Start row, Remove / Undo all as submenus, min window 400 x 340); Find tempo as a toolbar button (menu: From
-  tab, the tracks; the fine controls in it; a blue Set tempo after a result; ExtState `tempo` removed); the editable
-  tab (segments 1-3: select, keys, the note box, new notes, saved `edit=`, Ctrl+Z / Undo in the window, Undo all
-  changes, green fixes, Settings > Tab > Mark my fixes); the click fix in Tab Viewer and Note Detective (lessons
-  24 November 2026). The user commits when they ask: then 1 commit per change (layout, Find tempo, editable tab,
-  click fix; LESSONS / PLAN / CLAUDE.md with them).
+- Branch `script/tab-viewer`. The earlier work is committed (2 commits, 24 November 2026). NOT COMMITTED (deployed,
+  Tab Viewer 32 tests): segment A, loop and speed (`Tabs.loop`, `Tabs.loop_off`, `Tabs.speed`). Manual test of
+  segment A: PASSED (24 November 2026). Also not committed: the Play / Stop icon in the toolbar (before the gear;
+  Space in the window plays / stops, decided 24 November 2026) and segment B, playing marks in the Guitar Pro look (Tab Viewer 33 tests). Both PASSED (24 November 2026).
+  Next: segment C1. Another tab or closing the window also ends the loop.
 - .gpx (segment 1b): done (the user, 24 November 2026).
 - Next (decided 24 November 2026), before the release of Tab Viewer, each a segment, ask before each:
-  - A: loop and speed. Shift+click a bar: loop from the selected note (or the edit cursor) to the end of that bar
-    (REAPER time selection + repeat; a blue band over the bar numbers); Shift+click the same place again or Escape
-    ends it (repeat as it was). Speed dropdown on the Start row (100 / 90 / 75 / 60 / 50%, REAPER's play rate,
-    pitch kept), back to 100% when Tab Viewer closes.
   - B: playing marks (h, p, / \, b, ~, PM, <12>, x dead notes; small and grey; Settings > Tab > Playing marks, on;
     fixed notes keep their marks, new notes none).
-  - C1: note lengths drawn under the tab (stems, 8ths / 16ths joined per beat, dots, rests, the "3" of triplets;
+  - C1 (also: remove the beat numbers under the tab, the user 24 November 2026): note lengths drawn under the tab (stems, 8ths / 16ths joined per beat, dots, rests, the "3" of triplets;
     Settings > Tab > Note lengths, on); a bar with a 32nd gets 2 columns per 16th (only that bar wider).
   - C2: the keys of a selected note (or in its box): + / - double / halve (32nd ... whole; never past the next note
     on its string or the bar end: a notice), "." dotted on / off (x1.5), "/" turns the beat of the note into a

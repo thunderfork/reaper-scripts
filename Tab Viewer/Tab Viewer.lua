@@ -83,6 +83,7 @@ CFG.TAB_PAD = 10               -- the space at the start of a bar
 CFG.TAB_LINE = 17              -- between 2 strings
 CFG.TAB_TOP, CFG.TAB_BOTTOM = 22, 30 -- above the top string (the bar number) and below the low one (the beats, a gap)
 CFG.TAB_CHORDS = 18            -- the row of chord names, under the bar numbers (only when the tab has chords)
+CFG.TAB_PM = 14                -- the P.M. row, above the bar numbers (only with palm mutes and Playing marks on)
 CFG.TAB_LEFT = 22              -- the string names at the left
 CFG.TAB_STRETCH = 1.6          -- the bars of a line stretch to the full width, at most this much
 
@@ -160,6 +161,7 @@ local S = {
   follow = true,     -- Settings > Tab > Follow playback
   chords = true,     -- Settings > Tab > Chord names
   marks = true,      -- Settings > Tab > Mark my fixes (the fixed and added notes green)
+  pmarks = true,     -- Settings > Tab > Playing marks (h, p, slides, b, ~, PM, harmonics; small and grey)
 }
 
 ---------------------------------------------------------------------------
@@ -222,6 +224,8 @@ function Util.load_settings()
   if v ~= "" then S.chords = (v ~= "0") end
   v = r.GetExtState(CFG.EXT, "marks")
   if v ~= "" then S.marks = (v ~= "0") end
+  v = r.GetExtState(CFG.EXT, "pmarks")
+  if v ~= "" then S.pmarks = (v ~= "0") end
   R.dock_req = S.dock -- the window opens where it was (floating or in its docker)
 end
 function Util.save_settings()
@@ -230,6 +234,7 @@ function Util.save_settings()
   r.SetExtState(CFG.EXT, "follow", S.follow and "1" or "0", true)
   r.SetExtState(CFG.EXT, "chords", S.chords and "1" or "0", true)
   r.SetExtState(CFG.EXT, "marks", S.marks and "1" or "0", true)
+  r.SetExtState(CFG.EXT, "pmarks", S.pmarks and "1" or "0", true)
   R.sdirty = false
 end
 
@@ -350,6 +355,7 @@ function Tabs.select(i)
     Tempo.cancel(); Tempo.click_back()
     R.tempo = nil
   end
+  if i ~= R.cur then Tabs.loop_off() end
   R.cur = i
   Tabs.load()
 end
@@ -437,18 +443,36 @@ function Tabs.build()
       local list = ed and ed[b.wb]
       if list then -- (an edited written bar: its notes instead of the file's, at each place it plays; mine: not
         -- in the file at that place, string and fret)
-        local file = {}
-        for _, n in ipairs(b.notes) do file[string.format("%.4f/%d/%d", n.q, n.s, n.fret)] = true end
+        -- a note at the place and string of a file note keeps its playing marks (a new or moved note: none)
+        local file, at = {}, {}
+        for _, n in ipairs(b.notes) do
+          file[string.format("%.4f/%d/%d", n.q, n.s, n.fret)] = true
+          at[string.format("%.4f/%d", n.q, n.s)] = n
+        end
         b.notes = {}
         for i, n in ipairs(list) do
+          local f = at[string.format("%.4f/%d", n.q, n.s)]
+          if f and f.fx and f.fx.dead and f.fret ~= n.fret then f = nil end -- (a dead note with a new fret: a note)
           b.notes[i] = { q = n.q, s = n.s, fret = n.fret, len = n.len,
-            mine = not file[string.format("%.4f/%d/%d", n.q, n.s, n.fret)] }
+            mine = not file[string.format("%.4f/%d/%d", n.q, n.s, n.fret)], fx = f and f.fx }
         end
       end
-      for _, nt in ipairs(b.notes) do nt.txt = tostring(nt.fret) end -- (the texts drawn every frame: made once)
+      for _, nt in ipairs(b.notes) do nt.txt = Tabs.note_txt(nt, S.pmarks) end -- (the texts drawn every frame: made once)
     end
+    Tabs.link(tab, S.pmarks)
+    tab.pm_row = S.pmarks and tab.pm[1] ~= nil
+    tab.top = tab.top + (tab.pm_row and CFG.TAB_PM or 0)
+    tab.lh = tab.lh + (tab.pm_row and CFG.TAB_PM or 0)
     Tabs.relabel()
   end
+end
+
+-- The text of a note: its fret; a dead note "x" (always: it is a sound); with the playing marks a harmonic "<12>".
+function Tabs.note_txt(nt, marks)
+  local fx = nt.fx
+  if fx and fx.dead then return "x" end
+  if marks and fx and fx.harm then return "<" .. nt.fret .. ">" end
+  return tostring(nt.fret)
 end
 
 -- TAB EDITS (only while stopped; the file and its copy never change): the changed written bars of the track in the
@@ -467,6 +491,44 @@ local function copy_notes(list)
   return out
 end
 local function by_place(a, b) return a.q < b.q - 1e-9 or (math.abs(a.q - b.q) < 1e-9 and a.s < b.s) end
+-- The links of the tab, after its notes and edits: each note and held part (b.ties, from GP.tab) gets nx / nxb, the
+-- next item on its string and its bar (an arc, a slide line). A held part gets its text "(4)", or off: a note is at
+-- its place, or the note before it on its string has another fret (a fix). marks: tab.pm = the runs of palm-muted
+-- places { b0, q0, b1, q1 } (a place with 1 palm-muted note continues the run; held parts do not end it).
+function Tabs.link(tab, marks)
+  local last, run = {}, nil
+  tab.pm = {}
+  local function place(bi, q, pm)
+    if not pm then run = nil
+    elseif run then run.b1, run.q1 = bi, q
+    else run = { b0 = bi, q0 = q, b1 = bi, q1 = q }; tab.pm[#tab.pm + 1] = run end
+  end
+  for bi, b in ipairs(tab.bars) do
+    local items = {}
+    for _, nt in ipairs(b.notes) do nt.nx, nt.nxb = nil, nil; items[#items + 1] = nt end
+    for _, t in ipairs(b.ties or {}) do
+      t.nx, t.nxb, t.off = nil, nil, nil
+      if Tabs.note_at(tab, bi, t.q, t.s) then t.off = true else items[#items + 1] = t end
+    end
+    table.sort(items, by_place)
+    local gq, gpm
+    for _, it in ipairs(items) do
+      local p = last[it.s]
+      if it.tie then
+        if p and p.fret == it.fret then it.txt = "(" .. it.fret .. ")" else it.off = true end
+      end
+      if not it.off then
+        if p then p.nx, p.nxb = it, bi end
+        last[it.s] = it
+      end
+      if marks and not it.tie then
+        if gq and math.abs(it.q - gq) > 1e-9 then place(bi, gq, gpm); gpm = false end
+        gq, gpm = it.q, gpm or (it.fx ~= nil and it.fx.pm == true)
+      end
+    end
+    if gq then place(bi, gq, gpm) end
+  end
+end
 -- The note of bar bi at q (its 16th) on string s: its index, or nil.
 function Tabs.note_at(tab, bi, q, s)
   for i, nt in ipairs(tab.bars[bi].notes) do
@@ -487,6 +549,51 @@ function Tabs.click(tab, bi, q, s, double, last)
   if same and i then box = { txt = tab.bars[bi].notes[i].txt, focus = true }
   elseif same and s then box = { bi = bi, q = q, s = s, txt = "", focus = true, new = true } end
   return sel, box, nq, here
+end
+-- The start of a loop to the end of bar bi (Shift+click): from the place sbi / sq (the selected note or the edit
+-- cursor); none there, or after bar bi: from the start of bar bi. Returns the bar and the quarter notes into it.
+function Tabs.loop_start(bi, sbi, sq)
+  if not sbi or sbi > bi then return bi, 0 end
+  return sbi, sq or 0
+end
+-- Shift+click on bar bi: a loop (REAPER's time selection and repeat) from the selected note or the edit cursor to the
+-- end of bar bi; the same bar again: the loop ends (decided 24 November 2026).
+function Tabs.loop(bi)
+  local tab = R.tab
+  if not (tab and tab.bars[bi]) then return end
+  if R.loop and R.loop.bi == bi then Tabs.loop_off(); return end
+  local sbi, sq
+  local sel = R.tsel
+  if sel and tab.bars[sel.bi] then sbi, sq = sel.bi, sel.q else sbi, sq = Tabs.place_of(r.GetCursorPositionEx(R.proj)) end
+  sbi, sq = Tabs.loop_start(bi, sbi, sq)
+  local old = R.loop or { rep = r.GetSetRepeatEx(R.proj, -1), ts = { r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false) } }
+  R.loop = { bi = bi, sbi = sbi, sq = sq, rep = old.rep, ts = old.ts }
+  r.GetSet_LoopTimeRange2(R.proj, true, true, Tabs.time_of(sbi, sq), Tabs.time_of(bi, tab.bars[bi].len), false)
+  r.GetSetRepeatEx(R.proj, 1)
+end
+-- Ends the loop: repeat and the time selection as they were before it.
+function Tabs.loop_off()
+  local l = R.loop
+  if not l then return end
+  R.loop = nil
+  if not r.ValidatePtr(R.proj, "ReaProject*") then return end
+  r.GetSetRepeatEx(R.proj, l.rep)
+  r.GetSet_LoopTimeRange2(R.proj, true, true, l.ts[1], l.ts[2], false)
+end
+local SPEEDS = { 1, 0.9, 0.75, 0.6, 0.5 }
+local SPEED_TXT = { "100%", "90%", "75%", "60%", "50%" }
+-- The speed of the song (REAPER's play rate; pitch kept: the preserve pitch option on while slower, as it was at
+-- 100%). Tab Viewer sets 100% again when it closes.
+function Tabs.speed(rate)
+  if rate ~= 1 and not R.pitch_old then
+    R.pitch_old = r.GetToggleCommandStateEx(0, 40671) -- Transport: Toggle preserve pitch when changing playrate
+    if R.pitch_old == 0 then r.Main_OnCommand(40671, 0) end
+  end
+  r.CSurf_OnPlayRateChange(rate)
+  if rate == 1 and R.pitch_old then
+    if R.pitch_old == 0 and r.GetToggleCommandStateEx(0, 40671) == 1 then r.Main_OnCommand(40671, 0) end
+    R.pitch_old = nil
+  end
 end
 -- Changes the notes of the written bar of bar bi: fn(list) changes a copy (false: no change). 1 Undo step.
 function Tabs.edit(bi, fn)
@@ -977,7 +1084,8 @@ local ctx = ImGui.CreateContext(CFG.TITLE)
 local font = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE)
 local bold = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE, ImGui.FontFlags_Bold())
 local head_font = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE_BOLD, ImGui.FontFlags_Bold())
-ImGui.Attach(ctx, font); ImGui.Attach(ctx, bold); ImGui.Attach(ctx, head_font)
+local small_font = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE - 3) -- (the playing marks of the tab)
+ImGui.Attach(ctx, font); ImGui.Attach(ctx, bold); ImGui.Attach(ctx, head_font); ImGui.Attach(ctx, small_font)
 
 local HELP_INTRO = "Tab Viewer shows a Guitar Pro tab in your project: pick a track, read its tab, and click to hear "
   .. "the song from there."
@@ -989,11 +1097,13 @@ Several songs in 1 project, each in its own region? Put the edit cursor in a reg
 
 The Track dropdown has every track of the tab: its name, how many strings it has and its tuning ("Standard", "Drop D", "Eb Standard", or the notes of the open strings), and the capo. Point at a track for its open strings. Tab Viewer starts with the bass (else a guitar), and the project remembers your choice.]] },
   { title = "Reading the tab", text = [[
-The lines are the strings, the lowest at the bottom; the numbers on them are the frets. Notes 1 above the other are played together (a chord). The chord names above the tab come from the tab; where it has none, Tab Viewer names the chord from its notes (off: Settings > Tab > Chord names). The repeats of the tab are played out, so the bars follow the song from start to end.
+The lines are the strings, the lowest at the bottom; the numbers on them are the frets. Notes 1 above the other are played together (a chord). The chord names above the tab come from the tab; where it has none, Tab Viewer names the chord from its notes (off: Settings > Tab > Chord names). The grey marks show how to play a note, as in Guitar Pro: an arc to the next note is a hammer-on or pull-off, a sloped line a slide, a curved arrow a bend, a wave a vibrato, "P.M. - - -|" a palm mute, <12> a harmonic (off: Settings > Tab > Playing marks). A note in brackets, (4), is held on from the note before it (an arc joins them). An x is a dead note (muted, no pitch). The repeats of the tab are played out, so the bars follow the song from start to end.
 
 Want to hear a part? Click it: the song plays from there. While it plays, a blue line shows where the song is, and the tab scrolls along (off: Settings > Tab > Follow playback). Stopped, the blue line shows the edit cursor.
 
 Does the tab start later than the song (an intro, a count-in)? Set Start (the bar of the song where bar 1 of the tab plays) with < and > (hold for faster). The bar numbers above the tab are then the song's. A tab in a region counts the bars from the first bar of its region ("bar ... of the region"). From that bar on, the tab follows the beats of your project, so set the tempo of the song first.
+
+Want to practise a hard part? Shift+click a bar: the song loops from the selected note (or the edit cursor) to the end of that bar (a blue band over the bar numbers). Shift+click that bar again, or press Escape, to stop. Too fast? The speed dropdown on the Start row slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
 
 A drum track? Drums come in a later version (a drum grid).]] },
   { title = "Find tempo", text = [[
@@ -1211,8 +1321,15 @@ function UI.draw_toolbar()
     UI.tip(tip)
     return hit, ix + IW / 2, iy + H / 2, hov
   end
+  -- play / stop (a click on the tab takes the focus from REAPER, so its Space does not reach REAPER)
+  local playing = r.GetPlayStateEx(R.proj) & 1 == 1
+  local hit, cx, cy, hov = icon("##play", x0 + aw - 3 * IW, playing and "Stop (Space)" or "Play (Space)")
+  local pc = hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN
+  if playing then ImGui.DrawList_AddRectFilled(dl, cx - 5, cy - 5, cx + 5, cy + 5, pc, 1)
+  else ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 6, cx - 4, cy + 6, cx + 6, cy, pc) end
+  if hit then UI.play_stop() end
   -- the gear: the Settings menu drops down below it; a click on the gear while it is open closes it
-  local hit, cx, cy, hov = icon("##gear", x0 + aw - 2 * IW, "Settings")
+  hit, cx, cy, hov = icon("##gear", x0 + aw - 2 * IW, "Settings")
   if ImGui.IsItemActivated(ctx) then R.gear_toggle = R.settings_open end
   local gx1, gy1 = ImGui.GetItemRectMax(ctx)
   if R.settings_open and not hov then ImGui.DrawList_AddRectFilled(dl, gx1 - IW, gy1 - H, gx1, gy1, COL.BTN_HOVER, 6) end
@@ -1260,6 +1377,9 @@ function UI.draw_settings()
   ch, S.marks = UI.toggle_line("Mark my fixes", S.marks,
     "On (the default): the notes you fixed or added are green, so you see what is yours and what is from the file.")
   if ch then R.sdirty = true end
+  ch, S.pmarks = UI.toggle_line("Playing marks", S.pmarks,
+    "On (the default): how to play each note, as in Guitar Pro (arcs for hammer-ons and pull-offs, lines for slides, bend arrows, vibrato waves, a P.M. row for palm mutes, <12> harmonics). Held notes (4) and dead notes x always show.")
+  if ch then R.sdirty = true; Tabs.build() end
   head(SETTINGS_SECTIONS[3][1])
   local docked = R.docked == true
   if UI.toggle_line("Dock in REAPER's docker", docked, "On: Tab Viewer is in a REAPER docker. Off: a floating window.") then
@@ -1391,6 +1511,18 @@ function UI.draw_tracks()
       if UI.button("Undo", UI.btn_w("Undo"), nil, "ghost") then Tabs.undo(-1) end
       UI.tip("Takes back your last fix of the tab (Ctrl+Z in this window does the same).")
     end
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+    local rate, sk = r.Master_GetPlayRate(R.proj), 1
+    for i, v in ipairs(SPEEDS) do if math.abs(v - rate) < 1e-3 then sk = i end end
+    local cur = math.abs(SPEEDS[sk] - rate) < 1e-3 and SPEED_TXT[sk] or string.format("%d%%", math.floor(rate * 100 + 0.5))
+    ImGui.SetNextItemWidth(ctx, UI.btn_w("100%") + ImGui.GetFrameHeight(ctx))
+    if ImGui.BeginCombo(ctx, "##speed", cur) then
+      for i, v in ipairs(SPEEDS) do
+        if ImGui.Selectable(ctx, SPEED_TXT[i], v == rate) then Tabs.speed(v) end
+      end
+      ImGui.EndCombo(ctx)
+    end
+    UI.tip("Too fast to play along? Slow the song down (the pitch stays). Back to 100% when Tab Viewer closes. Loop a part: Shift+click a bar (Escape or Shift+click it again: stop).")
     if R.tempo_warn then
       ImGui.PushTextWrapPos(ctx, 0)
       ImGui.TextColored(ctx, COL.YELLOW, R.tempo_warn)
@@ -1551,6 +1683,67 @@ function UI.centre(dl, cx, cy, col, txt)
   ImGui.DrawList_AddText(dl, cx - tw / 2, cy - th / 2 + 1, col, txt)
   return tw, th
 end
+-- The marks of 1 item of the tab (a note or a held part) at x, y (its text tw x th), as Guitar Pro draws them: an
+-- arc to the next item on its string (a tie always; a hammer-on / pull-off), a sloped line to it (a slide), a short
+-- line into or out of the note, a bend arrow, a vibrato wave (all but the tie: Settings > Tab > Playing marks).
+-- The next item on another line: a short stub to the right.
+function UI.tab_marks(dl, tab, ln, ox, y0, it, x, y, tw, th)
+  local fx, nx = S.pmarks and it.fx or nil, it.nx
+  local col, sl = COL.TEXT_DIM, fx and fx.slide or 0
+  if nx and (nx.tie or (fx and (fx.ho or sl & 3 ~= 0))) then
+    local x2, half
+    if it.nxb >= ln.first and it.nxb <= ln.last then
+      local nb = tab.bars[it.nxb]
+      x2 = ox + CFG.TAB_LEFT + nb.x + nb.pad + (nx.q * 4 + 0.5) * nb.sw
+      half = (ImGui.CalcTextSize(ctx, nx.txt or "")) / 2 + 2
+    else x2, half = x + tw / 2 + 16, 0 end
+    if nx.tie or (fx and fx.ho) then
+      local ya = y - th / 2 - 1
+      ImGui.DrawList_AddBezierQuadratic(dl, x, ya, (x + x2) / 2, ya - 8, x2, ya, col, 1, 0)
+    else
+      local d = nx.fret > it.fret and 3 or -3 -- (up: the line rises)
+      ImGui.DrawList_AddLine(dl, x + tw / 2 + 2, y + d, x2 - half, y - d, col, 1)
+    end
+  end
+  if not fx then return end
+  local xl, xr = x - tw / 2 - 2, x + tw / 2 + 2
+  if sl & 16 ~= 0 then ImGui.DrawList_AddLine(dl, xl - 8, y + 3, xl, y - 3, col, 1)     -- (in from below)
+  elseif sl & 32 ~= 0 then ImGui.DrawList_AddLine(dl, xl - 8, y - 3, xl, y + 3, col, 1) end -- (in from above)
+  if sl & 3 == 0 and sl & 8 ~= 0 then ImGui.DrawList_AddLine(dl, xr, y + 3, xr + 8, y - 3, col, 1) -- (out up)
+  elseif sl & 3 == 0 and sl & 4 ~= 0 then ImGui.DrawList_AddLine(dl, xr, y - 3, xr + 8, y + 3, col, 1) end
+  if fx.bend then -- (a curved arrow up)
+    ImGui.DrawList_AddBezierQuadratic(dl, xr, y, xr + 7, y, xr + 7, y - 10, col, 1, 0)
+    ImGui.DrawList_AddTriangleFilled(dl, xr + 4, y - 9, xr + 10, y - 9, xr + 7, y - 14, col)
+  end
+  if fx.vib then -- (a short wave above the note)
+    local yv = y - th / 2 - 4
+    for k = 0, 3 do
+      ImGui.DrawList_AddLine(dl, x - 6 + k * 3, yv + (k % 2 == 0 and 1.5 or -1.5), x - 3 + k * 3, yv + (k % 2 == 0 and -1.5 or 1.5), col, 1)
+    end
+  end
+end
+-- The P.M. row of 1 line of the tab (top: its y): "P.M." where a run of palm mutes starts, dashes over it, "|" at its
+-- end (a run that goes on to the next line: no text there, no end).
+function UI.tab_pm(dl, tab, ln, ox, top)
+  local function px(bi, q) local b = tab.bars[bi]; return ox + CFG.TAB_LEFT + b.x + b.pad + (q * 4 + 0.5) * b.sw end
+  ImGui.PushFont(ctx, small_font)
+  for _, run in ipairs(tab.pm) do
+    if run.b0 <= ln.last and run.b1 >= ln.first then
+      local x0 = run.b0 >= ln.first and px(run.b0, run.q0) - 6 or ox + CFG.TAB_LEFT
+      local lb = tab.bars[ln.last]
+      local x1 = run.b1 <= ln.last and px(run.b1, run.q1) + 4 or ox + CFG.TAB_LEFT + lb.x + lb.pad + lb.n16 * lb.sw
+      local ym = top + 6
+      if run.b0 >= ln.first then
+        ImGui.DrawList_AddText(dl, x0, top, COL.TEXT_DIM, "P.M.")
+        x0 = x0 + (ImGui.CalcTextSize(ctx, "P.M.")) + 3
+        x1 = math.max(x1, x0 + 6) -- (1 short note: still a dash and its end)
+      end
+      for dx = x0, x1 - 3, 6 do ImGui.DrawList_AddLine(dl, dx, ym, math.min(dx + 3, x1), ym, COL.TEXT_DIM, 1) end
+      if run.b1 <= ln.last then ImGui.DrawList_AddLine(dl, x1, ym - 3, x1, ym + 3, COL.TEXT_DIM, 1) end
+    end
+  end
+  ImGui.PopFont(ctx)
+end
 local BEAT_TXT = {}
 for k = 1, 32 do BEAT_TXT[k] = tostring(k) end
 -- The tab of the chosen track (only the lines in view are drawn); a click plays the song from there.
@@ -1576,7 +1769,8 @@ function UI.draw_tab(h)
   if ImGui.IsItemClicked(ctx, 0) then
     local mx, my = ImGui.GetMousePos(ctx)
     local bi, q, s = Tabs.hit(tab, mx - ox, my - oy)
-    if bi and playing then UI.play_from(Tabs.time_of(bi, q))
+    if bi and ImGui.GetKeyMods(ctx) == ImGui.Mod_Shift() then Tabs.loop(bi)
+    elseif bi and playing then UI.play_from(Tabs.time_of(bi, q))
     elseif bi then -- (stopped: Tabs.click)
       local nq
       R.tsel, R.tbox, nq, R.tlast = Tabs.click(tab, bi, q, s, ImGui.IsMouseDoubleClicked(ctx, 0), R.tlast)
@@ -1587,8 +1781,17 @@ function UI.draw_tab(h)
   local dl, fs = ImGui.GetWindowDrawList(ctx), ImGui.GetFontSize(ctx)
   local sy = ImGui.GetScrollY(ctx)
   local lh = tab.lh
+  local lp = R.loop
+  local pmh = tab.pm_row and CFG.TAB_PM or 0
   for _, ln in ipairs(tab.lines) do
     if ln.y + lh >= sy and ln.y <= sy + h then
+      if lp and lp.sbi <= ln.last and lp.bi >= ln.first then -- (the loop: a blue band over the bar numbers)
+        local b0, b1 = tab.bars[math.max(lp.sbi, ln.first)], tab.bars[math.min(lp.bi, ln.last)]
+        local x0 = ox + CFG.TAB_LEFT + b0.x + (lp.sbi >= ln.first and b0.pad + lp.sq * 4 * b0.sw or 0)
+        local x1 = ox + CFG.TAB_LEFT + b1.x + b1.pad + b1.n16 * b1.sw
+        ImGui.DrawList_AddRectFilled(dl, x0, oy + ln.y + pmh + 1, x1, oy + ln.y + pmh + fs + 3, COL.HEADER_ACTIVE, 3)
+      end
+      if tab.pm_row then UI.tab_pm(dl, tab, ln, ox, oy + ln.y + 1) end
       local y0 = oy + ln.y + tab.top -- (the top string)
       local yb = y0 + (tab.nstr - 1) * CFG.TAB_LINE
       local lb = tab.bars[ln.last]
@@ -1603,10 +1806,10 @@ function UI.draw_tab(h)
         local b = tab.bars[bi]
         local bx = ox + CFG.TAB_LEFT + b.x
         ImGui.DrawList_AddLine(dl, bx, y0, bx, yb, COL.TEXT_DIM, 1)
-        ImGui.DrawList_AddText(dl, bx + 2, oy + ln.y + 2, COL.TEXT_DIM, b.label)
+        ImGui.DrawList_AddText(dl, bx + 2, oy + ln.y + pmh + 2, COL.TEXT_DIM, b.label)
         if tab.chord_row then -- (the chord names, under the bar numbers, over their chord: Tabs.place_chords)
           for _, c in ipairs(b.chords) do
-            ImGui.DrawList_AddText(dl, ox + CFG.TAB_LEFT + c.x, oy + ln.y + CFG.TAB_TOP - 2, COL.TEXT_BRIGHT, c.txt)
+            ImGui.DrawList_AddText(dl, ox + CFG.TAB_LEFT + c.x, oy + ln.y + pmh + CFG.TAB_TOP - 2, COL.TEXT_BRIGHT, c.txt)
           end
         end
         for beat = 0, b.n16 // 4 - 1 do -- (the beats, under the middle of their 16th)
@@ -1620,6 +1823,16 @@ function UI.draw_tab(h)
             ImGui.DrawList_AddRect(dl, x - tw / 2 - 4, y - th / 2 - 1, x + tw / 2 + 4, y + th / 2 + 1, COL.ACCENT, 3, 0, 2)
           end
           UI.centre(dl, x, y, (nt.mine and S.marks) and COL.GREEN or COL.TEXT_MAIN, nt.txt)
+          UI.tab_marks(dl, tab, ln, ox, y0, nt, x, y, tw, th)
+        end
+        for _, t in ipairs(b.ties or {}) do -- (the held parts of tied notes: "(4)", an arc from the note before)
+          if not t.off then
+            local x, y = bx + b.pad + (t.q * 4 + 0.5) * b.sw, y0 + (tab.nstr - t.s) * CFG.TAB_LINE
+            local tw, th = ImGui.CalcTextSize(ctx, t.txt)
+            ImGui.DrawList_AddRectFilled(dl, x - tw / 2 - 2, y - th / 2, x + tw / 2 + 2, y + th / 2, COL.PANEL_BG)
+            UI.centre(dl, x, y, COL.TEXT_MAIN, t.txt)
+            UI.tab_marks(dl, tab, ln, ox, y0, t, x, y, tw, th)
+          end
         end
       end
     end
@@ -1713,7 +1926,9 @@ function UI.tab_keys()
   elseif ImGui.IsKeyChordPressed(ctx, C | SH | ImGui.Key_Z()) or ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Y()) then
     if not Tabs.undo(1) then r.Main_OnCommand(40030, 0) end -- Edit: Redo
     return
-  elseif ImGui.GetKeyMods(ctx) ~= ImGui.Mod_None() then return end
+  elseif ImGui.GetKeyMods(ctx) ~= ImGui.Mod_None() then return
+  elseif R.loop and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape(), false) then Tabs.loop_off(); return
+  elseif ImGui.IsKeyPressed(ctx, ImGui.Key_Space(), false) then UI.play_stop(); return end
   local bi, i = UI.tab_sel()
   if not bi then return end
   local tab = R.tab
@@ -1754,6 +1969,10 @@ end
 function UI.play_from(t)
   r.SetEditCurPos2(R.proj, t, true, true)
   if r.GetPlayStateEx(R.proj) & 1 == 0 then r.OnPlayButtonEx(R.proj) end
+end
+-- Play / stop (the toolbar icon, Space in the window).
+function UI.play_stop()
+  if r.GetPlayStateEx(R.proj) & 1 == 1 then r.OnStopButtonEx(R.proj) else r.OnPlayButtonEx(R.proj) end
 end
 
 function UI.draw_panel_menu()
@@ -1899,6 +2118,8 @@ local function on_exit()
   Tempo.cancel()
   Tempo.untry()
   Tempo.click_back()
+  Tabs.loop_off()
+  if R.pitch_old or r.Master_GetPlayRate(R.proj) ~= 1 then Tabs.speed(1) end
   if R.pdirty then Project.save() end
   if R.sdirty then Util.save_settings() end
   local _, _, sec, cmd = r.get_action_context()

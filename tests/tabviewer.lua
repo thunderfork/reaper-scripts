@@ -580,15 +580,62 @@ test("the tab of a track: the bars as they play (repeats, 3/4), the notes on the
   local t = {}
   for k, b in ipairs(tab.bars) do
     local n = {}
-    for j, x in ipairs(b.notes) do n[j] = string.format("%.2f s%d f%d", x.q, x.s, x.fret) end
+    for j, x in ipairs(b.notes) do n[j] = string.format("%.2f s%d %s", x.q, x.s, C.Tabs.note_txt(x, true)) end
     t[k] = string.format("%.0f+%.0f/%d: %s", b.q0, b.len, b.n16, table.concat(n, ", "))
   end
-  eq(table.concat(t, " | "), "0+4/16: 0.00 s2 f3 | 4+4/16: 0.00 s3 f2 | 8+4/16: 0.00 s3 f2 | 12+3/12: 0.00 s4 f0",
-    "bar 2 twice, the 3/4 bar 12 16ths")
+  eq(table.concat(t, " | "), "0+4/16: 0.00 s2 3 | 4+4/16: 0.00 s3 2, 1.50 s3 x | 8+4/16: 0.00 s3 2, 1.50 s3 x | 12+3/12: 0.00 s4 0",
+    "bar 2 twice, the 3/4 bar 12 16ths, the muted note an x")
+  eq(#GP.notes(GP.parse(D.GPIF), 1), 4, "Note Detective: no dead notes (bar 2 plays twice)")
   write(tmp .. "\\src\\guitar.gp5", old_file(510))
   local g = GP.tab(GP.read(tmp .. "\\src\\guitar.gp5"), 1) -- (the guitar of the older file test: Drop D)
   eq(table.concat(g.names, " "), "D A D G B E", "the highest E is not the lowest name: capital")
   eq(table.concat(GP.tab({ tracks = { { open = { 40, 45, 50, 55, 59, 64 } } }, mbars = {} }, 1).names, " "), "E A D G B e")
+end)
+
+test("playing marks: read from a .gp note; the links to the next note, held parts (4), P.M. runs; x; <12>; a fix keeps them", function()
+  local fx = GP.fx('<Note><Property name="HopoOrigin"><Enable /></Property><Property name="Slide"><Flags>2</Flags></Property>'
+    .. '<Property name="PalmMuted"><Enable /></Property><Vibrato>Slight</Vibrato></Note>')
+  ok(fx and fx.ho and fx.pm and fx.vib and fx.slide == 2 and not fx.bend, "read")
+  eq(GP.fx("<Note><Property name=\"Fret\"><Fret>3</Fret></Property></Note>"), nil, "no marks")
+  -- Tabs.link: a hammer-on to the next note on its string, a held part "(7)", a held part whose note was fixed: off
+  local n1, n2, n3 = { q = 0, s = 1, fret = 5, fx = { ho = true, pm = true } }, { q = 0.5, s = 1, fret = 7, fx = { pm = true } },
+    { q = 1, s = 2, fret = 3 }
+  local t1, t2 = { q = 1.5, s = 1, fret = 7, tie = true }, { q = 2, s = 2, fret = 9, tie = true }
+  local m1 = { q = 0, s = 1, fret = 2, fx = { pm = true } }
+  local lt = { bars = { { notes = { n1, n2, n3 }, ties = { t1, t2 } }, { notes = { m1 } } } }
+  Tabs.link(lt, true)
+  ok(n1.nx == n2 and n2.nx == t1 and t1.nx == m1 and t1.nxb == 2, "the next item on each string, across the bar line")
+  eq(t1.txt, "(7)"); eq(t2.off, true, "a held part of another fret: not drawn")
+  local runs = {}
+  for k, ru in ipairs(lt.pm) do runs[k] = string.format("%d:%.1f-%d:%.1f", ru.b0, ru.q0, ru.b1, ru.q1) end
+  eq(table.concat(runs, " "), "1:0.0-1:0.5 2:0.0-2:0.0", "P.M. runs: a place without it ends the run")
+  Tabs.link(lt, false)
+  eq(#lt.pm, 0, "Playing marks off: no P.M. row")
+  local g0 = GP.tab(GP.read(tmp .. "\\src\\guitar.gp5"), 1)
+  local nt = 0
+  for _, b in ipairs(g0.bars) do nt = nt + #(b.ties or {}) end
+  ok(nt > 0, "the .gp5 test song: held parts of its tied notes")
+  eq(C.Tabs.note_txt({ fret = 12, fx = { harm = true } }, true), "<12>")
+  eq(C.Tabs.note_txt({ fret = 12, fx = { harm = true } }, false), "12", "marks off: the fret")
+  eq(C.Tabs.note_txt({ fret = 0, fx = { dead = true } }, false), "x", "a dead note: always x")
+  -- the older files: the test song has effects (bends, slides, hammer-ons): read with the notes, not skipped wrongly
+  local g = GP.tab(GP.read(tmp .. "\\src\\guitar.gp5"), 1)
+  local n = 0
+  for _, b in ipairs(g.bars) do for _, x in ipairs(b.notes) do if x.fx then n = n + 1 end end end
+  ok(n > 0, "the .gp5 test song: notes with marks")
+  -- a fixed note (a new fret, same place and string) keeps its marks; Tabs.build
+  Tabs.open(src)
+  local b2 = R.tab.bars[2]
+  local i = Tabs.note_at(R.tab, 2, 1.5, b2.notes[2].s)
+  eq(b2.notes[i].txt, "x", "the dead note")
+  Tabs.set_fret(2, 1, 4) -- (the other note of that bar: the bar is now an edit)
+  b2 = R.tab.bars[2]
+  eq(b2.notes[2].txt, "x", "the dead note of an edited bar stays x")
+  Tabs.set_fret(2, 2, 7)
+  eq(R.tab.bars[2].notes[2].txt, "7", "a dead note with a fret: a note")
+  Tabs.undo_all()
+  R.undo = {} -- (the next tests count the Undo steps)
+  Project.save()
 end)
 
 test("the Track dropdown: its texts, the default track (bass), the choice saved in the project", function()
@@ -772,6 +819,42 @@ test("bar 1 of the tab = bar N of the song: the times, the play position, the ba
   Tabs.open(src)
   eq(Tabs.cur().bar, nil, "another Open tab: bar 1")
   Project.save()
+end)
+
+test("loop (Shift+click a bar): from the selected note or the edit cursor to the bar end; again: off, as before; speed", function()
+  Tabs.open(src) -- (bar 1 of the tab at 0 s, 120 BPM: a 4/4 bar is 2 s)
+  local proj = R.proj
+  eq(select(2, Tabs.loop_start(2, nil, nil)), 0, "no start place: the bar start")
+  eq(Tabs.loop_start(2, 3, 1), 2, "a start after the bar: the bar start")
+  r.GetSet_LoopTimeRange2(proj, true, true, 0, 0, false)
+  r.GetSetRepeatEx(proj, 0)
+  R.tsel = { bi = 1, q = 1, s = 1 }
+  Tabs.loop(2)
+  local a, b = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
+  near(a, 0.5, 1e-9, "from the selected note"); near(b, 4, 1e-9, "to the end of bar 2")
+  eq(r.GetSetRepeatEx(proj, -1), 1, "repeat on")
+  Tabs.loop(3) -- (another bar: the loop moves; the state before stays the one before the 1st loop)
+  a, b = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
+  near(b, 6, 1e-9, "to the end of bar 3")
+  Tabs.loop(3)
+  eq(R.loop, nil, "the same bar again: off")
+  eq(r.GetSetRepeatEx(proj, -1), 0, "repeat as it was")
+  a, b = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
+  eq(a, b, "no time selection, as before")
+  R.tsel = nil
+  r.SetEditCurPos2(proj, 9, false, false) -- (after bar 2: the loop of bar 2 is the whole bar)
+  Tabs.loop(2)
+  a = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
+  near(a, 2, 1e-9, "the edit cursor after the bar: the bar start")
+  Tabs.select(nil)
+  eq(R.loop, nil, "another tab: the loop ends")
+  Tabs.select(1)
+  Tabs.speed(0.75)
+  near(r.Master_GetPlayRate(proj), 0.75, 1e-6, "75%")
+  eq(r.GetToggleCommandStateEx(0, 40671), 1, "the pitch stays")
+  Tabs.speed(1)
+  near(r.Master_GetPlayRate(proj), 1, 1e-6, "100%")
+  eq(R.pitch_old, nil)
 end)
 
 test("the yellow line when the project's tempo is not the tab's (the tab would drift)", function()

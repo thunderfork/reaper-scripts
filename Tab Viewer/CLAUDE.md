@@ -131,7 +131,26 @@ dropdown, the tab on the bars of the song (step 2).
   all fixes of this track; 1 Undo step: `R.undo` entry with `all`), `nt.mine` (a note of an edited bar that the file
   does not have at that place, string and fret) drawn green when `S.marks` (Settings > Tab > Mark my fixes, ExtState
   `marks`, on).
-- `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks` (`tempo` removed 24 November 2026 with
+- Loop and speed (segment A, 24 November 2026): Shift+click a bar = `Tabs.loop(bi)` (REAPER's time selection from
+  the selected note or the edit cursor, `Tabs.loop_start`, to the bar end; repeat on; `R.loop` keeps the repeat and
+  time selection from before); the same bar again, Escape, another tab or closing: `Tabs.loop_off` (both as before).
+  The band: `COL.HEADER_ACTIVE` over the bar numbers. The speed dropdown on the Start row: `Tabs.speed` (the master
+  play rate; action 40671 preserve pitch on while slower, `R.pitch_old`); 100% again at close. Nothing saved.
+- Playing marks (segment B, 24 November 2026): `GP.fx` (.gp / .gpx note properties HopoOrigin, Slide flags, Bended,
+  PalmMuted, HarmonicType, Muted, `<Vibrato>`) and `note_effects` of `GP.read_old` (.gp3/4/5 flags; the .gp4 slide is a
+  value: `SLIDE4`; a beat vibrato goes to its notes) give each note `fx`. Dead notes are kept (`fx.dead`): only
+  `GP.notes(doc, track, true)` (GP.tab) returns them, so Note Detective gets none. The Guitar Pro look (decided
+  24 November 2026, from the user's screenshots): `GP.notes` gives each tied note `ties` (where its held parts start);
+  `GP.tab` puts them in `bar.ties` ({ q, s, fret, tie }), drawn "(4)", not selectable. `Tabs.link` (after the edits):
+  `nx` / `nxb` = the next item on the string; a held part is off when a note is at its place or the note before has
+  another fret; `tab.pm` = the palm-mute runs. `UI.tab_marks`: an arc to `nx` (a tie always; a hammer-on / pull-off),
+  a sloped line (a slide), stubs (slide in / out), a bend arrow, a vibrato wave; `UI.tab_pm`: the "P.M. - - -|" row
+  above the bar numbers (`CFG.TAB_PM`, only with palm mutes). `Tabs.note_txt`: x (always), `<12>` with the marks. A
+  note of an edited bar at a file note's place and string keeps its marks (a dead note with a new fret: none).
+  `S.pmarks` (Settings > Tab > Playing marks, ExtState `pmarks`, on). The beat numbers under the tab go with segment
+  C (the rhythm marks replace them; the user, 24 November 2026). Checked only with made-up data: the first real tab is
+  the check.
+- `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks` (`tempo` removed 24 November 2026 with
   the Tempo and bars section).
 - `R.rows` / `R.info` (`Tabs.rows`): the Track dropdown texts and the grey line under it, made once per tab. Another project tab:
   its tab is read again (0.3 s for a 2 MB score; no cache: decided in the simplify round, 23 November 2026).
