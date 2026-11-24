@@ -78,12 +78,19 @@ CFG.UNDO_MAX = 100             -- the tab edits that Undo (Ctrl+Z in the window)
 CFG.FRETS = 24                 -- the highest fret of an edited note
 CFG.TAB_DIGITS = 0.8           -- s: 2 digits typed within this time are 1 fret ("1" "2" = 12), as in Note Detective
 -- the tab: the same sizes as Note Detective's
-CFG.TAB_SLOT = 12              -- the width of a 16th note
+CFG.TAB_SLOT = 12              -- the width of a 16th note (at least; a crowded bar gets more: Tabs.min_slot)
+CFG.TAB_GAP = 5                -- the least space between 2 texts on 1 string
 CFG.TAB_PAD = 10               -- the space at the start of a bar
 CFG.TAB_LINE = 17              -- between 2 strings
-CFG.TAB_TOP, CFG.TAB_BOTTOM = 22, 30 -- above the top string (the bar number) and below the low one (the beats, a gap)
+CFG.TAB_TOP, CFG.TAB_BOTTOM = 22, 14 -- above the top string (the bar number) and below the low one (a gap)
+CFG.TAB_RHYTHM = 30            -- the note lengths under the tab (stems, beams, rests, the "3"; Settings > Tab > Note lengths)
+CFG.TAB_STEM = 16              -- the length of a stem
 CFG.TAB_CHORDS = 18            -- the row of chord names, under the bar numbers (only when the tab has chords)
 CFG.TAB_PM = 14                -- the P.M. row, above the bar numbers (only with palm mutes and Playing marks on)
+CFG.TAB_SECTION = 18           -- the row of the section names ("Solo"), at the very top (only when the tab has them)
+CFG.TAB_ENDING = 16           -- the row of the endings 1. 2., at the top (only repeats as written, with endings)
+CFG.TAB_REPEAT = 10            -- the room of a repeat sign |: or :| in its bar
+CFG.TAB_SIG = 14               -- the room of a time signature at the start of its bar
 CFG.TAB_LEFT = 22              -- the string names at the left
 CFG.TAB_STRETCH = 1.6          -- the bars of a line stretch to the full width, at most this much
 
@@ -128,6 +135,7 @@ local Tempo -- Tempo and bars (TP.new, below)
 local R = {
   proj = nil, projfn = "", state_cc = -1, plast_txt = "", pdirty = false, sdirty = false,
   frames = 0,
+  playing = false,   -- the song plays (read once per frame at the start of the loop)
   err = nil,         -- why the tab of the project could not be read (a line in the window)
   doc = nil,         -- the opened tab (GP.read)
   rows = nil,        -- the tracks of the Track dropdown: { name, what, tun, tip, label } (Tabs.show; with the tab)
@@ -143,7 +151,6 @@ local R = {
   tbox = nil,        -- the open note box ({ txt, focus, new; a new note: bi, q, s }; UI.tab_box)
   tempo = nil,       -- Tempo and bars (the shared Tempo.lua): the found tempo, bar 1, a running Find tempo
   tsrc = nil,        -- the tracks of the Find tempo menu (cached until the project changes); tsrc_sel: the chosen track
-  tsrc_audio = false, -- Find tempo listens to a track (true) or takes the tab's tempo (false: From tab)
   cur = nil,         -- the tab in the window (its index in P.tabs; nil: none)
   docs = {},         -- the tabs read in this project, by full path (cleared at a project switch)
   rgns = nil,        -- the regions of the project: { by = { [guid] = region }, list } (Tabs.regions)
@@ -153,7 +160,8 @@ local R = {
 -- tabs: the tabs of the project, each { file, rgn, track, bar }. file: the tab (relative to the project folder:
 -- "Tabs/song.gp"; else a full path); rgn: the GUID of its region (nil: no region, it starts from the song's bar 1);
 -- track: the chosen track (nil: the default, Tabs.default_track); bar: the bar where bar 1 of the tab starts,
--- counted from the first bar of its region (nil: 1)
+-- counted from the first bar of its region (nil: 1); lines: your line breaks (the written bars that start a line,
+-- Tabs.set_lines; nil: automatic lines)
 local P = { tabs = {} }
 local S = {
   light = false,     -- Light theme (Dark is the default)
@@ -162,6 +170,8 @@ local S = {
   chords = true,     -- Settings > Tab > Chord names
   marks = true,      -- Settings > Tab > Mark my fixes (the fixed and added notes green)
   pmarks = true,     -- Settings > Tab > Playing marks (h, p, slides, b, ~, PM, harmonics; small and grey)
+  lengths = true,    -- Settings > Tab > Note lengths (the rhythm under the tab)
+  written = true,    -- Settings > Tab > Repeats as written (|: :|, 1. 2. as in Guitar Pro; off: played out)
 }
 
 ---------------------------------------------------------------------------
@@ -212,29 +222,26 @@ end
 -- UTIL
 ---------------------------------------------------------------------------
 function Util.now() return r.time_precise() end
+-- A place or length read from the project text (6 digits): exact again on the grid of 1/48 quarter note (16ths,
+-- 32nds, triplets), so 0.333333 is 1/3 and counts as the same place as a new note there.
+function Util.grid(x)
+  local g = math.floor(x * 48 + 0.5) / 48
+  return math.abs(g - x) < 1e-4 and g or x
+end
 
+local ON_OFF = { "light", "follow", "chords", "marks", "pmarks", "lengths", "written" } -- (the switches of S: "1" / "0")
 function Util.load_settings()
-  local v = r.GetExtState(CFG.EXT, "light")
-  if v ~= "" then S.light = (v == "1") end
-  v = r.GetExtState(CFG.EXT, "dock")
+  for _, k in ipairs(ON_OFF) do
+    local v = r.GetExtState(CFG.EXT, k)
+    if v ~= "" then S[k] = (v ~= "0") end
+  end
+  local v = r.GetExtState(CFG.EXT, "dock")
   if v ~= "" then S.dock = math.floor(tonumber(v) or 0) end
-  v = r.GetExtState(CFG.EXT, "follow")
-  if v ~= "" then S.follow = (v ~= "0") end
-  v = r.GetExtState(CFG.EXT, "chords")
-  if v ~= "" then S.chords = (v ~= "0") end
-  v = r.GetExtState(CFG.EXT, "marks")
-  if v ~= "" then S.marks = (v ~= "0") end
-  v = r.GetExtState(CFG.EXT, "pmarks")
-  if v ~= "" then S.pmarks = (v ~= "0") end
   R.dock_req = S.dock -- the window opens where it was (floating or in its docker)
 end
 function Util.save_settings()
-  r.SetExtState(CFG.EXT, "light", S.light and "1" or "0", true)
+  for _, k in ipairs(ON_OFF) do r.SetExtState(CFG.EXT, k, S[k] and "1" or "0", true) end
   r.SetExtState(CFG.EXT, "dock", tostring(S.dock), true)
-  r.SetExtState(CFG.EXT, "follow", S.follow and "1" or "0", true)
-  r.SetExtState(CFG.EXT, "chords", S.chords and "1" or "0", true)
-  r.SetExtState(CFG.EXT, "marks", S.marks and "1" or "0", true)
-  r.SetExtState(CFG.EXT, "pmarks", S.pmarks and "1" or "0", true)
   R.sdirty = false
 end
 
@@ -355,9 +362,13 @@ function Tabs.select(i)
     Tempo.cancel(); Tempo.click_back()
     R.tempo = nil
   end
-  if i ~= R.cur then Tabs.loop_off() end
+  if i ~= R.cur then Tabs.loop_off(); Tabs.unselect() end
   R.cur = i
   Tabs.load()
+end
+-- No selected note or place, no box, no digits typed (another tab, track or project: they were for the one before).
+function Tabs.unselect()
+  R.tsel, R.tbox, R.tnum, R.tlast = nil, nil, nil, nil
 end
 -- Links the tab in the window to region g (nil: no region); its start bar is the region's first bar again.
 function Tabs.set_region(g)
@@ -422,6 +433,7 @@ end
 function Tabs.pick(k)
   local e = Tabs.cur()
   local p = k ~= Tabs.default_track(R.doc) and k or nil
+  if k ~= Tabs.track() then Tabs.unselect() end
   if e and p ~= e.track then e.track, R.pdirty = p, true end
   Tabs.build()
 end
@@ -438,6 +450,7 @@ function Tabs.build()
     tab.chord_row = S.chords and tab.has_chords
     tab.top = CFG.TAB_TOP + (tab.chord_row and CFG.TAB_CHORDS or 0) -- (above the top string)
     tab.lh = (tab.nstr - 1) * CFG.TAB_LINE + tab.top + CFG.TAB_BOTTOM -- (the height of 1 line of the tab)
+      + (S.lengths and CFG.TAB_RHYTHM or 0)
     local ed = Tabs.edits()
     for _, b in ipairs(tab.bars) do
       local list = ed and ed[b.wb]
@@ -453,18 +466,143 @@ function Tabs.build()
         for i, n in ipairs(list) do
           local f = at[string.format("%.4f/%d", n.q, n.s)]
           if f and f.fx and f.fx.dead and f.fret ~= n.fret then f = nil end -- (a dead note with a new fret: a note)
-          b.notes[i] = { q = n.q, s = n.s, fret = n.fret, len = n.len,
+          b.notes[i] = { q = n.q, s = n.s, fret = n.fret, len = n.len, w = n.len,
             mine = not file[string.format("%.4f/%d/%d", n.q, n.s, n.fret)], fx = f and f.fx }
         end
       end
       for _, nt in ipairs(b.notes) do nt.txt = Tabs.note_txt(nt, S.pmarks) end -- (the texts drawn every frame: made once)
     end
     Tabs.link(tab, S.pmarks)
+    for _, b in ipairs(tab.bars) do Tabs.rhythm(b) end -- (also when not drawn: the grid of the clicks, Tabs.step)
     tab.pm_row = S.pmarks and tab.pm[1] ~= nil
-    tab.top = tab.top + (tab.pm_row and CFG.TAB_PM or 0)
-    tab.lh = tab.lh + (tab.pm_row and CFG.TAB_PM or 0)
+    local e = Tabs.cur()
+    Tabs.view(tab, R.doc.mbars, S.written, e and e.lines, GP.timeline(R.doc))
+    local head = (tab.pm_row and CFG.TAB_PM or 0) + (tab.end_row and CFG.TAB_ENDING or 0)
+      + (tab.sec_row and CFG.TAB_SECTION or 0)
+    tab.top, tab.lh = tab.top + head, tab.lh + head
     Tabs.relabel()
   end
+end
+-- The bars that the window shows (tab.view, in order) and their repeat signs. written (Settings > Tab > Repeats as
+-- written, decided 24 November 2026): each written bar once, at its first pass (the later passes draw on it:
+-- b.shown), with |: :| (b.rs, b.re), "x3" (b.times) and the endings "1." (b.alt; alt_first / alt_last: the ends of
+-- its bracket), tab.end_row; else every bar as it plays. Each bar gets vp: its place in the view (a later pass: the
+-- place of its first pass) and drawn = false when it is a later pass. mbars: the master bars of the file (GP).
+function Tabs.view(tab, mbars, written, lines, tl)
+  tab.view, tab.end_row, tab.starts = {}, false, nil
+  local first = {}
+  for bi, b in ipairs(tab.bars) do
+    if not written then b.shown = bi; tab.view[bi] = bi
+    elseif first[b.wb] then b.shown, b.drawn = first[b.wb], false
+    else first[b.wb] = bi; b.shown = bi end
+  end
+  if written then
+    for wb = 1, #mbars do if first[wb] then tab.view[#tab.view + 1] = first[wb] end end
+  end
+  for vp, bi in ipairs(tab.view) do tab.bars[bi].vp = vp end
+  for _, b in ipairs(tab.bars) do b.vp = tab.bars[b.shown].vp end
+  tab.sec_row = false -- (the section names of the file over their bar: "Solo"; a row at the top when there are any)
+  for _, bi in ipairs(tab.view) do
+    local b = tab.bars[bi]
+    b.section = mbars[b.wb] and mbars[b.wb].section
+    if b.section then tab.sec_row = true end
+  end
+  -- the marks of the score, as in Guitar Pro (24 November 2026): the time signature where it changes (b.sig, the 1st
+  -- bar too), the tempo where it changes (b.tempo = { { q, txt "= 120" } }, in the top row: tl = GP.timeline, the
+  -- bars as they play), the final double bar on the last bar (b.final; not after a :|)
+  local num, den, bpm
+  for vp, bi in ipairs(tab.view) do
+    local b, mb = tab.bars[bi], mbars[tab.bars[bi].wb] or {}
+    b.sig, b.tempo, b.final = nil, nil, nil
+    if mb.num and (mb.num ~= num or mb.den ~= den) then b.sig = { tostring(mb.num), tostring(mb.den) } end
+    num, den = mb.num, mb.den
+    for _, x in ipairs(tl and tl[bi] and tl[bi].tempos or {}) do
+      local v = math.floor(x.bpm + 0.5)
+      if v ~= bpm then
+        b.tempo = b.tempo or {}
+        b.tempo[#b.tempo + 1] = { q = x.q, txt = "= " .. v }
+        bpm, tab.sec_row = v, true
+      end
+    end
+    if vp == #tab.view then b.final = true end
+  end
+  if not written then return end
+  if lines then -- (your line breaks: the written bars that start a line -> the places of the view; lines: the saved list)
+    local set = {}
+    for _, wb in ipairs(lines) do set[wb] = true end
+    tab.starts = {}
+    for vp, bi in ipairs(tab.view) do if set[tab.bars[bi].wb] then tab.starts[vp] = true end end
+  end
+  local prev
+  for _, bi in ipairs(tab.view) do
+    local b, mb = tab.bars[bi], mbars[tab.bars[bi].wb]
+    b.rs, b.re = mb.rstart or nil, mb.rend or nil
+    b.times = mb.rend and mb.count > 2 and ("x" .. mb.count) or nil
+    if mb.alt then
+      local list = {}
+      for p = 1, 8 do if mb.alt[p] then list[#list + 1] = p .. "." end end
+      b.alt, tab.end_row = table.concat(list, " "), true
+      b.alt_first = not (prev and prev.alt == b.alt)
+      if prev and prev.alt and prev.alt ~= b.alt then prev.alt_last = true end
+    elseif prev and prev.alt then prev.alt_last = true end
+    prev = b
+  end
+  if prev and prev.alt then prev.alt_last = true end
+end
+-- The line starts after a line key on bar bi (laid-out tab: tab.lines), as in Guitar Pro: op "&" pulls the first
+-- bar of the next line up into the line of bi; op "enter" (Ctrl+Enter) moves the bars after bi to the start of the
+-- next line (a new line when there is none). Returns the sorted places of the view that start a line (not 1), or
+-- nil and why.
+function Tabs.line_starts(tab, bi, op)
+  local b = tab.bars[bi]
+  local li = b and b.ln
+  if not (li and tab.lines[li]) then return nil, "Select a note in the tab first." end
+  local list = {}
+  for k = 2, #tab.lines do list[#list + 1] = tab.lines[k].first end
+  local nxt = tab.lines[li + 1]
+  if op == "&" then
+    if not nxt then return nil, "This is the last line: no bar below to pull up." end
+    local k = li -- (list[li] = the start of line li + 1)
+    if nxt.first + 1 > nxt.last then table.remove(list, k) -- (a line of 1 bar: it joins this line)
+    else list[k] = nxt.first + 1 end
+  else
+    local ln = tab.lines[li]
+    if b.vp >= ln.last then return nil, "This bar ends its line already." end
+    if nxt then list[li] = b.vp + 1 else list[#list + 1] = b.vp + 1 end
+  end
+  return list
+end
+-- A line key on bar bi (Tabs.line_starts): your line breaks of the tab in the window, saved in the project (lines=,
+-- as written bars), 1 Undo step. nil, why when it can not.
+function Tabs.set_lines(bi, op)
+  local tab, e = R.tab, Tabs.cur()
+  if not (tab and e and S.written) then return nil, "Line breaks work with Settings > Tab > Repeats as written on." end
+  local list, why = Tabs.line_starts(tab, bi, op)
+  if not list then return nil, why end
+  local wbs = {}
+  for k, vp in ipairs(list) do wbs[k] = tab.bars[tab.view[vp]].wb end
+  Tabs.undo_push({ e = e, lines = e.lines or false })
+  e.lines, R.pdirty = wbs, true
+  Tabs.build()
+  return true
+end
+-- Tab dropdown > Reset line breaks: the automatic lines again (1 Undo step).
+function Tabs.reset_lines()
+  local e = Tabs.cur()
+  if not (e and e.lines) then return false end
+  Tabs.undo_push({ e = e, lines = e.lines })
+  e.lines, R.pdirty = nil, true
+  Tabs.build()
+  return true
+end
+-- The pass of the written bar of bar bi that is nearest to the bar pbi that plays (nil: the first pass, bi).
+function Tabs.pass_near(tab, bi, pbi)
+  if not pbi then return bi end
+  local wb, best = tab.bars[bi].wb, bi
+  for k, b in ipairs(tab.bars) do
+    if b.wb == wb and math.abs(k - pbi) < math.abs(best - pbi) then best = k end
+  end
+  return best
 end
 
 -- The text of a note: its fret; a dead note "x" (always: it is a sound); with the playing marks a harmonic "<12>".
@@ -473,6 +611,97 @@ function Tabs.note_txt(nt, marks)
   if fx and fx.dead then return "x" end
   if marks and fx and fx.harm then return "<" .. nt.fret .. ">" end
   return tostring(nt.fret)
+end
+
+-- NOTE LENGTHS (Settings > Tab > Note lengths): the rhythm under the tab, as Guitar Pro draws it.
+-- The note values: { len (quarter notes), base (1 whole, 2 half, 4 quarter ... 32), dot, trip }, the longest first.
+local VALUES = {}
+for _, base in ipairs({ 1, 2, 4, 8, 16, 32 }) do
+  local l = 4 / base
+  VALUES[#VALUES + 1] = { len = l, base = base }
+  VALUES[#VALUES + 1] = { len = l * 1.5, base = base, dot = true }
+  VALUES[#VALUES + 1] = { len = l * 2 / 3, base = base, trip = true }
+end
+table.sort(VALUES, function(a, b) return a.len > b.len end)
+-- The value of a length: the one that fits exactly, else the longest that is shorter (at least a 32nd triplet).
+function Tabs.value(len)
+  for _, v in ipairs(VALUES) do if math.abs(v.len - len) < 1e-3 then return v end end
+  for _, v in ipairs(VALUES) do if v.len < len then return v end end
+  return VALUES[#VALUES]
+end
+-- The value of a rest of len at from: its exact value (dotted only from a beat), else the longest plain value that
+-- starts on its own grid (a rest after a 32nd: 32nd, 16th, 8th to the beat).
+function Tabs.rest_value(from, len)
+  local onbeat = math.abs(from - math.floor(from + 1e-6)) < 1e-6
+  for _, v in ipairs(VALUES) do
+    if v.len <= len + 1e-6 then
+      if math.abs(v.len - len) < 1e-3 and (onbeat or not v.dot) then return v end
+      local g = from / v.len
+      if not v.dot and not v.trip and math.abs(g - math.floor(g + 0.5)) < 1e-3 then return v end
+    end
+  end
+  return Tabs.value(len)
+end
+-- The rhythm of 1 bar (after its edits and Tabs.link): b.rh = { { q, len, v (Tabs.value), rest, join (a beam to the
+-- next one), flag (an 8th or shorter alone in its beat), t3 (the index of the last of its triplet group: the "3") } };
+-- b.fine: a 32nd (or a 16th triplet) in the bar (2 columns per 16th). The notes that start together are 1 event
+-- (the shortest written length, cut at the next event); the gaps are rests, split at the beats.
+function Tabs.rhythm(b)
+  local at, keys = {}, {}
+  local function add(q, w)
+    local k = math.floor(q * 48 + 0.5)
+    if at[k] then at[k].w = math.min(at[k].w, w) else at[k] = { q = q, w = w }; keys[#keys + 1] = k end
+  end
+  for _, n in ipairs(b.notes) do add(n.q, n.w or n.len or 0.25) end
+  for _, t in ipairs(b.ties or {}) do if not t.off then add(t.q, t.w or 0.25) end end
+  table.sort(keys)
+  local out = {}
+  local function rest(from, to)
+    while to - from > 1 / 12 - 1e-3 do -- (a shorter gap: no rest; the shortest one is a 32nd triplet)
+      local stop = math.floor(from + 1e-6) + 1 -- (a rest ends at the next beat; from a beat: at the last whole beat)
+      if math.abs(from - math.floor(from + 1e-6)) < 1e-6 and math.floor(to + 1e-6) > from + 1e-6 then stop = math.floor(to + 1e-6) end
+      local v = Tabs.rest_value(from, math.min(stop, to) - from)
+      out[#out + 1] = { q = from, len = v.len, v = v, rest = true }
+      from = from + v.len
+    end
+  end
+  local pos = 0
+  for i, k in ipairs(keys) do
+    local e = at[k]
+    rest(pos, e.q)
+    local len = math.max(0, math.min(e.w, (keys[i + 1] and at[keys[i + 1]].q or b.len) - e.q))
+    out[#out + 1] = { q = e.q, len = len, v = Tabs.value(len) }
+    pos = math.max(pos, e.q + len)
+  end
+  rest(pos, b.len)
+  local fine = false
+  for _, e in ipairs(out) do fine = fine or e.v.base >= 32 or (e.v.base == 16 and e.v.trip == true) end
+  local i = 1
+  while out[i] do -- (the beams: the 8ths and shorter in 1 beat, no rest between)
+    local e = out[i]
+    local j = i
+    if not e.rest and e.v.base >= 8 then
+      local beat = math.floor(e.q + 1e-6)
+      while out[j + 1] and not out[j + 1].rest and out[j + 1].v.base >= 8 and math.floor(out[j + 1].q + 1e-6) == beat do
+        out[j].join = true
+        j = j + 1
+      end
+      e.flag = j == i or nil
+    end
+    i = j + 1
+  end
+  local start, acc, unit -- (the triplets: a group ends at a whole beat (16th triplets: half a beat); mixed values
+  -- such as a quarter and an 8th triplet in 1 beat are 1 group)
+  for k, e in ipairs(out) do
+    if not e.v.trip then start = nil
+    else
+      if not start then start, acc, unit = k, 0, e.len <= 1 / 6 + 1e-3 and 0.5 or 1 end
+      acc = acc + e.len
+      local g = acc / unit
+      if acc >= unit - 1e-3 and math.abs(g - math.floor(g + 0.5)) < 1e-3 then out[start].t3, start = k, nil end
+    end
+  end
+  b.rh, b.fine = out, fine
 end
 
 -- TAB EDITS (only while stopped; the file and its copy never change): the changed written bars of the track in the
@@ -487,7 +716,7 @@ function Tabs.edits(make)
 end
 local function copy_notes(list)
   local out = {}
-  for i, n in ipairs(list) do out[i] = { q = n.q, s = n.s, fret = n.fret, len = n.len } end
+  for i, n in ipairs(list) do out[i] = { q = n.q, s = n.s, fret = n.fret, len = n.w or n.len } end -- (len: written)
   return out
 end
 local function by_place(a, b) return a.q < b.q - 1e-9 or (math.abs(a.q - b.q) < 1e-9 and a.s < b.s) end
@@ -532,8 +761,39 @@ end
 -- The note of bar bi at q (its 16th) on string s: its index, or nil.
 function Tabs.note_at(tab, bi, q, s)
   for i, nt in ipairs(tab.bars[bi].notes) do
-    if nt.s == s and math.floor(nt.q * 4 + 1e-6) == math.floor(q * 4 + 1e-6) then return i end
+    if nt.s == s and math.abs(nt.q - q) < 1e-3 then return i end
   end
+end
+-- The grid of the beat at q of bar b (quarter notes): 1/3 (a triplet beat: a note on an 8th triplet place, or with a
+-- triplet length), 1/6 (a note on a 16th triplet place, or a 16th triplet), else 1/8 in a bar with 32nds (b.fine),
+-- else 1/4.
+function Tabs.step(b, q)
+  local beat, trip = math.floor(q + 1e-6), nil
+  local function look(x)
+    local d = x.q - beat
+    if d < -1e-6 or d >= 1 - 1e-6 then return end
+    local v = Tabs.value(x.w or x.len or 0.25)
+    if v.trip and math.abs(v.len - (x.w or x.len or 0.25)) < 1e-3 then
+      trip = (trip == 1 / 6 or v.base >= 16) and 1 / 6 or 1 / 3
+    elseif math.abs(x.q * 4 - math.floor(x.q * 4 + 0.5)) > 1e-3 then
+      local u = x.q * 6
+      if math.abs(u - math.floor(u + 0.5)) < 1e-3 then
+        trip = (trip == 1 / 6 or math.abs(x.q * 3 - math.floor(x.q * 3 + 0.5)) > 1e-3) and 1 / 6 or 1 / 3
+      end
+    end
+  end
+  for _, n in ipairs(b.notes) do look(n) end
+  for _, t in ipairs(b.ties or {}) do if not t.off then look(t) end end
+  return trip or (b.fine and 0.125 or 0.25)
+end
+-- The place of the grid (Tabs.step) nearest to q in bar b, inside the bar.
+function Tabs.snap(b, q)
+  q = math.max(0, math.min(q, b.len - 1e-6))
+  local beat = math.floor(q + 1e-6)
+  local st = Tabs.step(b, beat)
+  local out = beat + math.floor((q - beat) / st + 0.5) * st
+  if out > b.len - st + 1e-6 then out = out - st end
+  return math.max(0, out)
 end
 -- A click on the stopped tab at bar bi, q, string s (nil: not on a string). double: ImGui's double-click; last: the
 -- place of the click before. Returns the selection ({ bi, q, s } or nil), the box (nil, or the box of the note, or of
@@ -542,9 +802,10 @@ end
 function Tabs.click(tab, bi, q, s, double, last)
   local i = s and Tabs.note_at(tab, bi, q, s)
   local nq = i and tab.bars[bi].notes[i].q or q
-  local here = { bi = bi, q = math.floor(q * 4 + 1e-6), s = s }
+  local here = { bi = bi, q = math.floor(q * 48 + 0.5), s = s }
   local same = double and last and last.bi == here.bi and last.q == here.q and last.s == here.s
-  local sel = i and { bi = bi, q = nq, s = s } or nil
+  local sel = i and { bi = bi, q = nq, s = s } or s and { bi = bi, q = q, s = s, empty = true } or nil -- (an empty
+  -- place on a string: selected too; a number there adds a note)
   local box
   if same and i then box = { txt = tab.bars[bi].notes[i].txt, focus = true }
   elseif same and s then box = { bi = bi, q = q, s = s, txt = "", focus = true, new = true } end
@@ -567,18 +828,23 @@ function Tabs.loop(bi)
   if sel and tab.bars[sel.bi] then sbi, sq = sel.bi, sel.q else sbi, sq = Tabs.place_of(r.GetCursorPositionEx(R.proj)) end
   sbi, sq = Tabs.loop_start(bi, sbi, sq)
   local old = R.loop or { rep = r.GetSetRepeatEx(R.proj, -1), ts = { r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false) } }
-  R.loop = { bi = bi, sbi = sbi, sq = sq, rep = old.rep, ts = old.ts }
-  r.GetSet_LoopTimeRange2(R.proj, true, true, Tabs.time_of(sbi, sq), Tabs.time_of(bi, tab.bars[bi].len), false)
+  local t0, t1 = Tabs.time_of(sbi, sq), Tabs.time_of(bi, tab.bars[bi].len)
+  R.loop = { bi = bi, sbi = sbi, sq = sq, rep = old.rep, ts = old.ts, t0 = t0, t1 = t1 }
+  r.GetSet_LoopTimeRange2(R.proj, true, true, t0, t1, false)
   r.GetSetRepeatEx(R.proj, 1)
 end
--- Ends the loop: repeat and the time selection as they were before it.
+-- Ends the loop: repeat and the time selection as they were before it (the time selection only when it is still the
+-- loop's: a selection that you made meanwhile stays).
 function Tabs.loop_off()
   local l = R.loop
   if not l then return end
   R.loop = nil
   if not r.ValidatePtr(R.proj, "ReaProject*") then return end
   r.GetSetRepeatEx(R.proj, l.rep)
-  r.GetSet_LoopTimeRange2(R.proj, true, true, l.ts[1], l.ts[2], false)
+  local a, b = r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false)
+  if math.abs(a - l.t0) < 1e-6 and math.abs(b - l.t1) < 1e-6 then
+    r.GetSet_LoopTimeRange2(R.proj, true, true, l.ts[1], l.ts[2], false)
+  end
 end
 local SPEEDS = { 1, 0.9, 0.75, 0.6, 0.5 }
 local SPEED_TXT = { "100%", "90%", "75%", "60%", "50%" }
@@ -595,6 +861,12 @@ function Tabs.speed(rate)
     R.pitch_old = nil
   end
 end
+-- A new Undo step (the Redo list empties; at most CFG.UNDO_MAX steps).
+function Tabs.undo_push(u)
+  R.redo = {}
+  R.undo[#R.undo + 1] = u
+  if #R.undo > CFG.UNDO_MAX then table.remove(R.undo, 1) end
+end
 -- Changes the notes of the written bar of bar bi: fn(list) changes a copy (false: no change). 1 Undo step.
 function Tabs.edit(bi, fn)
   local tab = R.tab
@@ -605,9 +877,7 @@ function Tabs.edit(bi, fn)
   table.sort(list, by_place)
   local ed = Tabs.edits(true)
   if not ed then return false end
-  R.redo = {}
-  R.undo[#R.undo + 1] = { e = Tabs.cur(), tr = Tabs.track(), wb = b.wb, list = ed[b.wb] }
-  if #R.undo > CFG.UNDO_MAX then table.remove(R.undo, 1) end
+  Tabs.undo_push({ e = Tabs.cur(), tr = Tabs.track(), wb = b.wb, list = ed[b.wb] })
   ed[b.wb] = list
   R.pdirty = true
   Tabs.build()
@@ -618,38 +888,47 @@ function Tabs.undo(dir)
   local from, to = dir < 0 and R.undo or R.redo, dir < 0 and R.redo or R.undo
   local u = table.remove(from)
   if not u then return false end
-  u.e.edits = u.e.edits or {}
-  if u.all ~= nil then -- (Undo all changes: all the fixes of the track at once)
-    to[#to + 1] = { e = u.e, tr = u.tr, all = u.e.edits[u.tr] or false }
-    u.e.edits[u.tr] = u.all or nil
-    R.pdirty = true
-    if u.e == Tabs.cur() and u.tr == Tabs.track() then Tabs.build() end
+  if u.lines ~= nil then -- (a line break of the tab: Tabs.set_lines, Tabs.reset_lines)
+    to[#to + 1] = { e = u.e, lines = u.e.lines or false }
+    u.e.lines, R.pdirty = u.lines or nil, true
+    if u.e == Tabs.cur() then Tabs.build() end
     return true
   end
-  u.e.edits[u.tr] = u.e.edits[u.tr] or {}
-  local ed = u.e.edits[u.tr]
-  to[#to + 1] = { e = u.e, tr = u.tr, wb = u.wb, list = ed[u.wb] }
-  ed[u.wb] = u.list
-  if not next(ed) then u.e.edits[u.tr] = nil end
+  u.e.edits = u.e.edits or {}
+  if u.all ~= nil then -- (Undo all fixes: all the fixes of the track at once)
+    to[#to + 1] = { e = u.e, tr = u.tr, all = u.e.edits[u.tr] or false }
+    u.e.edits[u.tr] = u.all or nil
+  else
+    u.e.edits[u.tr] = u.e.edits[u.tr] or {}
+    local ed = u.e.edits[u.tr]
+    to[#to + 1] = { e = u.e, tr = u.tr, wb = u.wb, list = ed[u.wb] }
+    ed[u.wb] = u.list
+    if not next(ed) then u.e.edits[u.tr] = nil end
+  end
   R.pdirty = true
   if u.e == Tabs.cur() and u.tr == Tabs.track() then Tabs.build() end
   return true
 end
--- Undo all changes: the track in the window shows the file's notes again (1 Undo step).
+-- Undo all fixes: the track in the window shows the file's notes again (1 Undo step).
 function Tabs.undo_all()
   local e, tr = Tabs.cur(), Tabs.track()
   local ed = Tabs.edits()
   if not (e and ed and next(ed)) then return false end
-  R.redo = {}
-  R.undo[#R.undo + 1] = { e = e, tr = tr, all = ed }
+  Tabs.undo_push({ e = e, tr = tr, all = ed })
   e.edits[tr] = nil
-  R.pdirty, R.tsel, R.tbox = true, nil, nil
+  R.pdirty = true
+  Tabs.unselect()
   Tabs.build()
   return true
 end
--- A new fret for note i of bar bi (0 .. CFG.FRETS).
+-- Why a fret can not be used (nil: it can, 0 .. CFG.FRETS).
+local function bad_fret(fret)
+  if not fret or fret < 0 or fret > CFG.FRETS then return string.format("A fret from 0 to %d, please.", CFG.FRETS) end
+end
+-- A new fret for note i of bar bi (0 .. CFG.FRETS); nil, why when it is not a fret.
 function Tabs.set_fret(bi, i, fret)
-  if fret < 0 or fret > CFG.FRETS then return false end
+  local why = bad_fret(fret)
+  if why then return nil, why end
   return Tabs.edit(bi, function(list)
     if list[i].fret == fret then return false end
     list[i].fret = fret
@@ -667,39 +946,141 @@ function Tabs.move_string(bi, i, dir)
   Tabs.edit(bi, function(list) list[i].s, list[i].fret = s2, f end)
   return true
 end
--- A new note in bar bi at q (quarter notes in the bar) on string s: 1 16th long (the easiest: decided 24 November 2026).
+-- A new note in bar bi at q (quarter notes in the bar) on string s, as long as the note before it (Tabs.new_len).
 -- nil, why when it can not.
 function Tabs.add(bi, q, s, fret)
-  if not fret or fret < 0 or fret > CFG.FRETS then return nil, string.format("A fret from 0 to %d, please.", CFG.FRETS) end
+  local why = bad_fret(fret)
+  if why then return nil, why end
   if Tabs.note_at(R.tab, bi, q, s) then return nil, "A note is already there." end
-  Tabs.edit(bi, function(list) list[#list + 1] = { q = q, s = s, fret = math.floor(fret), len = 0.25 } end)
+  local len = Tabs.new_len(R.tab.bars[bi], q)
+  Tabs.edit(bi, function(list) list[#list + 1] = { q = q, s = s, fret = math.floor(fret), len = len } end)
   return true
 end
--- Moves note i of bar bi by dq quarter notes inside its bar, never onto another note of its string. Its new q, or
--- nil, why.
+-- Moves note i of bar bi by dq quarter notes inside its bar (onto the grid there: Tabs.snap), never onto another note
+-- of its string. Its new q, or nil, why.
 function Tabs.move(bi, i, dq)
   local b = R.tab.bars[bi]
   local nt = b.notes[i]
-  local q = math.floor((nt.q + dq) * 4 + 0.5) / 4 -- (on the 16th grid)
-  if q < 0 or q > b.len - 0.25 + 1e-9 then return nil, "A note stays in its bar." end
+  if nt.q + dq < -1e-6 or nt.q + dq > b.len - 1e-6 then return nil, "A note stays in its bar." end
+  local q = Tabs.snap(b, nt.q + dq)
+  if math.abs(q - nt.q) < 1e-6 then return nil, "A note stays in its bar." end
   if Tabs.note_at(R.tab, bi, q, nt.s) then return nil, "Another note is there: a note does not move over another one." end
   Tabs.edit(bi, function(list) list[i].q = q end)
   return q
+end
+-- The place where the next note (any string, or a held part) starts after q in bar b; the bar end when none.
+local function next_start(b, q)
+  local e = b.len
+  for _, n in ipairs(b.notes) do if n.q > q + 1e-6 and n.q < e then e = n.q end end
+  for _, t in ipairs(b.ties or {}) do if not t.off and t.q > q + 1e-6 and t.q < e then e = t.q end end
+  return e
+end
+-- The length of a new note at q in bar b, as in Guitar Pro (decided 24 November 2026): the length of the note before
+-- it in the bar (at the same place: a chord note), a 16th without one; in a triplet beat 1 place of its grid; never
+-- past the next note or the bar end.
+function Tabs.new_len(b, q)
+  local st = Tabs.step(b, q)
+  if math.abs(st * 6 - math.floor(st * 6 + 0.5)) < 1e-6 then return st end -- (a triplet beat)
+  local len, at = 0.25, -1
+  for _, n in ipairs(b.notes) do
+    if n.q <= q + 1e-6 and n.q > at then at, len = n.q, n.w or n.len or 0.25 end
+  end
+  return Tabs.value(math.min(len, next_start(b, q) - q)).len
+end
+-- The length of note i of bar bi and of the notes that start with it (a chord; decided 24 November 2026): op "+"
+-- twice as long, "-" half, "." dotted on / off. From a 32nd to a whole note; never past the next note or the bar end.
+-- Returns true, or nil and why.
+function Tabs.length(bi, i, op)
+  local b = R.tab.bars[bi]
+  local nt = b.notes[i]
+  local v = Tabs.value(nt.w or nt.len or 0.25)
+  local len = op == "+" and v.len * 2 or op == "-" and v.len / 2 or (v.dot and v.len / 1.5 or v.len * 1.5)
+  if len > 4 + 1e-6 then return nil, "A whole note is the longest." end
+  if op == "-" and v.base >= 32 then return nil, "A 32nd note is the shortest." end
+  if nt.q + len > next_start(b, nt.q) + 1e-6 then
+    return nil, "There is no room for a longer note (the next note or the end of the bar is there)."
+  end
+  Tabs.edit(bi, function(list)
+    for _, n in ipairs(list) do if math.abs(n.q - nt.q) < 1e-6 then n.len = len end end
+  end)
+  return true
+end
+-- "/": the beat of note i of bar bi becomes a triplet, as in Guitar Pro: its notes in order on the triplet places
+-- (3; 6 when it has more than 3 places), each 1 place long (a triplet 8th; the rest of the beat: a rest). "/" on a
+-- triplet beat: its notes in order on the 16ths (at most 4), each to the next note (the last to the beat end).
+-- Returns the new q of note i, or nil and why. (lessons 24 November 2026: the notes kept the gaps, so 1 note stayed
+-- a quarter: no change, and "/" again did nothing.)
+function Tabs.triplet(bi, i)
+  local b = R.tab.bars[bi]
+  local nt = b.notes[i]
+  local beat = math.floor(nt.q + 1e-6)
+  if beat + 1 > b.len + 1e-6 then return nil, "This beat is not complete (the bar ends in it)." end
+  for _, t in ipairs(b.ties or {}) do
+    if not t.off and t.q > beat - 1e-6 and t.q < beat + 1 - 1e-6 then
+      return nil, "A held note (4) is in this beat: fix the note before it first."
+    end
+  end
+  local st = Tabs.step(b, beat)
+  local trip = math.abs(st * 6 - math.floor(st * 6 + 0.5)) < 1e-6
+  local offs, seen = {}, {}
+  for _, n in ipairs(b.notes) do
+    local d = n.q - beat
+    local k = math.floor(d * 48 + 0.5)
+    if d > -1e-6 and d < 1 - 1e-6 and not seen[k] then seen[k] = true; offs[#offs + 1] = d end
+  end
+  table.sort(offs)
+  local g = trip and 4 or (#offs <= 3 and 3 or 6)
+  if #offs > g then
+    return nil, trip and "More than 4 notes in this beat: they do not fit on 16ths." or "More than 6 notes in this beat: too many for a triplet."
+  end
+  local place = {}
+  for k, d in ipairs(offs) do place[math.floor(d * 48 + 0.5)] = k - 1 end -- (in order)
+  local nq
+  Tabs.edit(bi, function(list)
+    for _, n in ipairs(list) do
+      local d = n.q - beat
+      local u = d > -1e-6 and d < 1 - 1e-6 and place[math.floor(d * 48 + 0.5)]
+      if u then
+        local was = n.q
+        n.q, n.len = beat + u / g, (trip and (u + 1 < #offs and 1 or g - u) or 1) / g
+        if math.abs(was - nt.q) < 1e-6 and n.s == nt.s then nq = n.q end
+      end
+    end
+  end)
+  return nq
 end
 -- Deletes note i of bar bi.
 function Tabs.delete(bi, i)
   return Tabs.edit(bi, function(list) table.remove(list, i) end)
 end
--- The note before (dir -1) or after (dir 1) note i of bar bi, in the order they play: bi2, i2 (nil at the ends).
+-- The bar shown before (dir -1) or after (dir 1) bar bi, in the order of the view (tab.view: repeats as written, or
+-- played out); nil at the ends. Without a view: the next index.
+function Tabs.neighbour(tab, bi, dir)
+  local b = tab.bars[bi]
+  if tab.view and b and b.vp then return tab.view[b.vp + dir] end
+  return tab.bars[bi + dir] and bi + dir or nil
+end
+-- The note before (dir -1) or after (dir 1) note i of bar bi, in the order of the view: bi2, i2 (nil at the ends).
 function Tabs.next_note(tab, bi, i, dir)
   local b = tab.bars[bi]
   if b.notes[i + dir] then return bi, i + dir end
-  local k = bi + dir
-  while tab.bars[k] do
+  local k = Tabs.neighbour(tab, bi, dir)
+  while k do
     local n = #tab.bars[k].notes
     if n > 0 then return k, dir > 0 and 1 or n end
-    k = k + dir
+    k = Tabs.neighbour(tab, k, dir)
   end
+end
+-- The place before (dir -1) or after (dir 1) place q of bar bi: 1 place of the grid there (Tabs.step), into the bar
+-- before or after at the bar ends: bi2, q2 (nil at the ends of the tab).
+function Tabs.next_place(tab, bi, q, dir)
+  local b = tab.bars[bi]
+  local q2 = q + dir * Tabs.step(b, dir > 0 and q or math.max(0, q - 1e-3))
+  if q2 > -1e-6 and q2 < b.len - 1e-6 then return bi, Tabs.snap(b, q2) end
+  local k = Tabs.neighbour(tab, bi, dir)
+  if not k then return nil end
+  local b2 = tab.bars[k]
+  return k, dir > 0 and 0 or Tabs.snap(b2, b2.len - Tabs.step(b2, b2.len - 1e-3))
 end
 -- The string at y (from the top of the tab), on the line ln: 1 = the lowest; nil between 2 lines.
 function Tabs.string_at(tab, ln, y)
@@ -726,7 +1107,7 @@ function Tabs.set_bar(n)
   if not e then return end
   local bar = math.max(1, math.floor(n))
   local p = bar ~= 1 and bar or nil
-  if p ~= e.bar then e.bar, R.pdirty = p, true end
+  if p ~= e.bar then e.bar, R.pdirty = p, true end -- (the loop moves with its bars: Tabs.relabel)
   Tabs.relabel()
 end
 -- The bar numbers of the tab (of the song, or of its region: from Tabs.bar) and the text of the bar line, made when
@@ -734,8 +1115,26 @@ end
 function Tabs.relabel()
   local n = Tabs.bar()
   R.bar_txt = string.format("Bar %d of the %s", n, Tabs.region(Tabs.cur()) and "region" or "song")
-  for bi, b in ipairs(R.tab and R.tab.bars or {}) do b.label = tostring(n + bi - 1) end
+  for bi, b in ipairs(R.tab and R.tab.bars or {}) do -- (repeats as written: the written number, as Guitar Pro)
+    b.label = tostring(S.written and b.wb or n + bi - 1)
+  end
   Tabs.tempo_check()
+  Tabs.loop_sync()
+end
+-- The loop stays on its bars (another start bar, region or tempo): REAPER's time selection moves with them while it
+-- is still the loop's; a time selection that you made meanwhile ends the loop (yours stays).
+function Tabs.loop_sync()
+  local l, tab = R.loop, R.tab
+  if not (l and tab and tab.bars[l.bi] and tab.bars[l.sbi]) then return end
+  local t0, t1 = Tabs.time_of(l.sbi, l.sq), Tabs.time_of(l.bi, tab.bars[l.bi].len)
+  if math.abs(t0 - l.t0) < 1e-6 and math.abs(t1 - l.t1) < 1e-6 then return end
+  local a, b = r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false)
+  if math.abs(a - l.t0) < 1e-6 and math.abs(b - l.t1) < 1e-6 then
+    r.GetSet_LoopTimeRange2(R.proj, true, true, t0, t1, false)
+    l.t0, l.t1 = t0, t1
+  else
+    Tabs.loop_off()
+  end
 end
 -- The yellow warning (R.tempo_warn) when the project's tempo where the tab starts is not the tab's first tempo (more
 -- than 0.5 BPM apart): the tab would drift. Again after each change of the project (a new tempo) and of the bar.
@@ -750,33 +1149,73 @@ function Tabs.tempo_check()
 end
 -- The line of the tab that holds bar bi.
 function Tabs.line_of(tab, bi)
-  for _, ln in ipairs(tab.lines or {}) do if bi >= ln.first and bi <= ln.last then return ln end end
+  local b = tab.bars[bi]
+  return b and b.ln and tab.lines and tab.lines[b.ln] -- (b.ln: from Tabs.layout; asked every frame)
 end
 
--- The lines of the tab for a width: { { first, last (bars), y } } and the height of all of them (px). Each bar gets
--- x, its 16th width sw and its start pad; the bars of a line stretch to the full width (at most CFG.TAB_STRETCH times).
-function Tabs.layout(tab, w)
+-- The smallest 16th width of bar b so that the texts on 1 string do not touch (the checkup screenshot, 24 November
+-- 2026: "0(0)) 0" in a bar of 16ths). width(it): the px of an item's text; a slide or a bend mark needs room after it.
+function Tabs.min_slot(b, width)
+  local by, need = {}, 0
+  local function add(it) local s = by[it.s]; if not s then s = {}; by[it.s] = s end; s[#s + 1] = it end
+  for _, n in ipairs(b.notes) do add(n) end
+  for _, t in ipairs(b.ties or {}) do if not t.off then add(t) end end
+  for _, list in pairs(by) do
+    table.sort(list, function(a, c) return a.q < c.q end)
+    for k = 2, #list do
+      local a, c = list[k - 1], list[k]
+      local d = (c.q - a.q) * 4 -- (16ths between them)
+      local fx = S.pmarks and a.fx
+      local gap = CFG.TAB_GAP + ((fx and (fx.bend or (fx.slide or 0) & 12 ~= 0)) and 10 or 0)
+      if d > 1e-6 then need = math.max(need, ((width(a) + width(c)) / 2 + gap) / d) end
+    end
+  end
+  return need
+end
+-- The x of place q in bar b (the middle of its 16th) and the right end of bar b, from the left of the strings.
+function Tabs.x_of(b, q) return b.x + b.pad + (q * 4 + 0.5) * b.sw end
+function Tabs.x_end(b) return b.x + b.pad + b.n16 * b.sw + (b.tail or 0) end
+-- The room at the start of bar b for its signs: a repeat |: and a time signature.
+function Tabs.head_w(b) return (b.rs and CFG.TAB_REPEAT or 0) + (b.sig and CFG.TAB_SIG or 0) end
+-- The bar shown at place k of the view (tab.view: the bars drawn, in order; without a view: bar k).
+function Tabs.vbar(tab, k) return tab.view and tab.view[k] or k end
+-- The lines of the tab for a width: { { first, last (places in the view), y } } and the height of all of them (px).
+-- Each bar shown gets x, its 16th width sw, its start pad and ln (its line); the bars of a line stretch to the full
+-- width (at most CFG.TAB_STRETCH times). width (optional): the px of an item's text; a bar gets wider where its texts
+-- need it (Tabs.min_slot; b.slot). tab.starts (your line breaks: the places of the view that start a line): the
+-- lines as you set them, a line wider than the window shrinks to fit (decided 24 November 2026).
+function Tabs.layout(tab, w, width)
   local lines, x, y, first = {}, 0, 0, 1
   local lh = tab.lh
+  local n = tab.view and #tab.view or #tab.bars
+  local starts = tab.starts
   local function close(last)
-    local f = math.min(CFG.TAB_STRETCH, math.max(1, (w - CFG.TAB_LEFT - 1) / math.max(1, x)))
+    -- (your own lines: each fills the width, wider or narrower, as Guitar Pro; the user, 24 November 2026)
+    local f = (w - CFG.TAB_LEFT - 1) / math.max(1, x)
+    if not starts then f = math.min(CFG.TAB_STRETCH, math.max(1, f)) end
     local bx = 0
-    for k = first, last do
-      local b = tab.bars[k]
-      b.x, b.sw, b.pad = bx, CFG.TAB_SLOT * f, CFG.TAB_PAD * f
-      bx = bx + b.n16 * b.sw + b.pad
-    end
     lines[#lines + 1] = { first = first, last = last, y = y }
+    for k = first, last do
+      local b = tab.bars[Tabs.vbar(tab, k)]
+      -- (a repeat sign takes room: at the start of the bar, b.rs, and at its end, b.tail)
+      b.x, b.sw, b.pad, b.ln = bx, b.slot * f, CFG.TAB_PAD * f + Tabs.head_w(b), #lines
+      b.tail = (b.re or b.final) and CFG.TAB_REPEAT or nil -- (:| or the final double bar)
+      bx = Tabs.x_end(b)
+    end
   end
-  for i, b in ipairs(tab.bars) do
-    local bw = b.n16 * CFG.TAB_SLOT + CFG.TAB_PAD
-    if x > 0 and CFG.TAB_LEFT + x + bw > w then
+  for i = 1, n do
+    local b = tab.bars[Tabs.vbar(tab, i)]
+    -- (a 32nd: 2 columns per 16th; a bar with crowded texts: as wide as they need)
+    -- (b.slot: once per build; the texts do not change with the window width)
+    b.slot = b.slot or math.max(CFG.TAB_SLOT * (b.fine and 2 or 1), width and Tabs.min_slot(b, width) or 0)
+    local bw = b.n16 * b.slot + CFG.TAB_PAD + Tabs.head_w(b) + ((b.re or b.final) and CFG.TAB_REPEAT or 0)
+    if x > 0 and (starts and starts[i] or not starts and CFG.TAB_LEFT + x + bw > w) then
       close(i - 1)
       y, x, first = y + lh, 0, i
     end
     x = x + bw
   end
-  if #tab.bars > 0 then close(#tab.bars); y = y + lh end
+  if n > 0 then close(n); y = y + lh end
   return lines, y
 end
 -- The chord names of a laid-out tab: each one centred over its chord (c.x, from the left of the strings), pushed right
@@ -784,17 +1223,17 @@ end
 function Tabs.place_chords(tab, width, fit)
   for _, ln in ipairs(tab.lines) do
     local list = {}
-    for bi = ln.first, ln.last do
-      local b = tab.bars[bi]
-      for _, c in ipairs(b.chords or {}) do list[#list + 1] = { c = c, mid = b.x + b.pad + (c.q * 4 + 0.5) * b.sw } end
+    for k = ln.first, ln.last do
+      local b = tab.bars[Tabs.vbar(tab, k)]
+      for _, c in ipairs(b.chords or {}) do list[#list + 1] = { c = c, mid = Tabs.x_of(b, c.q) } end
     end
-    local lb = tab.bars[ln.last]
+    local lb = tab.bars[Tabs.vbar(tab, ln.last)]
     local prev = -math.huge
     for i, e in ipairs(list) do
       local tw = width(e.c.name)
       local x = math.max(0, e.mid - tw / 2, prev + 6)
       local nxt = list[i + 1]
-      local limit = nxt and nxt.mid - 4 or lb.x + lb.n16 * lb.sw + lb.pad
+      local limit = nxt and nxt.mid - 4 or Tabs.x_end(lb)
       e.c.txt = x + tw > limit and fit(e.c.name, math.max(0, limit - x)) or e.c.name
       e.c.x = x
       prev = x + width(e.c.txt)
@@ -807,11 +1246,12 @@ function Tabs.hit(tab, x, y)
   local lh = tab.lh
   for _, ln in ipairs(tab.lines or {}) do
     if y >= ln.y and y < ln.y + lh then
-      for bi = ln.first, ln.last do
+      for k = ln.first, ln.last do
+        local bi = Tabs.vbar(tab, k)
         local b = tab.bars[bi]
         local bx = CFG.TAB_LEFT + b.x
-        if x >= bx and x < bx + b.pad + b.n16 * b.sw then
-          return bi, math.min(b.n16 - 1, math.max(0, math.floor((x - bx - b.pad) / b.sw))) / 4, Tabs.string_at(tab, ln, y)
+        if x >= bx and x < CFG.TAB_LEFT + Tabs.x_end(b) then
+          return bi, Tabs.snap(b, ((x - bx - b.pad) / b.sw - 0.5) / 4), Tabs.string_at(tab, ln, y)
         end
       end
     end
@@ -885,7 +1325,7 @@ function Tabs.moved(old_fn)
 end
 
 ---------------------------------------------------------------------------
--- TEMPO (Tempo and bars: the shared Tempo.lua; Tab Viewer adds "The tab (its tempo)" in Beats from)
+-- TEMPO (Find tempo: the shared Tempo.lua; Tab Viewer adds "From tab" to its menu)
 ---------------------------------------------------------------------------
 -- The song: the selected audio item, else the longest audio item in the region of the tab (no region: of the
 -- project) (item, start, end; or nil and why).
@@ -923,9 +1363,9 @@ function Tabs.first_qn()
   end
   return 0
 end
--- Find tempo: from the tab (no listening) or from the chosen track (Beats from).
+-- Find tempo: from the tab (src nil: no listening) or from a track of the Find tempo menu (src: its entry).
 function Tabs.find_tempo(src)
-  if R.tsrc_audio then Tempo.begin(src and src.tr)
+  if src then Tempo.begin(src.tr)
   elseif R.doc then Tempo.from_tab(GP.timeline(R.doc), Tabs.first_qn()) end
 end
 -- The song bar where the tab starts after Set tempo (m: the measure of bar 1, from 0). From the tab: bar 1 is the
@@ -944,7 +1384,7 @@ end
 -- Set tempo: the tempo map for good; the tab then starts on the new bar 1 of the song.
 function Tabs.set_tempo()
   local from_tab = R.tempo and R.tempo.tab ~= nil
-  local m = Tempo.set()
+  local m = Tempo.set() -- (the loop moves with its bars: Tabs.set_bar, Tabs.relabel)
   if not m then return end
   local bar, short = Tabs.start_bar(m, from_tab)
   bar = bar - Tabs.base(Tabs.cur()) -- (counted from the region's first bar)
@@ -964,7 +1404,8 @@ Tempo = TP.new({
 ---------------------------------------------------------------------------
 -- PROJECT (the project data: ProjExtState "Tab Viewer"/"cfg"; nothing saved when there is no tab)
 ---------------------------------------------------------------------------
--- 1 block per tab: "tab=" starts it, then region=, track=, bar= (each only when set), then edit= (1 line per edited
+-- 1 block per tab: "tab=" starts it, then region=, track=, bar=, lines= (your line breaks: the written bars that start
+-- a line, "lines=5 9 14"; each only when set), then edit= (1 line per edited
 -- written bar of a track: "edit=<track> <bar> <q>/<string>/<fret>/<len> ..."; no notes: the bar is empty).
 function Project.parse(txt)
   local p, e = { tabs = {} }, nil
@@ -974,12 +1415,15 @@ function Project.parse(txt)
     elseif e and k == "region" then e.rgn = v
     elseif e and k == "track" then e.track = math.tointeger(tonumber(v))
     elseif e and k == "bar" then e.bar = math.tointeger(tonumber(v))
+    elseif e and k == "lines" then -- (your line breaks: the written bars that start a line)
+      e.lines = {}
+      for n in v:gmatch("%d+") do e.lines[#e.lines + 1] = tonumber(n) end
     elseif e and k == "edit" then
       local tr, wb, rest = v:match("^(%d+) (%d+)(.*)$")
       if tr then
         local list = {}
         for q, s, f, len in rest:gmatch("([%d%.]+)/(%d+)/(%d+)/([%d%.]+)") do
-          list[#list + 1] = { q = tonumber(q), s = tonumber(s), fret = tonumber(f), len = tonumber(len) }
+          list[#list + 1] = { q = Util.grid(tonumber(q)), s = tonumber(s), fret = tonumber(f), len = Util.grid(tonumber(len)) }
         end
         e.edits = e.edits or {}
         e.edits[tonumber(tr)] = e.edits[tonumber(tr)] or {}
@@ -1000,6 +1444,7 @@ function Project.serialize(p)
   for _, e in ipairs(p.tabs) do
     out[#out + 1] = "tab=" .. e.file .. "\n" .. (e.rgn and ("region=" .. e.rgn .. "\n") or "")
       .. (e.track and ("track=" .. e.track .. "\n") or "") .. (e.bar and ("bar=" .. e.bar .. "\n") or "")
+      .. (e.lines and ("lines=" .. table.concat(e.lines, " ") .. "\n") or "")
     for _, tr in ipairs(sorted_keys(e.edits or {})) do
       for _, wb in ipairs(sorted_keys(e.edits[tr])) do
         local parts = { "edit=" .. tr .. " " .. wb }
@@ -1019,7 +1464,8 @@ end
 function Project.load(txt)
   P = Project.parse(txt)
   R.plast_txt, R.pdirty, R.docs, R.follow_last = txt, false, {}, nil
-  R.undo, R.redo, R.tsel, R.tbox = {}, {}, nil, nil
+  R.undo, R.redo, R.loop = {}, {}, nil
+  Tabs.unselect()
   Tabs.regions()
   Tabs.select(Tabs.at(r.GetCursorPositionEx(R.proj)) or 1)
 end
@@ -1032,6 +1478,7 @@ function Project.save()
   r.SetProjExtState(R.proj, CFG.EXT, CFG.PEXT_KEY, txt)
   r.MarkProjectDirty(R.proj)
   R.plast_txt = txt
+  R.state_cc = r.GetProjectStateChangeCount(R.proj) -- (its own save: no reload of the project in the next frame)
 end
 
 -- Every frame: another project (a tab, or File > Open in the same tab) loads its own data. The saved text decides:
@@ -1041,11 +1488,17 @@ function Project.update()
   fn = fn or ""
   if proj ~= R.proj then
     if R.pdirty then Project.save() end
+    Tabs.loop_off() -- (in the project of the loop, before R.proj changes)
     Tempo.cancel()
     Tempo.click_back() -- (the metronome of a Play with click: as it was before)
     R.tempo, R.tsrc, R.tsrc_sel = nil, nil, nil
     R.proj, R.projfn, R.state_cc = proj, fn, r.GetProjectStateChangeCount(proj)
     Project.load(Project.read())
+    local rate = r.Master_GetPlayRate(proj) -- (a project saved slow, or left so after a crash: say it)
+    if math.abs(rate - 1) > 1e-3 then
+      UI.notice(string.format("The song plays at %d%% (REAPER's play rate). The speed dropdown on the Start row sets 100%% again.",
+        math.floor(rate * 100 + 0.5)), true)
+    end
     return
   end
   local cc = r.GetProjectStateChangeCount(proj)
@@ -1053,8 +1506,8 @@ function Project.update()
     local old = R.projfn
     R.state_cc, R.projfn = cc, fn
     local txt = Project.read()
-    R.tsrc = nil -- (the tracks of Beats from: again)
-    if R.tempo then Tempo.check() end
+    R.tsrc = nil -- (the tracks of the Find tempo menu: again)
+    Tempo.check()
     if txt ~= R.plast_txt then Project.load(txt) -- (never write the old tab into the next project)
     else
       Tabs.regions() -- (a region may have moved: its tab moves with it)
@@ -1097,7 +1550,7 @@ Several songs in 1 project, each in its own region? Put the edit cursor in a reg
 
 The Track dropdown has every track of the tab: its name, how many strings it has and its tuning ("Standard", "Drop D", "Eb Standard", or the notes of the open strings), and the capo. Point at a track for its open strings. Tab Viewer starts with the bass (else a guitar), and the project remembers your choice.]] },
   { title = "Reading the tab", text = [[
-The lines are the strings, the lowest at the bottom; the numbers on them are the frets. Notes 1 above the other are played together (a chord). The chord names above the tab come from the tab; where it has none, Tab Viewer names the chord from its notes (off: Settings > Tab > Chord names). The grey marks show how to play a note, as in Guitar Pro: an arc to the next note is a hammer-on or pull-off, a sloped line a slide, a curved arrow a bend, a wave a vibrato, "P.M. - - -|" a palm mute, <12> a harmonic (off: Settings > Tab > Playing marks). A note in brackets, (4), is held on from the note before it (an arc joins them). An x is a dead note (muted, no pitch). The repeats of the tab are played out, so the bars follow the song from start to end.
+The lines are the strings, the lowest at the bottom; the numbers on them are the frets. Notes 1 above the other are played together (a chord). The chord names above the tab come from the tab; where it has none, Tab Viewer names the chord from its notes (off: Settings > Tab > Chord names). The grey marks show how to play a note, as in Guitar Pro: an arc to the next note is a hammer-on or pull-off, a sloped line a slide, a curved arrow a bend, a wave a vibrato, "P.M. - - -|" a palm mute, <12> a harmonic (off: Settings > Tab > Playing marks). A note in brackets, (4), is held on from the note before it (an arc joins them). An x is a dead note (muted, no pitch). Under the tab you see how long each note is, as in printed music: stems, joined 8ths and 16ths, dots, rests and the 3 of triplets (off: Settings > Tab > Note lengths). The section names of the tab ("Intro", "Solo") are over their first bar, and the tempo (a quarter note "= 120") where it changes. The time signature (4 over 4) is at the start and where it changes; a double bar ends the song.Repeats look as in Guitar Pro: |: and :| around the bars that repeat, x3 when they play 3 times, and the endings 1. and 2. over the bars of each pass. While the song plays, the blue line jumps back at a repeat. Rather read the bars one after the other, as they play? Turn off Settings > Tab > Repeats as written.
 
 Want to hear a part? Click it: the song plays from there. While it plays, a blue line shows where the song is, and the tab scrolls along (off: Settings > Tab > Follow playback). Stopped, the blue line shows the edit cursor.
 
@@ -1111,17 +1564,21 @@ Does the tab drift away from the song? Then REAPER's bars are not on the song ye
 
 From tab (the first choice): Tab Viewer takes the tempo, the tempo changes and the time signatures of the tab, without listening. It puts bar 1 where the first note of the tab meets the first sound of the song (the selected item, else the longest one in the tab's region).
 
-A track (best a metronome or the drums): Find tempo listens to it while the song plays (1/2, x2, Style and Short bars as in Note Detective).
+A track (best a metronome or the drums): Find tempo listens to it while the song plays. Then 1/2 and x2 halve or double a tempo that came out wrong, Style is 1 tempo (a steady grid) or Follow the song (a tempo marker on every bar, so the bars stay on the drums), and Short bars adds a bar with only 3 beats (put the edit cursor in it, then + Add).
 
 Got a result? Open Find tempo again and check bar 1 with Play with click: is the loud click on the "1"? If not, move it with < 1 beat and 1 beat >. Then click the blue Set tempo next to it: the tempo goes into the project (1 undo step), and the tab starts on that bar.]] },
   { title = "Fix the tab", text = [[
-A wrong note in the tab? Stop the song, then click the note: a blue box selects it (the edit cursor goes there). Left / Right selects the note before or after it, Up / Down puts it on the next string (the same pitch), a number gives it a new fret ("1" "2" quickly = 12), Delete removes it. Double-click a note to open its box: type a new fret and press Enter, or move the note with Left / Right (a 16th at a time, inside its bar; never onto another note). A missing note? Double-click an empty place on its string, type the fret and press Enter (a new note is 1 16th long).
+A wrong note in the tab? Stop the song, then click the note: a blue box selects it (the edit cursor goes there). Left / Right selects the note before or after it, Up / Down the note (or the empty place) on the next string, as in Guitar Pro. Alt+Up / Alt+Down puts the note on the next string (the same pitch), a number gives it a new fret ("1" "2" quickly = 12), Delete removes it (a rest is left there). On an empty place, type a number: a new note, as long as the note before it. Double-click a note to open its box: type a new fret and press Enter, or move the note with Left / Right (a 16th at a time, inside its bar; never onto another note). A missing note? Double-click an empty place on its string, type the fret and press Enter (a new note is as long as the note before it; in a triplet beat, 1 triplet place). Wrong length? With a note selected, + makes it twice as long and - half as long, "." adds or removes the dot (all the notes that start with it change too; never past the next note or the bar end). "/" turns its beat into a triplet (its notes move to the 3 triplet places), and "/" again back to 16ths.
 
-A fix changes the bar as it is written, so a repeat of that bar changes too. Made a mistake? Ctrl+Z in this window (or Undo next to Start) takes it back. Want the file's notes back? Tab dropdown > Undo all changes (only the track in the window). Your fixes are green (Settings > Tab > Mark my fixes). Your fixes are saved in the project; the Guitar Pro file and its copy stay as they are. Drum tracks can not be fixed yet.]] },
+Want the lines as in your Guitar Pro page? Select a note in a bar, then press & to pull the first bar of the next line up into this line, or Ctrl+Enter to move the bars after it down to the next line (as in Guitar Pro). Your lines are saved in the project; a line wider than the window gets narrower. Tab dropdown > Reset line breaks: the automatic lines again (with Settings > Tab > Repeats as written on).
+
+A fix changes the bar as it is written, so a repeat of that bar changes too. Made a mistake? Ctrl+Z in this window (or Undo next to Start) takes it back. Want the file's notes back? Tab dropdown > Undo all fixes (only the track in the window). Ctrl+Z remembers the fixes of this session only: after a restart, Undo all fixes is the way back. Your fixes are green (Settings > Tab > Mark my fixes). Your fixes are saved in the project; the Guitar Pro file and its copy stay as they are. Drum tracks can not be fixed yet.]] },
   { title = "Where your stuff is saved", text = [[
-In the project: its tabs, the region of each one, the track you picked, the bar where the tab starts, and your fixes of the tab. Tab Viewer copies each tab into a "Tabs" folder next to the project file, so the project keeps its tab when you move or delete the original. Not saved yet? The copy is made when you save the project.
+In the project: its tabs, the region of each one, the track you picked, the bar where the tab starts, your line breaks, and your fixes of the tab. Tab Viewer copies each tab into a "Tabs" folder next to the project file, so the project keeps its tab when you move or delete the original. Not saved yet? The copy is made when you save the project.
 
-On this computer: the Light theme, Follow playback, Chord names and the window dock.]] },
+On this computer: the Light theme, Follow playback, Chord names, Mark my fixes, Playing marks, Note lengths, Repeats as written and the window dock.
+
+Not saved: the loop and the speed (back to 100% when Tab Viewer closes).]] },
 }
 
 -- The theme: the same colours and sizes as Chart Cue (pushed every frame; UI.pop_style pops them).
@@ -1162,9 +1619,9 @@ end
 function UI.tip_disabled(text)
   if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then ImGui.SetTooltip(ctx, text) end
 end
--- The cursor of + Add: the play position while playing, else the edit cursor.
+-- The play position while playing, else the edit cursor (+ Add, the tab that follows, the position line).
 function UI.cursor()
-  if r.GetPlayStateEx(R.proj) & 1 == 1 then return r.GetPlayPositionEx(R.proj) end
+  if R.playing then return r.GetPlayPositionEx(R.proj) end
   return r.GetCursorPositionEx(R.proj)
 end
 
@@ -1210,17 +1667,7 @@ function UI.trunc(text, max_w)
   end
   return "..."
 end
--- UI.trunc, kept per text until the width changes (the lines of the list: not cut again every frame).
-function UI.trunc_c(text, w)
-  R.tc = R.tc or {}
-  local e = R.tc[text]
-  if e and e.w == w then return e.s end
-  local cut = UI.trunc(text, w)
-  R.tc[text] = { w = w, s = cut }
-  return cut
-end
-
--- Button kinds: "primary" (blue: an action), "ghost" (text only), nil (grey).
+-- Button kinds: "primary" (blue: an action), "ghost" (text only, as in Chart Cue), nil (grey).
 function UI.button(label, w, h, kind)
   local n = 0
   if kind == "primary" then
@@ -1228,13 +1675,21 @@ function UI.button(label, w, h, kind)
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered(), COL.ACCENT_HOVER)
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive(), COL.ACCENT_ACTIVE)
     ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.WHITE); n = 4
+  elseif kind == "ghost" then
+    ImGui.PushStyleColor(ctx, ImGui.Col_Button(), COL.TRANSPARENT)
+    ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered(), COL.ROW_HOVER)
+    ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive(), COL.ACTIVE_BG)
+    ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.ACCENT_HOVER); n = 4
   end
   local hit = ImGui.Button(ctx, label, w or 0, h or ImGui.GetFrameHeight(ctx))
   if n > 0 then ImGui.PopStyleColor(ctx, n) end
   return hit
 end
+local BTN_W = {} -- (the width of each fixed label: measured once, the font does not change)
 function UI.btn_w(label, min_w)
-  return math.max(min_w or 0, math.ceil((ImGui.CalcTextSize(ctx, label)) + 22))
+  local w = BTN_W[label]
+  if not w then w = math.ceil((ImGui.CalcTextSize(ctx, label)) + 22); BTN_W[label] = w end
+  return math.max(min_w or 0, w)
 end
 
 -- Toggle switch (in place of a tick box). Returns changed, new value.
@@ -1322,7 +1777,7 @@ function UI.draw_toolbar()
     return hit, ix + IW / 2, iy + H / 2, hov
   end
   -- play / stop (a click on the tab takes the focus from REAPER, so its Space does not reach REAPER)
-  local playing = r.GetPlayStateEx(R.proj) & 1 == 1
+  local playing = R.playing
   local hit, cx, cy, hov = icon("##play", x0 + aw - 3 * IW, playing and "Stop (Space)" or "Play (Space)")
   local pc = hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN
   if playing then ImGui.DrawList_AddRectFilled(dl, cx - 5, cy - 5, cx + 5, cy + 5, pc, 1)
@@ -1380,6 +1835,12 @@ function UI.draw_settings()
   ch, S.pmarks = UI.toggle_line("Playing marks", S.pmarks,
     "On (the default): how to play each note, as in Guitar Pro (arcs for hammer-ons and pull-offs, lines for slides, bend arrows, vibrato waves, a P.M. row for palm mutes, <12> harmonics). Held notes (4) and dead notes x always show.")
   if ch then R.sdirty = true; Tabs.build() end
+  ch, S.lengths = UI.toggle_line("Note lengths", S.lengths,
+    "On (the default): how long each note is, under the tab, as in Guitar Pro (stems, joined 8ths and 16ths, dots, rests, the 3 of triplets). A bar with 32nd notes gets wider.")
+  if ch then R.sdirty = true; Tabs.build() end
+  ch, S.written = UI.toggle_line("Repeats as written", S.written,
+    "On (the default): the tab as Guitar Pro writes it: each bar once, with repeat signs |: :|, x3 and the endings 1. 2.; the blue line jumps back at a repeat. Off: the repeats played out, bar after bar as the song plays.")
+  if ch then R.sdirty = true; Tabs.unselect(); Tabs.loop_off(); Tabs.build() end
   head(SETTINGS_SECTIONS[3][1])
   local docked = R.docked == true
   if UI.toggle_line("Dock in REAPER's docker", docked, "On: Tab Viewer is in a REAPER docker. Off: a floating window.") then
@@ -1433,7 +1894,7 @@ end
 -- The Tab dropdown: the tabs of the project (their region), the region of this tab, Remove this tab.
 function UI.draw_tab_list()
   if not P.tabs[1] then return end
-  Tabs.follow(r.GetPlayStateEx(R.proj) & 1 == 1 and r.GetPlayPositionEx(R.proj) or r.GetCursorPositionEx(R.proj))
+  Tabs.follow(UI.cursor())
   local e = Tabs.cur()
   UI.field("Tab")
   ImGui.SetNextItemWidth(ctx, UI.field_w())
@@ -1453,15 +1914,19 @@ function UI.draw_tab_list()
       ImGui.EndMenu(ctx)
     end
     local ed = e and Tabs.edits()
-    if e and ImGui.BeginMenu(ctx, "Undo all changes", ed ~= nil and next(ed) ~= nil) then -- (a submenu, as Remove)
+    if e and ImGui.BeginMenu(ctx, "Undo all fixes", ed ~= nil and next(ed) ~= nil) then -- (a submenu, as Remove)
       if ImGui.MenuItem(ctx, "Undo all fixes of this track") then
         Tabs.undo_all()
         UI.notice("The file's notes again. Changed your mind? Ctrl+Z (or Undo) brings your fixes back.")
       end
       ImGui.EndMenu(ctx)
     end
+    if e and ImGui.MenuItem(ctx, "Reset line breaks", nil, false, e.lines ~= nil) then
+      Tabs.reset_lines()
+      UI.notice("The lines fit the window again. Changed your mind? Ctrl+Z (or Undo) brings your line breaks back.")
+    end
     if e and ImGui.BeginMenu(ctx, "Remove this tab") then -- (a submenu: 1 wrong click does not remove it)
-      if ImGui.MenuItem(ctx, "Remove") then Tabs.remove(); UI.notice("Removed. Its copy stays in the Tabs folder: Open tab... brings it back.") end
+      if ImGui.MenuItem(ctx, "Remove it from the project") then Tabs.remove(); UI.notice("Removed. Its copy stays in the Tabs folder: Open tab... brings it back.") end
       ImGui.EndMenu(ctx)
     end
     ImGui.EndCombo(ctx)
@@ -1506,23 +1971,27 @@ function UI.draw_tracks()
     ImGui.SameLine(ctx, 0, 4)
     if UI.repeat_button(">", BW) then Tabs.set_bar(Tabs.bar() + 1) end
     UI.tip("The tab starts 1 bar later.")
-    if R.undo[1] then -- (the tab edits of this session)
-      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-      if UI.button("Undo", UI.btn_w("Undo"), nil, "ghost") then Tabs.undo(-1) end
-      UI.tip("Takes back your last fix of the tab (Ctrl+Z in this window does the same).")
-    end
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP) -- (always there, grey without a fix to take back: the row does not jump)
+    ImGui.BeginDisabled(ctx, R.undo[1] == nil)
+    if UI.button("Undo", UI.btn_w("Undo"), nil, "ghost") then Tabs.undo(-1) end
+    ImGui.EndDisabled(ctx)
+    UI.tip("Takes back your last fix of the tab (Ctrl+Z in this window does the same). Only the fixes of this session.")
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
     local rate, sk = r.Master_GetPlayRate(R.proj), 1
     for i, v in ipairs(SPEEDS) do if math.abs(v - rate) < 1e-3 then sk = i end end
     local cur = math.abs(SPEEDS[sk] - rate) < 1e-3 and SPEED_TXT[sk] or string.format("%d%%", math.floor(rate * 100 + 0.5))
+    local slow = math.abs(rate - 1) > 1e-3 -- (not 100%: yellow, so you see it at a glance)
+    if slow then ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.YELLOW) end
     ImGui.SetNextItemWidth(ctx, UI.btn_w("100%") + ImGui.GetFrameHeight(ctx))
-    if ImGui.BeginCombo(ctx, "##speed", cur) then
+    local open = ImGui.BeginCombo(ctx, "##speed", cur)
+    if slow then ImGui.PopStyleColor(ctx) end
+    if open then
       for i, v in ipairs(SPEEDS) do
-        if ImGui.Selectable(ctx, SPEED_TXT[i], v == rate) then Tabs.speed(v) end
+        if ImGui.Selectable(ctx, SPEED_TXT[i], i == sk) then Tabs.speed(v) end
       end
       ImGui.EndCombo(ctx)
     end
-    UI.tip("Too fast to play along? Slow the song down (the pitch stays). Back to 100% when Tab Viewer closes. Loop a part: Shift+click a bar (Escape or Shift+click it again: stop).")
+    UI.tip("Too fast to play along? Slow the song down (the pitch stays); yellow while it is not 100%. Back to 100% when Tab Viewer closes.")
     if R.tempo_warn then
       ImGui.PushTextWrapPos(ctx, 0)
       ImGui.TextColored(ctx, COL.YELLOW, R.tempo_warn)
@@ -1566,14 +2035,14 @@ function UI.draw_tempo_menu()
   local tm = R.tempo
   local run = tm and tm.run
   ImGui.BeginDisabled(ctx, run ~= nil)
-  if ImGui.Selectable(ctx, "From tab", tm and tm.tab ~= nil) then R.tsrc_audio = false; Tabs.find_tempo() end
+  if ImGui.Selectable(ctx, "From tab", tm and tm.tab ~= nil) then Tabs.find_tempo() end
   UI.tip("No listening: the tempo, tempo changes and time signatures of the tab. Bar 1 goes where the tab's first note meets the first sound of the song (the selected item, else the longest one). Nothing changes yet.")
   ImGui.Separator(ctx)
   local list = Tempo.sources()
   if not list[1] then ImGui.TextDisabled(ctx, "No tracks with audio yet.") end
   for _, e in ipairs(list) do
     if ImGui.Selectable(ctx, e.label, tm ~= nil and tm.tab == nil and R.tsrc_sel == e.tr) then
-      R.tsrc_audio, R.tsrc_sel = true, e.tr
+      R.tsrc_sel = e.tr
       Tabs.find_tempo(e)
     end
     UI.tip("Listens to this track while the song plays (the selected item, else the longest one; a click track is best, then the drums). Nothing changes yet.")
@@ -1683,19 +2152,36 @@ function UI.centre(dl, cx, cy, col, txt)
   ImGui.DrawList_AddText(dl, cx - tw / 2, cy - th / 2 + 1, col, txt)
   return tw, th
 end
+-- The text size of a note or held part (measured once: the item is made again when its text changes).
+function UI.item_size(it)
+  if not it.tw then it.tw, it.th = ImGui.CalcTextSize(ctx, it.txt or "") end
+  return it.tw, it.th
+end
+function UI.item_w(it) return (UI.item_size(it)) end
+-- 1 note or held part at x, y: its fret on a background (the string line hidden), the blue box when selected, its
+-- marks (UI.tab_marks).
+function UI.tab_item(dl, tab, ln, ox, it, x, y, col, selected)
+  local tw, th = UI.item_size(it)
+  ImGui.DrawList_AddRectFilled(dl, x - tw / 2 - 2, y - th / 2, x + tw / 2 + 2, y + th / 2, COL.PANEL_BG)
+  if selected then -- (the selected note: a blue box, as in Note Detective)
+    ImGui.DrawList_AddRect(dl, x - tw / 2 - 4, y - th / 2 - 1, x + tw / 2 + 4, y + th / 2 + 1, COL.ACCENT, 3, 0, 2)
+  end
+  ImGui.DrawList_AddText(dl, x - tw / 2, y - th / 2 + 1, col, it.txt)
+  UI.tab_marks(dl, tab, ln, ox, it, x, y, tw, th)
+end
 -- The marks of 1 item of the tab (a note or a held part) at x, y (its text tw x th), as Guitar Pro draws them: an
 -- arc to the next item on its string (a tie always; a hammer-on / pull-off), a sloped line to it (a slide), a short
 -- line into or out of the note, a bend arrow, a vibrato wave (all but the tie: Settings > Tab > Playing marks).
--- The next item on another line: a short stub to the right.
-function UI.tab_marks(dl, tab, ln, ox, y0, it, x, y, tw, th)
+-- The next item on another line, or not drawn (after a repeat sign: it plays in another pass), or back to the left:
+-- a short stub to the right.
+function UI.tab_marks(dl, tab, ln, ox, it, x, y, tw, th)
   local fx, nx = S.pmarks and it.fx or nil, it.nx
   local col, sl = COL.TEXT_DIM, fx and fx.slide or 0
   if nx and (nx.tie or (fx and (fx.ho or sl & 3 ~= 0))) then
-    local x2, half
-    if it.nxb >= ln.first and it.nxb <= ln.last then
-      local nb = tab.bars[it.nxb]
-      x2 = ox + CFG.TAB_LEFT + nb.x + nb.pad + (nx.q * 4 + 0.5) * nb.sw
-      half = (ImGui.CalcTextSize(ctx, nx.txt or "")) / 2 + 2
+    local nb = tab.bars[it.nxb]
+    local x2 = nb.drawn ~= false and nb.ln and tab.lines[nb.ln] == ln and ox + CFG.TAB_LEFT + Tabs.x_of(nb, nx.q)
+    local half
+    if x2 and x2 > x then half = (UI.item_size(nx)) / 2 + 2
     else x2, half = x + tw / 2 + 16, 0 end
     if nx.tie or (fx and fx.ho) then
       local ya = y - th / 2 - 1
@@ -1722,30 +2208,162 @@ function UI.tab_marks(dl, tab, ln, ox, y0, it, x, y, tw, th)
     end
   end
 end
+-- The repeat signs of bar b as Guitar Pro draws them (repeats as written): "|:" at a repeat start (a thick and a thin
+-- line, 2 dots), ":|" at its end, "x3" over the end when it plays more than twice, and the bracket of an ending
+-- ("1.", "2.") in the top row. bx / bxe: the left and right x of the bar; top: the top of its line; y0 / yb: the top
+-- and the low string; pmh: the rows above the bar numbers.
+function UI.tab_repeat(dl, b, line_start, bx, bxe, top, y0, yb, pmh)
+  local col, ym, d = COL.TEXT_MAIN, (y0 + yb) / 2, CFG.TAB_LINE / 2
+  if b.rs then
+    ImGui.DrawList_AddRectFilled(dl, bx, y0, bx + 3, yb, col)
+    ImGui.DrawList_AddLine(dl, bx + 6, y0, bx + 6, yb, col, 1)
+    ImGui.DrawList_AddCircleFilled(dl, bx + 10, ym - d, 2, col)
+    ImGui.DrawList_AddCircleFilled(dl, bx + 10, ym + d, 2, col)
+  end
+  if b.re then
+    ImGui.DrawList_AddRectFilled(dl, bxe - 3, y0, bxe, yb, col)
+    ImGui.DrawList_AddLine(dl, bxe - 6, y0, bxe - 6, yb, col, 1)
+    ImGui.DrawList_AddCircleFilled(dl, bxe - 10, ym - d, 2, col)
+    ImGui.DrawList_AddCircleFilled(dl, bxe - 10, ym + d, 2, col)
+    if b.times then
+      local tw = ImGui.CalcTextSize(ctx, b.times)
+      ImGui.DrawList_AddText(dl, bxe - tw - 2, top + pmh + 2, COL.TEXT_DIM, b.times)
+    end
+  end
+  if b.alt then -- (the ending bracket: its number at its start, a tick down at both ends)
+    local y = top + 3
+    ImGui.DrawList_AddLine(dl, bx + 2, y, bxe - 3, y, col, 1)
+    if b.alt_first or line_start then
+      ImGui.DrawList_AddLine(dl, bx + 2, y, bx + 2, y + CFG.TAB_ENDING - 4, col, 1)
+      if b.alt_first then
+        ImGui.PushFont(ctx, small_font)
+        ImGui.DrawList_AddText(dl, bx + 5, y + 1, col, b.alt)
+        ImGui.PopFont(ctx)
+      end
+    end
+    if b.alt_last then ImGui.DrawList_AddLine(dl, bxe - 3, y, bxe - 3, y + CFG.TAB_ENDING - 4, col, 1) end
+  end
+end
+-- The marks of the score on bar b (Tabs.view), as in Guitar Pro: the tempo in the top row (a quarter note "= 120",
+-- after the section name), the time signature (the 2 numbers over each other, after a |:), the final double bar.
+-- top: the y of its line; y0 / yb: the top and the bottom string.
+function UI.tab_score(dl, b, lx, bx, top, y0, yb)
+  local col = COL.TEXT_MAIN
+  for _, t in ipairs(b.tempo or {}) do
+    local x = lx + Tabs.x_of(b, t.q) - 4
+    if t.q < 1e-6 then
+      if b.section and not b.sec_w then b.sec_w = (ImGui.CalcTextSize(ctx, b.section)) end
+      x = bx + 2 + (b.sec_w and b.sec_w + 10 or 0)
+    end
+    local y = top + 2 + ImGui.GetFontSize(ctx) - 4 -- (the note head, on the text's baseline)
+    ImGui.DrawList_AddCircleFilled(dl, x + 3, y, 3, COL.TEXT_DIM)
+    ImGui.DrawList_AddLine(dl, x + 5.5, y, x + 5.5, y - 10, COL.TEXT_DIM, 1)
+    ImGui.DrawList_AddText(dl, x + 10, top + 2, COL.TEXT_DIM, t.txt)
+  end
+  if b.sig then
+    ImGui.PushFont(ctx, head_font)
+    local x, ym = bx + (b.rs and CFG.TAB_REPEAT or 0) + CFG.TAB_SIG / 2 + 2, (y0 + yb) / 2
+    for k, s in ipairs(b.sig) do
+      local w, h = ImGui.CalcTextSize(ctx, s)
+      ImGui.DrawList_AddText(dl, x - w / 2, k == 1 and ym - h + 1 or ym - 1, col, s)
+    end
+    ImGui.PopFont(ctx)
+  end
+  if b.final and not b.re then
+    local xe = lx + Tabs.x_end(b)
+    ImGui.DrawList_AddLine(dl, xe - 5, y0, xe - 5, yb, col, 1)
+    ImGui.DrawList_AddRectFilled(dl, xe - 3, y0, xe, yb, col)
+  end
+end
 -- The P.M. row of 1 line of the tab (top: its y): "P.M." where a run of palm mutes starts, dashes over it, "|" at its
--- end (a run that goes on to the next line: no text there, no end).
+-- end (a run that goes on to the next line: no text there, no end). Repeats as written: a run of a later pass is
+-- the same as the first one (not drawn again); a run over a repeat sign ends at its bar end.
 function UI.tab_pm(dl, tab, ln, ox, top)
-  local function px(bi, q) local b = tab.bars[bi]; return ox + CFG.TAB_LEFT + b.x + b.pad + (q * 4 + 0.5) * b.sw end
+  local lx = ox + CFG.TAB_LEFT
   ImGui.PushFont(ctx, small_font)
   for _, run in ipairs(tab.pm) do
-    if run.b0 <= ln.last and run.b1 >= ln.first then
-      local x0 = run.b0 >= ln.first and px(run.b0, run.q0) - 6 or ox + CFG.TAB_LEFT
-      local lb = tab.bars[ln.last]
-      local x1 = run.b1 <= ln.last and px(run.b1, run.q1) + 4 or ox + CFG.TAB_LEFT + lb.x + lb.pad + lb.n16 * lb.sw
+    local b0, b1 = tab.bars[run.b0], tab.bars[run.b1]
+    local v0, v1, q1 = b0.vp or run.b0, b1.vp or run.b1, run.q1
+    if v1 < v0 then v1, b1, q1 = v0, b0, nil end
+    if b0.drawn ~= false and v0 <= ln.last and v1 >= ln.first then
+      local x0 = v0 >= ln.first and lx + Tabs.x_of(b0, run.q0) - 6 or lx
+      local x1 = v1 <= ln.last and lx + (q1 and Tabs.x_of(b1, q1) + 4 or Tabs.x_end(b1) - 4)
+        or lx + Tabs.x_end(tab.bars[Tabs.vbar(tab, ln.last)])
       local ym = top + 6
-      if run.b0 >= ln.first then
+      if v0 >= ln.first then
         ImGui.DrawList_AddText(dl, x0, top, COL.TEXT_DIM, "P.M.")
         x0 = x0 + (ImGui.CalcTextSize(ctx, "P.M.")) + 3
         x1 = math.max(x1, x0 + 6) -- (1 short note: still a dash and its end)
       end
       for dx = x0, x1 - 3, 6 do ImGui.DrawList_AddLine(dl, dx, ym, math.min(dx + 3, x1), ym, COL.TEXT_DIM, 1) end
-      if run.b1 <= ln.last then ImGui.DrawList_AddLine(dl, x1, ym - 3, x1, ym + 3, COL.TEXT_DIM, 1) end
+      if v1 <= ln.last then ImGui.DrawList_AddLine(dl, x1, ym - 3, x1, ym + 3, COL.TEXT_DIM, 1) end
     end
   end
   ImGui.PopFont(ctx)
 end
-local BEAT_TXT = {}
-for k = 1, 32 do BEAT_TXT[k] = tostring(k) end
+local BEAMS = { [8] = 1, [16] = 2, [32] = 3 }
+-- A rest of value v at x (y: the middle of the stems), as Guitar Pro draws it (small and grey).
+function UI.tab_rest(dl, v, x, y, col)
+  if v.base <= 2 then -- (a whole rest hangs from a line, a half rest sits on it)
+    ImGui.DrawList_AddLine(dl, x - 5, y - 2, x + 5, y - 2, col, 1)
+    if v.base == 1 then ImGui.DrawList_AddRectFilled(dl, x - 3, y - 2, x + 3, y + 1, col)
+    else ImGui.DrawList_AddRectFilled(dl, x - 3, y - 5, x + 3, y - 2, col) end
+  elseif v.base == 4 then -- (a zigzag)
+    ImGui.DrawList_AddLine(dl, x - 1, y - 7, x + 2, y - 3, col, 1.5)
+    ImGui.DrawList_AddLine(dl, x + 2, y - 3, x - 2, y + 1, col, 1.5)
+    ImGui.DrawList_AddLine(dl, x - 2, y + 1, x + 2, y + 5, col, 1.5)
+    ImGui.DrawList_AddLine(dl, x + 2, y + 5, x - 1, y + 7, col, 1.5)
+  else -- (a slanted stem with 1, 2 or 3 flags)
+    ImGui.DrawList_AddLine(dl, x + 3, y - 6, x - 1, y + 6, col, 1)
+    for k = 0, BEAMS[v.base] - 1 do
+      local fy = y - 5 + k * 4
+      ImGui.DrawList_AddCircleFilled(dl, x - 2, fy, 1.5, col)
+      ImGui.DrawList_AddLine(dl, x - 2, fy + 1, x + 3 - k * 1.3, fy, col, 1)
+    end
+  end
+  if v.dot then ImGui.DrawList_AddCircleFilled(dl, x + 6, y, 1.3, col) end
+end
+-- The note lengths of 1 bar (b.rh: Tabs.rhythm); lx: the left of the strings, y: the top of the stems. Stems (a half
+-- note: short, a whole note: none), beams over the 8ths and shorter of 1 beat, flags, dots, rests, the "3".
+function UI.tab_rhythm(dl, b, lx, y)
+  local col, st = COL.TEXT_DIM, CFG.TAB_STEM
+  local ye = y + st
+  local rh = b.rh
+  for k, e in ipairs(rh) do
+    local x, v = lx + Tabs.x_of(b, e.q), e.v
+    if e.rest then -- (an empty bar: its rest in the middle)
+      UI.tab_rest(dl, v, #rh == 1 and lx + b.x + b.pad + b.n16 * b.sw / 2 or x, y + st / 2, col)
+    else
+      if v.base >= 2 then ImGui.DrawList_AddLine(dl, x, v.base == 2 and y + st / 2 or y, x, ye, col, 1) end
+      local n = BEAMS[v.base] or 0
+      if e.join then -- (the beams shared with the next note; more of its own: a short stub)
+        local nx = rh[k + 1]
+        local m = math.min(n, BEAMS[nx.v.base] or 0)
+        for l = 0, m - 1 do ImGui.DrawList_AddRectFilled(dl, x, ye - 2 - l * 4, lx + Tabs.x_of(b, nx.q), ye - l * 4, col) end
+        for l = m, n - 1 do ImGui.DrawList_AddRectFilled(dl, x, ye - 2 - l * 4, x + 5, ye - l * 4, col) end
+      elseif e.flag then -- (an 8th or shorter alone: flags)
+        for l = 0, n - 1 do ImGui.DrawList_AddLine(dl, x, ye - l * 4, x + 5, ye - 5 - l * 4, col, 1.5) end
+      elseif k > 1 and rh[k - 1].join and n > (BEAMS[rh[k - 1].v.base] or 0) then -- (the last of a group: stubs back)
+        for l = BEAMS[rh[k - 1].v.base], n - 1 do ImGui.DrawList_AddRectFilled(dl, x - 5, ye - 2 - l * 4, x, ye - l * 4, col) end
+      end
+      if v.dot then ImGui.DrawList_AddCircleFilled(dl, x + 4, ye - 1, 1.3, col) end
+    end
+    if e.t3 then -- (a triplet group, as Guitar Pro draws it: a bracket from its first to its last note, "3" in a gap
+      -- in its middle, the ends turned up to the notes; the user's screenshot, 24 November 2026)
+      local x2 = lx + Tabs.x_of(b, rh[e.t3].q)
+      local mid, yb = (x + x2) / 2, ye + 7
+      ImGui.PushFont(ctx, small_font)
+      local tw = UI.centre(dl, mid, yb, col, "3")
+      ImGui.PopFont(ctx)
+      if x2 - x > tw + 8 then
+        ImGui.DrawList_AddLine(dl, x, yb - 3, x, yb, col, 1)
+        ImGui.DrawList_AddLine(dl, x, yb, mid - tw / 2 - 2, yb, col, 1)
+        ImGui.DrawList_AddLine(dl, mid + tw / 2 + 2, yb, x2, yb, col, 1)
+        ImGui.DrawList_AddLine(dl, x2, yb, x2, yb - 3, col, 1)
+      end
+    end
+  end
+end
 -- The tab of the chosen track (only the lines in view are drawn); a click plays the song from there.
 function UI.draw_tab(h)
   if not ImGui.BeginChild(ctx, "##tab", 0, h) then return end
@@ -1759,18 +2377,21 @@ function UI.draw_tab(h)
   end
   local w = ImGui.GetContentRegionAvail(ctx)
   if tab.w ~= w then
-    tab.lines, tab.h = Tabs.layout(tab, w); tab.w = w
+    tab.lines, tab.h = Tabs.layout(tab, w, UI.item_w); tab.w = w
     if tab.chord_row then Tabs.place_chords(tab, function(t) return (ImGui.CalcTextSize(ctx, t)) end, UI.trunc) end
   end
   local ox, oy = ImGui.GetCursorScreenPos(ctx)
+  local lx = ox + CFG.TAB_LEFT -- (the left of the strings)
   ImGui.InvisibleButton(ctx, "##tabarea", math.max(1, w), math.max(1, tab.h))
-  local playing = r.GetPlayStateEx(R.proj) & 1 == 1
-  UI.tip(playing and "Click: the song plays from there." or "Click a note to select it and fix it (Help: Fix the tab). Click elsewhere: the edit cursor goes there.")
+  local playing = R.playing
+  UI.tip(playing and "Click: the song plays from there. Shift+click a bar: loop it (Escape: stop)."
+    or "Click a note to select it and fix it (Help: Fix the tab). Double-click: its box, or a new note on an empty place. Shift+click a bar: loop it (Escape: stop).")
   if ImGui.IsItemClicked(ctx, 0) then
     local mx, my = ImGui.GetMousePos(ctx)
     local bi, q, s = Tabs.hit(tab, mx - ox, my - oy)
     if bi and ImGui.GetKeyMods(ctx) == ImGui.Mod_Shift() then Tabs.loop(bi)
-    elseif bi and playing then UI.play_from(Tabs.time_of(bi, q))
+    elseif bi and playing then -- (a repeated bar: the pass nearest to the one that plays)
+      UI.play_from(Tabs.time_of(Tabs.pass_near(tab, bi, (Tabs.place_of(r.GetPlayPositionEx(R.proj)))), q))
     elseif bi then -- (stopped: Tabs.click)
       local nq
       R.tsel, R.tbox, nq, R.tlast = Tabs.click(tab, bi, q, s, ImGui.IsMouseDoubleClicked(ctx, 0), R.tlast)
@@ -1782,68 +2403,73 @@ function UI.draw_tab(h)
   local sy = ImGui.GetScrollY(ctx)
   local lh = tab.lh
   local lp = R.loop
-  local pmh = tab.pm_row and CFG.TAB_PM or 0
+  local sh = tab.sec_row and CFG.TAB_SECTION or 0 -- (the section names, at the very top)
+  local eh = sh + (tab.end_row and CFG.TAB_ENDING or 0) -- (then the row of the endings 1. 2.)
+  local pmh = eh + (tab.pm_row and CFG.TAB_PM or 0) -- (then P.M.; the bar numbers below them)
   for _, ln in ipairs(tab.lines) do
     if ln.y + lh >= sy and ln.y <= sy + h then
-      if lp and lp.sbi <= ln.last and lp.bi >= ln.first then -- (the loop: a blue band over the bar numbers)
-        local b0, b1 = tab.bars[math.max(lp.sbi, ln.first)], tab.bars[math.min(lp.bi, ln.last)]
-        local x0 = ox + CFG.TAB_LEFT + b0.x + (lp.sbi >= ln.first and b0.pad + lp.sq * 4 * b0.sw or 0)
-        local x1 = ox + CFG.TAB_LEFT + b1.x + b1.pad + b1.n16 * b1.sw
+      local v0, v1 = lp and tab.bars[lp.sbi].vp or lp and lp.sbi, lp and tab.bars[lp.bi].vp or lp and lp.bi
+      if v0 and v1 and v0 <= ln.last and v1 >= ln.first then -- (the loop: a blue band over the bar numbers)
+        local b0, b1 = tab.bars[Tabs.vbar(tab, math.max(v0, ln.first))], tab.bars[Tabs.vbar(tab, math.min(v1, ln.last))]
+        local x0 = lx + b0.x + (v0 >= ln.first and b0.pad + lp.sq * 4 * b0.sw or 0)
+        local x1 = lx + Tabs.x_end(b1)
         ImGui.DrawList_AddRectFilled(dl, x0, oy + ln.y + pmh + 1, x1, oy + ln.y + pmh + fs + 3, COL.HEADER_ACTIVE, 3)
       end
-      if tab.pm_row then UI.tab_pm(dl, tab, ln, ox, oy + ln.y + 1) end
+      if tab.pm_row then UI.tab_pm(dl, tab, ln, ox, oy + ln.y + eh + 1) end
       local y0 = oy + ln.y + tab.top -- (the top string)
       local yb = y0 + (tab.nstr - 1) * CFG.TAB_LINE
-      local lb = tab.bars[ln.last]
-      local x_end = ox + CFG.TAB_LEFT + lb.x + lb.n16 * lb.sw + lb.pad
+      local x_end = lx + Tabs.x_end(tab.bars[Tabs.vbar(tab, ln.last)])
       for s = 1, tab.nstr do
         local ys = y0 + (tab.nstr - s) * CFG.TAB_LINE
         UI.centre(dl, ox + CFG.TAB_LEFT / 2 - 2, ys, COL.TEXT_DIM, tab.names[s])
-        ImGui.DrawList_AddLine(dl, ox + CFG.TAB_LEFT, ys, x_end, ys, COL.LINE, 1)
+        ImGui.DrawList_AddLine(dl, lx, ys, x_end, ys, COL.LINE, 1)
       end
       ImGui.DrawList_AddLine(dl, x_end, y0, x_end, yb, COL.TEXT_DIM, 1)
-      for bi = ln.first, ln.last do
+      for vk = ln.first, ln.last do
+        local bi = Tabs.vbar(tab, vk)
         local b = tab.bars[bi]
-        local bx = ox + CFG.TAB_LEFT + b.x
+        local bx = lx + b.x
         ImGui.DrawList_AddLine(dl, bx, y0, bx, yb, COL.TEXT_DIM, 1)
         ImGui.DrawList_AddText(dl, bx + 2, oy + ln.y + pmh + 2, COL.TEXT_DIM, b.label)
+        if b.rs or b.re or b.alt then UI.tab_repeat(dl, b, vk == ln.first, bx, lx + Tabs.x_end(b), oy + ln.y + sh, y0, yb, pmh - sh) end
+        if b.section then ImGui.DrawList_AddText(dl, bx + 2, oy + ln.y + 2, COL.TEXT_BRIGHT, b.section) end
+        if b.tempo or b.sig or (b.final and not b.re) then UI.tab_score(dl, b, lx, bx, oy + ln.y, y0, yb) end
         if tab.chord_row then -- (the chord names, under the bar numbers, over their chord: Tabs.place_chords)
           for _, c in ipairs(b.chords) do
-            ImGui.DrawList_AddText(dl, ox + CFG.TAB_LEFT + c.x, oy + ln.y + pmh + CFG.TAB_TOP - 2, COL.TEXT_BRIGHT, c.txt)
+            ImGui.DrawList_AddText(dl, lx + c.x, oy + ln.y + pmh + CFG.TAB_TOP - 2, COL.TEXT_BRIGHT, c.txt)
           end
         end
-        for beat = 0, b.n16 // 4 - 1 do -- (the beats, under the middle of their 16th)
-          UI.centre(dl, bx + b.pad + (beat * 4 + 0.5) * b.sw, yb + fs, COL.TEXT_DIM, BEAT_TXT[beat + 1] or "")
-        end
+        if S.lengths then UI.tab_rhythm(dl, b, lx, yb + 10) end
         for k, nt in ipairs(b.notes) do -- (a chord: its notes on their strings, 1 above the other)
-          local x, y = bx + b.pad + (nt.q * 4 + 0.5) * b.sw, y0 + (tab.nstr - nt.s) * CFG.TAB_LINE
-          local tw, th = ImGui.CalcTextSize(ctx, nt.txt)
-          ImGui.DrawList_AddRectFilled(dl, x - tw / 2 - 2, y - th / 2, x + tw / 2 + 2, y + th / 2, COL.PANEL_BG)
-          if bi == sel_bi and k == sel_i then -- (the selected note: a blue box, as in Note Detective)
-            ImGui.DrawList_AddRect(dl, x - tw / 2 - 4, y - th / 2 - 1, x + tw / 2 + 4, y + th / 2 + 1, COL.ACCENT, 3, 0, 2)
-          end
-          UI.centre(dl, x, y, (nt.mine and S.marks) and COL.GREEN or COL.TEXT_MAIN, nt.txt)
-          UI.tab_marks(dl, tab, ln, ox, y0, nt, x, y, tw, th)
+          UI.tab_item(dl, tab, ln, ox, nt, lx + Tabs.x_of(b, nt.q), y0 + (tab.nstr - nt.s) * CFG.TAB_LINE,
+            (nt.mine and S.marks) and COL.GREEN or COL.TEXT_MAIN, bi == sel_bi and k == sel_i)
         end
-        for _, t in ipairs(b.ties or {}) do -- (the held parts of tied notes: "(4)", an arc from the note before)
-          if not t.off then
-            local x, y = bx + b.pad + (t.q * 4 + 0.5) * b.sw, y0 + (tab.nstr - t.s) * CFG.TAB_LINE
-            local tw, th = ImGui.CalcTextSize(ctx, t.txt)
-            ImGui.DrawList_AddRectFilled(dl, x - tw / 2 - 2, y - th / 2, x + tw / 2 + 2, y + th / 2, COL.PANEL_BG)
-            UI.centre(dl, x, y, COL.TEXT_MAIN, t.txt)
-            UI.tab_marks(dl, tab, ln, ox, y0, t, x, y, tw, th)
+        if b.ties then -- (the held parts of tied notes: "(4)", an arc from the note before)
+          for _, t in ipairs(b.ties) do
+            if not t.off then -- (grey: it is held, not played; the user, 24 November 2026)
+              UI.tab_item(dl, tab, ln, ox, t, lx + Tabs.x_of(b, t.q), y0 + (tab.nstr - t.s) * CFG.TAB_LINE, COL.TEXT_DIM)
+            end
           end
         end
       end
     end
   end
+  local esel = sel_bi and not sel_i and R.tsel -- (a selected empty place: a blue box there, as a selected note has)
+  local eln = esel and Tabs.line_of(tab, sel_bi)
+  if esel and eln then
+    local b = tab.bars[sel_bi]
+    local x = lx + Tabs.x_of(b, esel.q)
+    local y = oy + eln.y + tab.top + (tab.nstr - esel.s) * CFG.TAB_LINE
+    ImGui.DrawList_AddRect(dl, x - 7, y - fs / 2 - 1, x + 7, y + fs / 2 + 1, COL.ACCENT, 3, 0, 2)
+  end
   -- the position line, blue: playing at the play position (Follow playback: its line in view); stopped at the edit
-  -- cursor
-  local pbi, pq = Tabs.place_of(playing and r.GetPlayPositionEx(R.proj) or r.GetCursorPositionEx(R.proj))
+  -- cursor (a later pass of a repeat: on its written bar)
+  local pbi, pq = Tabs.place_of(UI.cursor())
+  pbi = pbi and (tab.bars[pbi].shown or pbi)
   local pln = pbi and Tabs.line_of(tab, pbi)
   if pln then
     local b = tab.bars[pbi]
-    local px = ox + CFG.TAB_LEFT + b.x + b.pad + math.min(pq or 0, b.len) * 4 * b.sw
+    local px = lx + b.x + b.pad + math.min(pq or 0, b.len) * 4 * b.sw
     local y0 = oy + pln.y + tab.top
     local y1 = y0 + (tab.nstr - 1) * CFG.TAB_LINE + 8
     ImGui.DrawList_AddLine(dl, px, y0 - 8, px, y1, COL.ACCENT, 2) -- (blue, playing and stopped: decided 24 November 2026)
@@ -1857,40 +2483,53 @@ function UI.draw_tab(h)
   ImGui.EndChild(ctx)
 end
 -- The selected note of the tab: its bar and index (nil: none, or the song plays; a note that is gone: no selection).
+-- A selected empty place (R.tsel.empty: a click there, Up / Down): its bar and no index.
 function UI.tab_sel()
   local sel, tab = R.tsel, R.tab
-  if not (sel and tab and tab.bars[sel.bi]) or r.GetPlayStateEx(R.proj) & 1 == 1 then return nil end
+  if not (sel and tab and tab.bars[sel.bi]) or R.playing then return nil end
   local i = Tabs.note_at(tab, sel.bi, sel.q, sel.s)
-  if not i then R.tsel = nil; return nil end
+  if not i and not sel.empty then R.tsel = nil; return nil end
+  if i then sel.empty = nil end
   return sel.bi, i
 end
 -- The box of a note (after a double-click: the selected note; else a new note at R.tbox.bi / q / s): its fret, then
--- Enter; Left / Right moves the selected note a 16th (in its bar); Escape or a click elsewhere closes it.
+-- Enter; Left / Right moves the selected note 1 place of the grid (in its bar); + - . / its length (UI.len_op);
+-- Escape or a click elsewhere closes it.
 function UI.tab_box(ox, oy, playing, sel_bi, sel_i)
   local a, tab = R.tbox, R.tab
   if not a then return end
   local bi, q, s = a.bi, a.q, a.s
   if not a.new then
-    if not sel_bi then R.tbox = nil; return end
+    if not sel_i then R.tbox = nil; return end
     local nt = tab.bars[sel_bi].notes[sel_i]
     bi, q, s = sel_bi, nt.q, nt.s
   end
   local ln = Tabs.line_of(tab, bi)
   if playing or not ln then R.tbox = nil; return end
   local b = tab.bars[bi]
-  local x = CFG.TAB_LEFT + b.x + b.pad + (q * 4 + 0.5) * b.sw
+  local x = CFG.TAB_LEFT + Tabs.x_of(b, q)
   local y = ln.y + tab.top + (tab.nstr - s) * CFG.TAB_LINE
   ImGui.SetCursorScreenPos(ctx, ox + x - 16, oy + y - ImGui.GetFrameHeight(ctx) / 2)
   ImGui.SetNextItemWidth(ctx, 32)
   if a.focus then ImGui.SetKeyboardFocusHere(ctx); a.focus = nil end
+  ImGui.PushID(ctx, a.gen or 0) -- (a length key: a new id, so the box starts again without the typed key)
   local enter, txt = ImGui.InputText(ctx, "##tabbox", a.txt,
     ImGui.InputTextFlags_CharsDecimal() | ImGui.InputTextFlags_EnterReturnsTrue() | ImGui.InputTextFlags_AutoSelectAll())
+  ImGui.PopID(ctx)
   a.txt = txt
-  UI.tip(a.new and "The fret of the new note, then Enter. Escape: close." or "Its fret, then Enter. Left / Right: move the note a 16th. Escape: close.")
+  UI.tip(a.new and "The fret of the new note, then Enter. Escape: close."
+    or "Its fret, then Enter. Left / Right: move the note. + / -: twice as long / half. \".\": dotted. \"/\": a triplet beat. Escape: close.")
   if not a.new and ImGui.IsItemActive(ctx) then
-    local dq = ImGui.IsKeyPressed(ctx, ImGui.Key_LeftArrow(), true) and -0.25
-      or ImGui.IsKeyPressed(ctx, ImGui.Key_RightArrow(), true) and 0.25 or nil
-    if dq then
+    local op = UI.len_char()
+    if op and op ~= "&" then -- (in the box: the length keys only)
+      UI.len_op(bi, sel_i, op)
+      a.txt, a.gen, a.focus = txt:gsub("[^%d]", ""), (a.gen or 0) + 1, true
+      return
+    end
+    local dir = ImGui.IsKeyPressed(ctx, ImGui.Key_LeftArrow(), true) and -1
+      or ImGui.IsKeyPressed(ctx, ImGui.Key_RightArrow(), true) and 1 or nil
+    if dir then -- (1 place of the grid there: a 16th, a triplet place)
+      local dq = dir * Tabs.step(b, q)
       local nq, why = Tabs.move(bi, sel_i, dq)
       if nq then R.tsel.q = nq; r.SetEditCurPos2(R.proj, Tabs.time_of(bi, nq), true, false)
       else UI.notice(why, true) end
@@ -1904,8 +2543,7 @@ function UI.tab_box(ox, oy, playing, sel_bi, sel_i)
       done, why = Tabs.add(bi, q, s, f)
       if done then R.tsel = { bi = bi, q = q, s = s } end
     elseif f then
-      done = f >= 0 and f <= CFG.FRETS
-      if done then Tabs.set_fret(bi, sel_i, f) else why = string.format("A fret from 0 to %d, please.", CFG.FRETS) end
+      why = select(2, Tabs.set_fret(bi, sel_i, f))
     end
     if why then UI.notice(why, true) end
     R.tbox = nil
@@ -1915,7 +2553,9 @@ function UI.tab_box(ox, oy, playing, sel_bi, sel_i)
 end
 local DIGIT_KEYS
 -- The keys of the tab (the window has the focus, nothing typed in, no menu open). Ctrl+Z / Ctrl+Shift+Z: the tab
--- edits first, then REAPER's undo. Stopped, a note selected: Left / Right, Up / Down, a fret, Delete.
+-- edits first, then REAPER's undo. Stopped, a note selected: Left / Right, Up / Down (select on the next string, as in
+-- Guitar Pro), Alt+Up / Down (the note to the next string), a fret, Delete, + - . / (its length); an empty place
+-- selected: Left / Right, Up / Down, a number adds a note there.
 function UI.tab_keys()
   if not ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows()) or ImGui.IsAnyItemActive(ctx)
     or ImGui.IsPopupOpen(ctx, "", ImGui.PopupFlags_AnyPopup()) then return end
@@ -1926,44 +2566,103 @@ function UI.tab_keys()
   elseif ImGui.IsKeyChordPressed(ctx, C | SH | ImGui.Key_Z()) or ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Y()) then
     if not Tabs.undo(1) then r.Main_OnCommand(40030, 0) end -- Edit: Redo
     return
-  elseif ImGui.GetKeyMods(ctx) ~= ImGui.Mod_None() then return
-  elseif R.loop and ImGui.IsKeyPressed(ctx, ImGui.Key_Escape(), false) then Tabs.loop_off(); return
-  elseif ImGui.IsKeyPressed(ctx, ImGui.Key_Space(), false) then UI.play_stop(); return end
-  local bi, i = UI.tab_sel()
-  if not bi then return end
-  local tab = R.tab
+  end
+  local op = UI.len_char() -- (the typed "+", "-", ".", "/", "&": any keyboard layout, Shift too)
+  local line = op == "&" and "&" or (ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Enter()) or ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_KeypadEnter())) and "enter"
+  if line then -- (the line keys of Guitar Pro: & pulls the next line's first bar up, Ctrl+Enter moves the rest down)
+    local bi = UI.tab_sel()
+    local ok, why = Tabs.set_lines(bi or (R.tsel and R.tsel.bi) or 0, line)
+    if not ok then UI.notice(why, true) end
+    return
+  elseif op then
+    local bi, i = UI.tab_sel()
+    if i then UI.len_op(bi, i, op) end
+    return
+  end
   local function key(k, rep) return ImGui.IsKeyPressed(ctx, k, rep) end
-  local function select(b2, i2)
-    local nt = tab.bars[b2].notes[i2]
-    R.tsel = { bi = b2, q = nt.q, s = nt.s }
-    r.SetEditCurPos2(R.proj, Tabs.time_of(b2, nt.q), true, false)
+  local up, down = key(ImGui.Key_UpArrow(), false), key(ImGui.Key_DownArrow(), false)
+  if ImGui.GetKeyMods(ctx) == ImGui.Mod_Alt() and (up or down) then -- (Alt+Up / Down: the note to the next string)
+    local bi, i = UI.tab_sel()
+    if i then
+      local dir = up and 1 or -1
+      local ok, why = Tabs.move_string(bi, i, dir)
+      if ok then R.tsel.s = R.tsel.s + dir else UI.notice(why, true) end
+    end
+    return
+  end
+  if ImGui.GetKeyMods(ctx) ~= ImGui.Mod_None() then return
+  elseif R.loop and key(ImGui.Key_Escape(), false) then Tabs.loop_off(); return
+  elseif key(ImGui.Key_Space(), false) then UI.play_stop(); return end
+  local bi, i = UI.tab_sel()
+  local tab, sel = R.tab, R.tsel
+  if not (bi and tab and sel) then return end
+  local function select(b2, q, s) -- (a note there, else the empty place)
+    R.tsel = { bi = b2, q = q, s = s, empty = not Tabs.note_at(tab, b2, q, s) or nil }
+    r.SetEditCurPos2(R.proj, Tabs.time_of(b2, q), true, false)
   end
   if key(ImGui.Key_LeftArrow(), true) or key(ImGui.Key_RightArrow(), true) then
-    local b2, i2 = Tabs.next_note(tab, bi, i, key(ImGui.Key_LeftArrow(), true) and -1 or 1)
-    if b2 then select(b2, i2) end
-  elseif key(ImGui.Key_UpArrow(), false) or key(ImGui.Key_DownArrow(), false) then
-    local dir = key(ImGui.Key_UpArrow(), false) and 1 or -1
-    local ok, why = Tabs.move_string(bi, i, dir)
-    if ok then R.tsel.s = R.tsel.s + dir else UI.notice(why, true) end
+    local dir = key(ImGui.Key_LeftArrow(), true) and -1 or 1
+    if i then -- (a note: the note before or after it)
+      local b2, i2 = Tabs.next_note(tab, bi, i, dir)
+      if b2 then local nt = tab.bars[b2].notes[i2]; select(b2, nt.q, nt.s) end
+    else -- (an empty place: the place before or after it on its string)
+      local b2, q2 = Tabs.next_place(tab, bi, sel.q, dir)
+      if b2 then select(b2, q2, sel.s) end
+    end
+  elseif up or down then -- (the note or the empty place on the next string, as in Guitar Pro)
+    local s2 = sel.s + (up and 1 or -1)
+    if s2 >= 1 and s2 <= tab.nstr then select(bi, sel.q, s2) end
+  elseif not i then -- (an empty place: a number adds a note there)
+    local d = UI.digit()
+    if d and Tabs.add(bi, sel.q, sel.s, d) then
+      sel.empty = nil
+      R.tnum = { txt = tostring(d), t = Util.now(), bi = bi, i = Tabs.note_at(R.tab, bi, sel.q, sel.s) }
+    end
   elseif key(ImGui.Key_Delete(), false) then
     Tabs.delete(bi, i)
-    R.tsel = nil
+    sel.empty = true -- (its place stays selected: a number adds a note again)
   else
-    if not DIGIT_KEYS then
-      DIGIT_KEYS = {}
-      for d = 0, 9 do DIGIT_KEYS[d] = { ImGui["Key_" .. d](), ImGui["Key_Keypad" .. d]() } end
-    end
-    for d = 0, 9 do
-      if key(DIGIT_KEYS[d][1], false) or key(DIGIT_KEYS[d][2], false) then
-        local now, last = Util.now(), R.tnum
-        local txt = (last and last.bi == bi and last.i == i and now - last.t < CFG.TAB_DIGITS) and (last.txt .. d) or tostring(d)
-        if tonumber(txt) > CFG.FRETS then txt = tostring(d) end
-        R.tnum = { txt = txt, t = now, bi = bi, i = i }
-        Tabs.set_fret(bi, i, tonumber(txt))
-        break
-      end
+    local d = UI.digit()
+    if d then
+      local now, last = Util.now(), R.tnum
+      local txt = (last and last.bi == bi and last.i == i and now - last.t < CFG.TAB_DIGITS) and (last.txt .. d) or tostring(d)
+      if tonumber(txt) > CFG.FRETS then txt = tostring(d) end
+      R.tnum = { txt = txt, t = now, bi = bi, i = i }
+      Tabs.set_fret(bi, i, tonumber(txt))
     end
   end
+end
+-- The number key (0 .. 9, also on the keypad) pressed in this frame, or nil.
+function UI.digit()
+  if not DIGIT_KEYS then
+    DIGIT_KEYS = {}
+    for d = 0, 9 do DIGIT_KEYS[d] = { ImGui["Key_" .. d](), ImGui["Key_Keypad" .. d]() } end
+  end
+  for d = 0, 9 do
+    if ImGui.IsKeyPressed(ctx, DIGIT_KEYS[d][1], false) or ImGui.IsKeyPressed(ctx, DIGIT_KEYS[d][2], false) then return d end
+  end
+end
+local LEN_CHARS = { [43] = "+", [45] = "-", [46] = ".", [47] = "/", [38] = "&" }
+-- The length or line key typed in this frame ("+", "-", ".", "/"; "&": a line break), or nil.
+function UI.len_char()
+  local k = 0
+  while true do
+    local got, c = ImGui.GetInputQueueCharacter(ctx, k)
+    if not got then return nil end
+    if LEN_CHARS[c] then return LEN_CHARS[c] end
+    k = k + 1
+  end
+end
+-- A length key on the selected note i of bar bi: Tabs.length or Tabs.triplet (the selection follows the note).
+function UI.len_op(bi, i, op)
+  local q, why
+  if op == "/" then
+    q, why = Tabs.triplet(bi, i)
+    if q then R.tsel.q = q; r.SetEditCurPos2(R.proj, Tabs.time_of(bi, q), true, false) end
+  else
+    q, why = Tabs.length(bi, i, op)
+  end
+  if why then UI.notice(why, true) end
 end
 -- The song plays from time t (playing: it jumps there).
 function UI.play_from(t)
@@ -2075,6 +2774,9 @@ end
 local function loop()
   R.frames = R.frames + 1
   Project.update()
+  local playing = R.proj ~= nil and r.GetPlayStateEx(R.proj) & 1 == 1 -- (read once per frame: R.playing)
+  if playing and not R.playing then R.tbox = nil end -- (the song starts: the note box closes)
+  R.playing = playing
   Tempo.step()
   Tempo.tick()
   ImGui.SetNextWindowSize(ctx, CFG.DEFAULT_W, CFG.DEFAULT_H, ImGui.Cond_FirstUseEver())

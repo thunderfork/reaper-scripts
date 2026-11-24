@@ -1,9 +1,8 @@
 # Tab Viewer
 
-Guitar Pro tabs in the project. Step 1 of the Guitar Pro direction (PLAN.md, "Later"; decided 23 November 2026):
-"Open tab..." and the list of the tracks of the tab (name, instrument and strings, tuning, capo; the bars, time
-signature and tempo of the file). Chart Cue look, 1 window, no tabs yet. Next steps: the tab drawing, the track
-dropdown, the tab on the bars of the song (step 2).
+Guitar Pro tabs in the project (the Guitar Pro direction, decided 23 November 2026): Open tab... (a tab per
+region), the Track dropdown, the tab on the bars of the song (Find tempo, Start), chord names, playing marks, note
+lengths, fixes of the tab (saved in the project), loop and speed. Chart Cue look, 1 window, no tabs. Drums: later.
 
 ## Files
 
@@ -103,7 +102,30 @@ dropdown, the tab on the bars of the song (step 2).
   q in the bar, s, fret; the string names, the top "e" when it has the name of the lowest); `Tabs.build` (R.tab, or
   R.tab_why for drums and "other"; the texts made once), `Tabs.layout` (lines of bars for the width, as Note
   Detective's), `Tabs.hit` (a point -> the bar and its 16th). `UI.draw_tab`: only the lines in view; a click plays
-  from there (`UI.play_from`). The drawing moves into a shared file with segment 2c (Note Detective).
+  from there (`UI.play_from`). Bar widths: `Tabs.min_slot` (the texts on 1 string do not touch; `b.slot`, once
+  per build), `Tabs.x_of` / `Tabs.x_end`; held parts "(4)" grey (the user, 24 November 2026). Triplets: a bracket
+  with the "3" in a gap, as Guitar Pro (24 November 2026).
+- Repeats as written (decided 24 November 2026: the default; written bar numbers; a click while stopped = the first
+  pass): `tab.bars` stay the bars as they play (times, edits, rhythm); `Tabs.view` makes `tab.view` (the bars drawn:
+  each written bar at its first pass), `b.shown` / `b.vp` / `b.drawn = false` (a later pass draws on its first one),
+  `b.rs`, `b.re`, `b.times` ("x3"), `b.alt` ("1.") with `alt_first` / `alt_last`, `tab.end_row` (`CFG.TAB_ENDING`
+  row at the top). Lines hold places of the view (`Tabs.vbar`); `Tabs.neighbour` walks the view (Left / Right);
+  `Tabs.pass_near` (a click while playing: the pass nearest the one that plays); `UI.tab_repeat` draws |: :| (room:
+  `CFG.TAB_REPEAT`, `b.tail`). `S.written` (Settings > Tab > Repeats as written, ExtState `written`, on). D.S., Coda
+  and Fine are not read (the bars play in file order with the repeats). Checked only with made-up data.
+- Line breaks (decided 24 November 2026, as in Guitar Pro): "&" (the typed character, `UI.len_char`) pulls the
+  next line's first bar up, Ctrl+Enter moves the bars after the selected one down (`Tabs.line_starts`, a plain
+  function; `Tabs.set_lines`, 1 Undo step: `R.undo` entry with `lines`). Saved per tab: `lines=` (the written bars
+  that start a line; `e.lines`); `Tabs.view` makes `tab.starts`; `Tabs.layout` keeps those lines and shrinks a line
+  that is too wide (decided). Only with Repeats as written (played out: automatic lines). Tab dropdown > Reset line
+  breaks (`Tabs.reset_lines`).
+- Section names (24 November 2026): `mb.section` (.gp: `<Section>` Text, else Letter; .gp3/4/5: the marker name);
+  `Tabs.view` gives each bar shown `b.section` and `tab.sec_row` (`CFG.TAB_SECTION`, the top row: then the endings,
+  P.M., the bar numbers). The old formats' markers: checked only with made-up data.
+- Score marks (24 November 2026, as in Guitar Pro): `Tabs.view(..., tl)` (tl = `GP.timeline`) gives `b.sig` (the time
+  signature at bar 1 and where it changes; room: `CFG.TAB_SIG`, `Tabs.head_w`), `b.tempo` ({ q, "= 120" } where the
+  rounded tempo changes; in the top row, so `tab.sec_row` is always on with a tempo; a later pass is not drawn) and
+  `b.final` (the double bar on the last bar, not after a :|; room: `b.tail`). `UI.tab_score` draws them. No switch.
 - The tab on the song (step 2b, 23 November 2026): `P.bar` (`bar=`, only when not 1; a new Open tab clears it) = the
   song bar (REAPER's, from 1) of bar 1 of the tab; `Tabs.set_bar` ("<" / ">", `UI.repeat_button`: hold = repeat),
   `Tabs.relabel` (the bar numbers = the song's, the bar line text). From that bar the tab follows the project's
@@ -127,7 +149,7 @@ dropdown, the tab on the bars of the song (step 2).
   tab edits first, then REAPER's), the Undo ghost button on the Start row. Segment 2: `UI.tab_box` (`R.tbox`; a double-click:
   the selected note's fret, Left / Right = `Tabs.move` inside its bar; a double-click on an empty place of a string: a new
   note, `Tabs.add`, 1 16th). `Tabs.click` decides (a plain function, tested): the box opens only on a double-click on
-  the same place (`R.tlast`; lessons 24 November 2026). Segment 3: `Tabs.undo_all` (Tab dropdown > Undo all changes > Undo
+  the same place (`R.tlast`; lessons 24 November 2026). Segment 3: `Tabs.undo_all` (Tab dropdown > Undo all fixes > Undo
   all fixes of this track; 1 Undo step: `R.undo` entry with `all`), `nt.mine` (a note of an edited bar that the file
   does not have at that place, string and fret) drawn green when `S.marks` (Settings > Tab > Mark my fixes, ExtState
   `marks`, on).
@@ -147,10 +169,36 @@ dropdown, the tab on the bars of the song (step 2).
   a sloped line (a slide), stubs (slide in / out), a bend arrow, a vibrato wave; `UI.tab_pm`: the "P.M. - - -|" row
   above the bar numbers (`CFG.TAB_PM`, only with palm mutes). `Tabs.note_txt`: x (always), `<12>` with the marks. A
   note of an edited bar at a file note's place and string keeps its marks (a dead note with a new fret: none).
-  `S.pmarks` (Settings > Tab > Playing marks, ExtState `pmarks`, on). The beat numbers under the tab go with segment
-  C (the rhythm marks replace them; the user, 24 November 2026). Checked only with made-up data: the first real tab is
-  the check.
-- `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks` (`tempo` removed 24 November 2026 with
+  `S.pmarks` (Settings > Tab > Playing marks, ExtState `pmarks`, on). Checked only with made-up data: the first real
+  tab is the check.
+- Note lengths (segment C1, 24 November 2026; they replace the beat numbers): `GP.notes` keeps `w` (the written
+  length; `len` rings on with the ties) and each held part `{ q, w }`; `GP.tab` gives them to the bar notes and
+  `bar.ties`; an edited note takes `w` of the file note at its place and string, else its `len`. `Tabs.rhythm(b)`
+  (after `Tabs.link`): `b.rh` (the notes that start together = 1 event, cut at the next one; the gaps = rests, split
+  at the beats, `Tabs.rest_value`; `join` = a beam to the next one in the same beat, `flag`, `t3` = the triplet
+  group's last index), `b.fine` (a 32nd or 16th triplet: `Tabs.layout` doubles the 16th width of that bar).
+  `UI.tab_rhythm` / `UI.tab_rest` draw it (`CFG.TAB_RHYTHM`, `CFG.TAB_STEM`). `S.lengths` (Settings > Tab > Note
+  lengths, ExtState `lengths`, on). Checked only with made-up data. The rhythm is made also when it is not drawn
+  (the click grid).
+- Length keys (segment C2, 24 November 2026): the saved `len` of an edit is the written length (decided 24 November
+  2026; it was how long a tied note rings). `UI.len_char` reads the typed character (`GetInputQueueCharacter`: any
+  layout), `UI.len_op`: `Tabs.length` (+ - .: the whole chord, decided 24 November 2026; 32nd to whole; never past
+  `next_start`), `Tabs.triplet` ("/", as in Guitar Pro: the beat's notes in order on the 3 or 6 triplet places, each 1
+  place long, the rest a rest; back: in order on the 16ths, each to the next note; lessons 24 November 2026).
+  A triplet beat is known from its note places or its triplet lengths (`Tabs.step`); the "3" closes at a whole
+  beat (16th triplets: half a beat). The grid of a beat: `Tabs.step` (1/3, 1/6 from its notes; 1/8 in a `b.fine` bar; else 1/4),
+  `Tabs.snap` (Tabs.hit, Tabs.move, a new note's length); `Tabs.note_at` compares the exact place. In the box a
+  length key gives the box a new id (`a.gen`), so the typed key is not in it.
+- Checkup 24 November 2026 (all decided by the user): Up / Down selects the note or the empty place on the next
+  string, as in Guitar Pro; Alt+Up / Down moves the note (`Tabs.move_string`). An empty place can be selected
+  (`R.tsel.empty`: a click on it, Up / Down, Left / Right = `Tabs.next_place`, after Delete); a number there adds a
+  note (`UI.digit`). A new note is as long as the note before it in the bar (`Tabs.new_len`; a triplet beat: 1
+  place; never past the next note). The Undo button always shows (grey: nothing to take back). The speed dropdown
+  is yellow below 100%, and a project that plays at another rate gets a notice when it loads. Another tab, track or
+  project clears the selection (`Tabs.unselect`); another project, "<" / ">" and Set tempo end the loop; the loop
+  gives back the old time selection only when it is still the loop's. `Util.grid`: the places read from `edit=` on
+  the 1/48 grid. `GP.notes`: a tie joins only the note that ends where it starts.
+- `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks`, `lengths`, `written` (`tempo` removed 24 November 2026 with
   the Tempo and bars section).
 - `R.rows` / `R.info` (`Tabs.rows`): the Track dropdown texts and the grey line under it, made once per tab. Another project tab:
   its tab is read again (0.3 s for a 2 MB score; no cache: decided in the simplify round, 23 November 2026).

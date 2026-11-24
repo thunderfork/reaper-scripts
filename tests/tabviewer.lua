@@ -43,6 +43,7 @@ if not loaded or not C.Project then
   log("FAIL  load Tab Viewer.lua: " .. tostring(err)); failed = 1; finish(); return
 end
 local GP, Tabs, Project, R = C.GP, C.Tabs, C.Project, C.R
+C.S.written = false -- (most tests are on the bars as they play; "repeats as written" has its own test)
 local D = dofile(here .. "\\tabviewer_data.lua")
 log(string.format("REAPER %s in %s, Tab Viewer %s loaded", r.GetAppVersion(), r.GetResourcePath(), C.CFG.VERSION))
 Project.update()
@@ -592,6 +593,60 @@ test("the tab of a track: the bars as they play (repeats, 3/4), the notes on the
   eq(table.concat(GP.tab({ tracks = { { open = { 40, 45, 50, 55, 59, 64 } } }, mbars = {} }, 1).names, " "), "E A D G B e")
 end)
 
+test("repeats as written: each written bar once, |: :|, x3, the endings 1. 2.; a later pass on its bar; the nearest pass", function()
+  -- bar 1 |:, bar 2 the 1st ending :|, bar 3 the 2nd ending, bar 4: they play 1 2 1 3 4
+  local mbars = { { rstart = true, count = 0 }, { rend = true, count = 2, alt = { [1] = true } }, { alt = { [2] = true }, count = 0 },
+    { count = 0 } }
+  eq(table.concat(GP.order(mbars), " "), "1 2 1 3 4", "the order they play")
+  local function tab() local t = { bars = {} }; for k, wb in ipairs(GP.order(mbars)) do t.bars[k] = { wb = wb } end; return t end
+  local t = tab()
+  Tabs.view(t, mbars, true)
+  eq(table.concat(t.view, " "), "1 2 4 5", "each written bar once, at its first pass")
+  eq(t.bars[3].shown, 1); eq(t.bars[3].drawn, false); eq(t.bars[3].vp, 1, "the 2nd pass of bar 1: drawn on bar 1")
+  ok(t.bars[1].rs and t.bars[2].re, "|: and :|"); eq(t.bars[2].times, nil, "2 times: no x2")
+  eq(t.bars[2].alt .. " " .. t.bars[4].alt, "1. 2.", "the endings")
+  ok(t.bars[2].alt_first and t.bars[2].alt_last and t.bars[4].alt_first and t.bars[4].alt_last, "each bracket: its own ends")
+  eq(t.end_row, true)
+  eq(Tabs.pass_near(t, 1, 4), 3, "playing in the 2nd ending: bar 1's 2nd pass is nearest"); eq(Tabs.pass_near(t, 1, nil), 1)
+  eq(Tabs.neighbour(t, 2, 1), 4, "after the 1st ending: the 2nd ending (the view's order)")
+  mbars[2].count = 3
+  t = tab(); Tabs.view(t, mbars, true)
+  eq(t.bars[2].times, "x3", "3 times: x3")
+  t = tab(); Tabs.view(t, mbars, false)
+  eq(#t.view, #t.bars, "off: every bar as it plays"); eq(t.end_row, false); eq(t.bars[1].rs, nil)
+  -- section names: read from a .gp bar (its text, else its letter), over their bar
+  local xml = D.GPIF:gsub("<MasterBar>", "<MasterBar><Section><Letter><![CDATA[A]]></Letter><Text><![CDATA[Intro]]></Text></Section>", 1)
+  local doc = GP.parse(xml)
+  eq(doc.mbars[1].section, "Intro", "the section's text"); eq(doc.mbars[2].section, nil)
+  doc = GP.parse((D.GPIF:gsub("<MasterBar>", "<MasterBar><Section><Letter><![CDATA[B]]></Letter><Text><![CDATA[]]></Text></Section>", 1)))
+  eq(doc.mbars[1].section, "B", "no text: the letter")
+  -- (lessons 24 November 2026: a real file has line breaks around the CDATA: "<![CDATA[Solo]]>" was shown)
+  doc = GP.parse((D.GPIF:gsub("<MasterBar>", "<MasterBar><Section>\n<Letter>\n<![CDATA[C]]>\n</Letter>\n<Text>\n  <![CDATA[Solo]]>\n</Text>\n</Section>", 1)))
+  eq(doc.mbars[1].section, "Solo", "spaces and line breaks around the CDATA")
+  mbars[1].section = "Verse"
+  t = tab(); Tabs.view(t, mbars, true)
+  eq(t.bars[1].section, "Verse"); eq(t.sec_row, true); eq(t.bars[2].section, nil)
+end)
+
+test("score marks: the time signature and the tempo where they change, the final double bar", function()
+  -- 4 bars: 4/4 4/4 3/4 4/4; bar 2 repeats (|: :| on bar 2: they play 1 2 2 3 4)
+  local mbars = { { num = 4, den = 4, count = 0 }, { num = 4, den = 4, rstart = true, rend = true, count = 2 },
+    { num = 3, den = 4, count = 0 }, { num = 4, den = 4, count = 0 } }
+  local tl = { { tempos = { { q = 0, bpm = 120 } } }, { tempos = { { q = 0, bpm = 120 } } }, { tempos = { { q = 0, bpm = 90 } } },
+    { tempos = { { q = 2, bpm = 140.4 } } }, { tempos = {} } }
+  local t = { bars = {} }
+  for k, wb in ipairs(GP.order(mbars)) do t.bars[k] = { wb = wb } end
+  Tabs.view(t, mbars, true, nil, tl)
+  local b = t.bars
+  eq(b[1].sig[1] .. "/" .. b[1].sig[2], "4/4", "the 1st bar"); eq(b[2].sig, nil, "the same: none")
+  eq(b[4].sig[1], "3", "3/4"); eq(b[5].sig[1], "4", "back to 4/4")
+  eq(b[1].tempo[1].txt, "= 120"); eq(b[2].tempo, nil, "the same tempo: none")
+  eq(b[3].tempo, nil, "a later pass: not drawn (its first pass is bar 2)")
+  eq(b[4].tempo[1].txt, "= 140", "rounded"); eq(b[4].tempo[1].q, 2, "in the bar")
+  ok(b[5].final and not b[4].final, "the final double bar on the last bar"); eq(t.sec_row, true, "the tempo row")
+  eq(Tabs.head_w(b[4]), C.CFG.TAB_SIG, "room for the signature"); eq(Tabs.head_w(b[2]), C.CFG.TAB_REPEAT)
+end)
+
 test("playing marks: read from a .gp note; the links to the next note, held parts (4), P.M. runs; x; <12>; a fix keeps them", function()
   local fx = GP.fx('<Note><Property name="HopoOrigin"><Enable /></Property><Property name="Slide"><Flags>2</Flags></Property>'
     .. '<Property name="PalmMuted"><Enable /></Property><Vibrato>Slight</Vibrato></Note>')
@@ -636,6 +691,38 @@ test("playing marks: read from a .gp note; the links to the next note, held part
   Tabs.undo_all()
   R.undo = {} -- (the next tests count the Undo steps)
   Project.save()
+end)
+
+test("note lengths: values, chords as 1 event, rests split at the beats, beams per beat, flags, the 3, 32nds, held parts", function()
+  local function show(b)
+    Tabs.rhythm(b)
+    local t = {}
+    for _, e in ipairs(b.rh) do
+      t[#t + 1] = string.format("%s%s%d%s%s%s%s", e.rest and "r" or "", e.v.trip and "t" or "", e.v.base, e.v.dot and "." or "",
+        e.join and "-" or "", e.flag and "f" or "", e.t3 and ("3>" .. e.t3) or "")
+    end
+    return table.concat(t, " ")
+  end
+  eq(Tabs.value(0.75).base, 8); eq(Tabs.value(0.75).dot, true, "a dotted 8th")
+  eq(Tabs.value(1 / 3).trip, true, "an 8th triplet"); eq(Tabs.value(0.3).base, 16, "no exact value: the next shorter")
+  -- a chord (2 notes, 1 event; its shortest length), 2 joined 8ths, a rest of 1 beat and a half, a 16th alone
+  local b = { len = 4, notes = { { q = 0, s = 1, w = 1 }, { q = 0, s = 2, w = 2 }, { q = 1, s = 1, w = 0.5 },
+    { q = 1.5, s = 1, w = 0.5 }, { q = 3.5, s = 1, w = 0.25 } } }
+  eq(show(b), "4 8- 8 r4 r8 16f r16", "chord, beam, rests at the beats, a flag")
+  eq(b.fine, false)
+  eq(show({ len = 4, notes = {} }), "r1", "an empty bar: a whole rest")
+  eq(show({ len = 3, notes = {} }), "r2.", "an empty 3/4 bar")
+  -- triplets of 8ths (1 beat: a "3" from 1 to 3), a dotted 8th and a 16th joined, a 32nd: the bar is wider
+  local q3 = 1 / 3
+  eq(show({ len = 4, notes = { { q = 0, s = 1, w = q3 }, { q = q3, s = 1, w = q3 }, { q = 2 * q3, s = 1, w = q3 },
+    { q = 1, s = 1, w = 0.75 }, { q = 1.75, s = 1, w = 0.25 }, { q = 2, s = 1, w = 0.125 } } }),
+    "t8-3>3 t8- t8 8.- 16 32f r32 r16 r8 r4", "triplet, dotted, 32nd, rests on their grid")
+  -- (the 32nd bar)
+  local fb = { len = 4, notes = { { q = 0, s = 1, w = 0.125 } } }
+  Tabs.rhythm(fb); eq(fb.fine, true, "a 32nd: 2 columns per 16th")
+  -- a held part (4) is an event with its own length; a held part that is off is not; a note longer than the gap is cut
+  eq(show({ len = 4, notes = { { q = 0, s = 1, w = 4 }, { q = 3, s = 2, w = 1 } }, ties = { { q = 2, s = 1, w = 1 },
+    { q = 1, s = 1, w = 1, off = true } } }), "2 4 4", "cut at the held part, the held part, the next note")
 end)
 
 test("the Track dropdown: its texts, the default track (bass), the choice saved in the project", function()
@@ -692,7 +779,7 @@ test("fix the tab: a fret, another string, delete; the written bar (its repeats 
   for _, b in ipairs(R.tab.bars) do
     if b.wb == wb then eq(b.notes[1].fret, 7, "each place where the written bar plays") end
   end
-  eq(Tabs.set_fret(1, 1, 25), false, "above CFG.FRETS: no change")
+  eq(select(2, Tabs.set_fret(1, 1, 25)), "A fret from 0 to 24, please.", "above CFG.FRETS: no change, the reason")
   eq(#R.undo, 1, "1 Undo step")
   local txt = Project.serialize(C.get_P())
   ok(txt:find("\nedit=1 " .. wb .. " ", 1, true), "saved: " .. txt)
@@ -738,7 +825,7 @@ test("a click on the tab: selects; only a double-click on the same place opens t
   ok(sel and sel.s == s, "selected"); eq(box, nil, "no box"); eq(nq, q)
   -- then a click on an empty place (ImGui may call it a double-click: the time was short): no box (the bug)
   sel, box, nq, last = Tabs.click(tab, 1, free, s, true, last)
-  eq(sel, nil); eq(box, nil, "another place: no box")
+  ok(sel and sel.empty and sel.s == s, "the empty place: selected (a number adds a note)"); eq(box, nil, "another place: no box")
   -- a real double-click on that empty place: the box of a new note
   sel, box = Tabs.click(tab, 1, free, s, true, last)
   ok(box and box.new, "the box of a new note")
@@ -747,7 +834,7 @@ test("a click on the tab: selects; only a double-click on the same place opens t
   sel, box = Tabs.click(tab, 1, q, s, true, l2)
   ok(box and not box.new and box.txt == n1.txt, "the note's box")
   -- between the strings: no box
-  _, box = Tabs.click(tab, 1, free, nil, true, { bi = 1, q = math.floor(free * 4), s = nil })
+  _, box = Tabs.click(tab, 1, free, nil, true, { bi = 1, q = math.floor(free * 48 + 0.5), s = nil })
   eq(box, nil, "not on a string")
 end)
 
@@ -772,7 +859,27 @@ test("fix the tab: my notes are marked; Undo all changes (only this track) and i
   Project.save()
 end)
 
-test("fix the tab: a new note (1 16th), never on another note; a note moves a 16th in its bar, never over another", function()
+test("checkup 24 November 2026: a new note is as long as the note before it; the places before and after an empty place", function()
+  local b = { len = 4, notes = { { q = 0, s = 1, w = 1 }, { q = 2, s = 2, w = 0.5 } } }
+  eq(Tabs.new_len(b, 1), 1, "the note before: a quarter")
+  eq(Tabs.new_len(b, 1.5), 0.5, "never past the next note")
+  eq(Tabs.new_len(b, 3), 0.5, "the note before: an 8th")
+  eq(Tabs.new_len({ len = 4, notes = {} }, 1), 0.25, "no note before: a 16th")
+  local t3 = { len = 4, notes = { { q = 1, s = 1, w = 1 / 3 } } }
+  ok(math.abs(Tabs.new_len(t3, 1 + 1 / 3) - 1 / 3) < 1e-9, "a triplet beat: 1 triplet place")
+  local tab = { bars = { { len = 4, notes = {} }, t3 } }
+  local bi, q = Tabs.next_place(tab, 1, 3.75, 1)
+  eq(bi .. " " .. q, "2 0", "after the bar end: the next bar")
+  bi, q = Tabs.next_place(tab, 2, 1, -1)
+  eq(bi .. " " .. q, "2 0.75", "before a triplet beat: a 16th")
+  bi, q = Tabs.next_place(tab, 2, 1, 1)
+  ok(bi == 2 and math.abs(q - (1 + 1 / 3)) < 1e-9, "in a triplet beat: 1 triplet place")
+  bi, q = Tabs.next_place(tab, 2, 0, -1)
+  eq(bi .. " " .. q, "1 3.75", "before the bar start: the last 16th of the bar before")
+  eq(Tabs.next_place(tab, 1, 0, -1), nil, "the start of the tab")
+end)
+
+test("fix the tab: a new note, never on another note; a note moves a 16th in its bar, never over another", function()
   Tabs.open(src)
   local b = R.tab.bars[1]
   local n1 = b.notes[1]
@@ -785,7 +892,7 @@ test("fix the tab: a new note (1 16th), never on another note; a note moves a 16
   ok(free, "a free 16th in bar 1")
   ok(Tabs.add(1, free, s, 5), "added")
   local i = Tabs.note_at(R.tab, 1, free, s)
-  eq(R.tab.bars[1].notes[i].fret, 5); eq(R.tab.bars[1].notes[i].len, 0.25)
+  eq(R.tab.bars[1].notes[i].fret, 5)
   -- move it: to the start of the bar only when free; never out of the bar
   eq(select(2, Tabs.move(1, i, -(free + 1))), "A note stays in its bar.")
   local nq = Tabs.move(1, i, 0.25)
@@ -795,6 +902,80 @@ test("fix the tab: a new note (1 16th), never on another note; a note moves a 16
   eq(Tabs.note_at(R.tab, 1, free, s), nil, "Undo: the new note goes")
   Tabs.cur().edits = nil
   R.redo = {}
+  Tabs.build()
+  Project.save()
+end)
+
+test("note lengths by key: + / - / . for the whole chord, the limits; / a triplet beat and back; the grid of clicks", function()
+  Tabs.open(src)
+  local wb = R.tab.bars[1].wb
+  -- bar 1 (4/4): a chord of 2 notes at 0 (a 16th), a note at 1 (a quarter), notes at 2, 2.25, 2.5 (16ths)
+  Tabs.cur().edits = { [Tabs.track()] = { [wb] = { { q = 0, s = 1, fret = 3, len = 0.25 }, { q = 0, s = 2, fret = 5, len = 0.25 },
+    { q = 1, s = 1, fret = 1, len = 1 }, { q = 2, s = 1, fret = 0, len = 0.25 }, { q = 2.25, s = 2, fret = 2, len = 0.25 },
+    { q = 2.5, s = 1, fret = 4, len = 0.25 } } } }
+  Tabs.build()
+  local function lens(q)
+    local t = {}
+    for _, n in ipairs(R.tab.bars[1].notes) do if math.abs(n.q - q) < 1e-6 then t[#t + 1] = string.format("%g", n.w) end end
+    return table.concat(t, " ")
+  end
+  ok(Tabs.length(1, 1, "+"), "+"); eq(lens(0), "0.5 0.5", "the whole chord: an 8th")
+  ok(Tabs.length(1, 1, "."), "."); eq(lens(0), "0.75 0.75", "dotted")
+  eq(select(2, Tabs.length(1, 1, "+")), "There is no room for a longer note (the next note or the end of the bar is there).")
+  ok(Tabs.length(1, 1, ".")); ok(Tabs.length(1, 1, "-")); ok(Tabs.length(1, 1, "-"))
+  eq(lens(0), "0.125 0.125", "a 32nd"); eq(R.tab.bars[1].fine, true, "the bar with a 32nd: wider")
+  eq(select(2, Tabs.length(1, 1, "-")), "A 32nd note is the shortest.")
+  local i = Tabs.note_at(R.tab, 1, 2.5, 1)
+  ok(Tabs.length(1, i, "+")); ok(Tabs.length(1, i, "+")); ok(Tabs.length(1, i, ".")); eq(lens(2.5), "1.5", "to the bar end")
+  eq(select(2, Tabs.length(1, i, "+")), "There is no room for a longer note (the next note or the end of the bar is there).")
+  -- "/": the 3 notes of beat 3 go to the 3 triplet places (8th triplets); the grid of that beat is 1/3
+  i = Tabs.note_at(R.tab, 1, 2.25, 2)
+  local q = Tabs.triplet(1, i)
+  ok(math.abs(q - (2 + 1 / 3)) < 1e-6, "the selected note: its new place")
+  eq(lens(2), "0.333333"); eq(lens(2 + 2 / 3), "0.333333", "each a triplet 8th")
+  ok(math.abs(Tabs.step(R.tab.bars[1], 2.5) - 1 / 3) < 1e-6, "a triplet beat: its grid")
+  eq(Tabs.step(R.tab.bars[1], 1), 0.125, "the other beats: 32nds (the bar has one)")
+  ok(math.abs(Tabs.snap(R.tab.bars[1], 2.6) - (2 + 2 / 3)) < 1e-6, "a click near a triplet place")
+  ok(Tabs.add(1, Tabs.snap(R.tab.bars[1], 2.4), 3, 7), "a new note on a triplet place")
+  eq(lens(2 + 1 / 3), "0.333333 0.333333", "its length: 1 triplet place")
+  -- saved and read back (the triplet places)
+  local back = Project.parse(Project.serialize(C.get_P())).tabs[1].edits[Tabs.track()][wb]
+  ok(math.abs(back[#back].q - (2 + 2 / 3)) < 1e-4, "saved")
+  -- "/" again: 16ths
+  i = Tabs.note_at(R.tab, 1, 2, 1)
+  eq(Tabs.triplet(1, i), 2)
+  eq(lens(2) .. " | " .. lens(2.25) .. " | " .. lens(2.5), "0.25 | 0.25 0.25 | 0.5", "back: in order on the 16ths")
+  Tabs.cur().edits = nil
+  R.undo, R.redo = {}, {}
+  Tabs.build()
+  Project.save()
+end)
+
+test("\"/\" (lessons 24 November 2026): 1 note on the beat becomes a triplet 8th and back; 2 notes show the 3", function()
+  Tabs.open(src)
+  local wb = R.tab.bars[1].wb
+  Tabs.cur().edits = { [Tabs.track()] = { [wb] = { { q = 0, s = 1, fret = 3, len = 1 }, { q = 1, s = 1, fret = 5, len = 0.5 },
+    { q = 1.5, s = 1, fret = 7, len = 0.5 } } } }
+  Tabs.build()
+  local b = R.tab.bars[1]
+  eq(Tabs.triplet(1, 1), 0)
+  b = R.tab.bars[1]
+  ok(math.abs(b.notes[1].w - 1 / 3) < 1e-6, "1 note: a triplet 8th (was: a quarter, no change)")
+  ok(math.abs(Tabs.step(b, 0) - 1 / 3) < 1e-6, "its beat is a triplet beat")
+  ok(b.rh[1].t3, "the 3 shows")
+  eq(Tabs.triplet(1, 1), 0); eq(R.tab.bars[1].notes[1].w, 1, "\"/\" again: a quarter again")
+  -- 2 8ths: 2 triplet 8ths and a triplet rest, the 3; "/" again: the 2 8ths again (in order on the 16ths, to the next note)
+  local i = Tabs.note_at(R.tab, 1, 1.5, 1)
+  ok(math.abs(Tabs.triplet(1, i) - (1 + 1 / 3)) < 1e-6, "the 2nd note: the 2nd triplet place")
+  b = R.tab.bars[1]
+  local e = b.rh[2]
+  ok(e.v.trip and e.t3, "2 notes: triplet 8ths with the 3")
+  i = Tabs.note_at(R.tab, 1, 1 + 1 / 3, 1)
+  eq(Tabs.triplet(1, i), 1.25)
+  b = R.tab.bars[1]
+  eq(string.format("%g %g", b.notes[2].w, b.notes[3].w), "0.25 0.75", "back: in order on the 16ths, each to the next note")
+  Tabs.cur().edits = nil
+  R.undo, R.redo = {}, {}
   Tabs.build()
   Project.save()
 end)
@@ -855,6 +1036,52 @@ test("loop (Shift+click a bar): from the selected note or the edit cursor to the
   Tabs.speed(1)
   near(r.Master_GetPlayRate(proj), 1, 1e-6, "100%")
   eq(R.pitch_old, nil)
+end)
+
+test("checkup 24 November 2026: the loop and the selection end with the bars, the tab, the track; my own time selection stays", function()
+  Tabs.open(src)
+  local proj = R.proj
+  r.GetSet_LoopTimeRange2(proj, true, true, 0, 0, false)
+  R.tsel = nil
+  Tabs.loop(2)
+  local a0, b0 = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
+  Tabs.set_bar(2)
+  local a1, b1 = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
+  ok(R.loop and math.abs(a1 - a0 - 2) < 1e-6 and math.abs(b1 - b0 - 2) < 1e-6, "< / >: the loop moves with its bars (1 bar = 2 s)")
+  Tabs.set_bar(1)
+  Tabs.loop(2) -- (the same bar again: off)
+  eq(R.loop, nil)
+  Tabs.loop(2)
+  r.GetSet_LoopTimeRange2(proj, true, true, 10, 12, false) -- (my own selection, during the loop)
+  Tabs.loop(2)
+  local a, b = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
+  eq(a .. " " .. b, "10.0 12.0", "the loop ends: my own selection stays")
+  R.tsel, R.tbox = { bi = 1, q = 0, s = 1 }, { bi = 1, q = 0, s = 1, new = true }
+  Tabs.pick(2)
+  eq(R.tsel, nil, "another track: no selection"); eq(R.tbox, nil, "no box")
+  Tabs.pick(1)
+  R.tsel = { bi = 1, q = 0, s = 1 }
+  Tabs.select(nil)
+  eq(R.tsel, nil, "another tab: no selection")
+  Tabs.select(1)
+  -- the width of a crowded bar: "(10)" and "12" a 16th apart on 1 string need more than 12 px (6 px a letter)
+  local width = function(it) return #it.txt * 6 end
+  local cb = { notes = { { q = 0, s = 1, txt = "12" }, { q = 0, s = 2, txt = "12" } },
+    ties = { { q = 0.25, s = 1, txt = "(10)" }, { q = 0.25, s = 3, txt = "(9)", off = true } } }
+  eq(Tabs.min_slot(cb, width), (12 + 24) / 2 + C.CFG.TAB_GAP, "1 16th apart: half of both texts and the gap")
+  eq(Tabs.min_slot({ notes = { { q = 0, s = 1, txt = "1" }, { q = 0, s = 2, txt = "1" } } }, width), 0, "a chord: no width needed")
+  -- the project text: 6 digits; a triplet place is exact again
+  local e = Project.parse("tab=x.gp\nedit=1 1 0.333333/1/3/0.333333\n").tabs[1].edits[1][1][1]
+  eq(e.q, 1 / 3, "1/3 again"); eq(e.len, 1 / 3)
+  eq(C.Util.grid(0.3), 0.3, "not near the grid: as it is")
+  -- "/" with a held part in the beat: refused
+  local b1 = { len = 4, notes = { { q = 0, s = 1, fret = 1, w = 0.5 } }, ties = { { q = 0.5, s = 2, fret = 2, w = 0.5, tie = true } } }
+  R.tab = { bars = { b1 } }
+  eq(select(2, Tabs.triplet(1, 1)), "A held note (4) is in this beat: fix the note before it first.")
+  -- a rest shorter than a 32nd triplet: none (it ran past the next note)
+  b1 = { len = 1, notes = { { q = 0, s = 1, w = 0.93 } } }
+  Tabs.rhythm(b1); eq(#b1.rh, 1, "a gap of 0.07: no rest")
+  Tabs.build()
 end)
 
 test("the yellow line when the project's tempo is not the tab's (the tab would drift)", function()
@@ -1013,6 +1240,51 @@ test("chord names: centred over their chord, pushed past the name before, cut be
   eq(c[1].x, 0); eq(c[1].txt, "A")       -- (at the left edge: cut before Cmaj7's chord at 15 px)
   eq(c[2].x, 12); eq(c[2].txt, "Cmaj7")  -- (pushed past "A"; ends before G at 85 px)
   eq(c[3].x, 82); eq(c[3].txt, "G")      -- (centred: 85 - 3)
+end)
+
+test("line breaks as in Guitar Pro: & pulls the next line's first bar up, Ctrl+Enter moves the rest down; saved, Undo", function()
+  -- 8 bars on 2 lines: 1-3 and 4-8 (the places of the view = the bars here)
+  local tab = { bars = {}, lines = { { first = 1, last = 3 }, { first = 4, last = 8 } } }
+  for k = 1, 8 do tab.bars[k] = { vp = k, ln = k <= 3 and 1 or 2 } end
+  eq(table.concat(Tabs.line_starts(tab, 3, "&"), " "), "5", "& on bar 3: 4 + 4 bars")
+  eq(table.concat(Tabs.line_starts(tab, 2, "enter"), " "), "3", "Ctrl+Enter on bar 2: bar 3 goes down")
+  eq(select(2, Tabs.line_starts(tab, 3, "enter")), "This bar ends its line already.")
+  eq(select(2, Tabs.line_starts(tab, 6, "&")), "This is the last line: no bar below to pull up.")
+  eq(table.concat(Tabs.line_starts(tab, 6, "enter"), " "), "4 7", "Ctrl+Enter on the last line: a new line")
+  tab.lines[2] = { first = 4, last = 4 }; tab.lines[3] = { first = 5, last = 8 }
+  eq(table.concat(Tabs.line_starts(tab, 1, "&"), " "), "5", "a line of 1 bar: it joins the line above")
+  eq(select(2, Tabs.line_starts(tab, 99, "&")), "Select a note in the tab first.")
+  eq(table.concat(Project.parse("tab=x.gp\nlines=5 9 14\n").tabs[1].lines, " "), "5 9 14", "read")
+  eq(Project.serialize({ tabs = { { file = "x.gp", lines = { 5, 9 } } } }), "tab=x.gp\nlines=5 9\n", "written")
+  -- in the window: Ctrl+Enter, saved as written bars, Ctrl+Z
+  C.S.written = true
+  Tabs.open(src)
+  R.tab.lines, R.tab.h = Tabs.layout(R.tab, 5000, nil)
+  eq(#R.tab.lines, 1, "all on 1 line")
+  ok(Tabs.set_lines(R.tab.view[1], "enter"), "Ctrl+Enter on bar 1")
+  ok(Tabs.cur().lines and Tabs.cur().lines[1] == R.tab.bars[R.tab.view[2]].wb, "saved: the written bar that starts line 2")
+  R.tab.lines, R.tab.h = Tabs.layout(R.tab, 5000, nil)
+  eq(#R.tab.lines, 2, "2 lines now")
+  ok(Tabs.undo(-1), "Ctrl+Z"); eq(Tabs.cur().lines, nil, "the automatic lines again")
+  ok(Tabs.undo(1)); ok(Tabs.reset_lines(), "Reset line breaks"); eq(Tabs.cur().lines, nil)
+  R.undo, R.redo = {}, {}
+  C.S.written = false
+  Tabs.build()
+  Project.save()
+end)
+
+test("repeats as written in the window: the test song's repeated bar 2 drawn once, written numbers, the line on it", function()
+  C.S.written = true
+  Tabs.open(src)
+  local tab = R.tab
+  local n = #tab.bars
+  ok(#tab.view < n, "fewer bars drawn than played")
+  tab.lines, tab.h = Tabs.layout(tab, 2000)
+  for _, bi in ipairs(tab.view) do eq(tab.bars[bi].label, tostring(tab.bars[bi].wb), "the written numbers") end
+  for bi, b in ipairs(tab.bars) do ok(Tabs.line_of(tab, b.shown), "every pass has a line to draw on: bar " .. bi) end
+  C.S.written = false
+  Tabs.build()
+  eq(#R.tab.view, n, "off: all the bars again")
 end)
 
 for _, t in ipairs(tests) do

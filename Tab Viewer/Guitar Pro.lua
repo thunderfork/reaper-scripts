@@ -314,10 +314,17 @@ end
 
 -- The parts of a score (the text of score.gpif): { tracks = { { name, kind (GP.kind), inst (the instrument name),
 -- open = { MIDI from the lowest string } (none for drums), capo } }, tempo (the first, BPM), tempos (how many),
--- mbars = { { num, den, bars = { the bar of each track }, rstart, rend, count, alt = { [pass] = true } } }, and the
+-- mbars = { { num, den, bars = { the bar of each track }, rstart, rend, count, alt = { [pass] = true }, section (its
+-- name: "Solo"; nil: none) } }, and the
 -- tables bars, voices, beats, notes, rhythms (by id) }; tmap = { { bar (its master bar), frac (how far into the bar,
 -- 0-1) or q (quarter notes into it: the older files), bpm (quarter notes) } }: the tempo changes (GP.timeline).
 local TEMPO_UNIT = { 0.5, 1, 1.5, 2, 3 }
+-- The text of an element's content: without the spaces and line breaks around it and without a <![CDATA[ ]]> wrapper
+-- (lessons 24 November 2026: a real file has line breaks around it). nil: "".
+local function xml_text(s)
+  s = (s or ""):match("^%s*(.-)%s*$")
+  return s:match("^<!%[CDATA%[(.-)%]%]>$") or s
+end
 function GP.parse(xml)
   local function tbl(tag)
     local t = {}
@@ -360,6 +367,11 @@ function GP.parse(xml)
     for id in (body:match("<Bars>([%d%s%-]+)</Bars>") or ""):gmatch("%-?%d+") do mb.bars[#mb.bars + 1] = id end
     local rs, re, cnt = body:match('<Repeat start="(%a+)" end="(%a+)" count="(%d+)"')
     mb.rstart, mb.rend, mb.count = rs == "true", re == "true", tonumber(cnt) or 0
+    local sec = body:match("<Section>(.-)</Section>") -- (a section: its text, else its letter; "Solo", "A")
+    if sec then
+      local txt, letter = xml_text(sec:match("<Text>(.-)</Text>")), xml_text(sec:match("<Letter>(.-)</Letter>"))
+      mb.section = txt ~= "" and txt or letter ~= "" and letter or nil
+    end
     local alt = body:match("<AlternateEndings>([%d%s]+)</AlternateEndings>")
     if alt then
       mb.alt = {}
@@ -502,10 +514,10 @@ function GP.read_old(data)
     end
     if v < 500 then
       if f & 16 ~= 0 then alternative() end
-      if f & 32 ~= 0 then ibstr(); skip(4) end -- (a marker: its name and colour)
+      if f & 32 ~= 0 then mb.section = ibstr(); skip(4) end -- (a marker: its name (the section) and colour)
       if f & 64 ~= 0 then skip(2) end -- (a key)
     else
-      if f & 32 ~= 0 then ibstr(); skip(4) end
+      if f & 32 ~= 0 then mb.section = ibstr(); skip(4) end
       if f & 64 ~= 0 then skip(2) end
       if f & 16 ~= 0 then alternative() end
       if f & 3 ~= 0 then skip(4) end -- (the beams)
@@ -722,11 +734,12 @@ end
 -- 1 shift, 2 legato, 4 out down, 8 out up, 16 in from below, 32 in from above; the same in .gp5), bend, vib, pm
 -- (palm mute), harm (harmonic), dead }, or nil (none).
 local FX_PROPS = { ho = "HopoOrigin", bend = "Bended", pm = "PalmMuted", harm = "HarmonicType", dead = "Muted" }
+for k, name in pairs(FX_PROPS) do FX_PROPS[k] = '<Property name="' .. name .. '"' end -- (the texts searched: made once)
 function GP.fx(n)
   if not n:find("<Property", 1, true) and not n:find("<Vibrato>", 1, true) then return nil end
   local fx
-  for k, name in pairs(FX_PROPS) do
-    if n:find('<Property name="' .. name .. '"', 1, true) then fx = fx or {}; fx[k] = true end
+  for k, find in pairs(FX_PROPS) do
+    if n:find(find, 1, true) then fx = fx or {}; fx[k] = true end
   end
   local sl = tonumber(n:match('<Property name="Slide">%s*<Flags>(%d+)</Flags>') or "")
   if sl and sl > 0 then fx = fx or {}; fx.slide = sl end
@@ -783,6 +796,11 @@ end
 -- of the file in the order they play: { { q, name } }. dead: keep the muted (dead) notes (the tab shows them as x;
 -- Note Detective leaves them out); each note has its playing marks (fx, as GP.fx) when it has any.
 local SIMILE_BACK = { Simple = 1, FirstOfDouble = 2, SecondOfDouble = 2 }
+local EMPTY = {} -- (never changed: a list with nothing in it, without a new table)
+-- A note of GP.notes from note x of a bar that starts at q (w: the written length; len: how long it rings, with ties).
+local function new_note(x, q)
+  return { q = q + x.pos, len = x.len, w = x.len, midi = x.midi, s = x.s, fret = x.fret, fx = x.fx }
+end
 function GP.notes(doc, track, dead)
   local out, q, last, played, seen, names = {}, 0, {}, {}, {}, {}
   local tr = doc.tracks[track]
@@ -797,14 +815,15 @@ function GP.notes(doc, track, dead)
     for _, c in ipairs(bar and seen[bar] and seen[bar].chords or {}) do names[#names + 1] = { q = q + c.pos, name = c.name } end
     for _, x in ipairs(bar and seen[bar] or {}) do
       local prev = last[x.midi]
-      if x.fx and x.fx.dead then
-        if dead then out[#out + 1] = { q = q + x.pos, len = x.len, midi = x.midi, s = x.s, fret = x.fret, fx = x.fx } end
-      elseif x.tie and prev then -- (a tie: the note goes on; ties: where its held parts start, for the tab)
+      if x.fx and x.fx.dead then -- (a dead note: only for the tab; never part of a tie)
+        if dead then out[#out + 1] = new_note(x, q) end
+      elseif x.tie and prev and math.abs(prev.q + prev.len - q - x.pos) < 1e-3 then -- (a tie: the note before goes
+        -- on, only when it ends here (not 1 from bars before: a damaged file, a gap); ties: its held parts { q, w }, for the tab)
         prev.len = q + x.pos + x.len - prev.q
         prev.ties = prev.ties or {}
-        prev.ties[#prev.ties + 1] = q + x.pos
+        prev.ties[#prev.ties + 1] = { q = q + x.pos, w = x.len }
       else
-        local n = { q = q + x.pos, len = x.len, midi = x.midi, s = x.s, fret = x.fret, fx = x.fx }
+        local n = new_note(x, q)
         out[#out + 1] = n
         last[x.midi] = n
       end
@@ -817,7 +836,7 @@ end
 
 -- The tab of a track: its bars in the order they play (the repeats played out), each with its notes: { nstr, names
 -- (the open strings, from the lowest; the highest "e" when it has the name of the lowest), bars = { { q0 (quarter
--- notes from the start of the tab), len, n16 (its 16ths), notes = { { q (in the bar), len, s (1 = the lowest
+-- notes from the start of the tab), len, n16 (its 16ths), notes = { { q (in the bar), len, w (written), s (1 = the lowest
 -- string), fret } }, chords = { { q, name } } } }, has_chords }. A note without a string and fret (drums) is left
 -- out. The chord names: the file's, else named from the notes that start together and ring at least 1 beat
 -- (GP.chord_name; decided 24 November 2026: fast riffs get no names); a name shows only where the chord changes.
@@ -842,18 +861,20 @@ function GP.tab(doc, track)
     return at[key]
   end
   for _, c in ipairs(names) do place(c.q).name = c.name end
+  local function bar_at(from, qq) -- (the bar where qq is, from bar index from on: the places only grow)
+    while tab.bars[from + 1] and qq >= tab.bars[from + 1].q0 - 1e-9 do from = from + 1 end
+    return from
+  end
   local b = 1
   for _, n in ipairs(notes) do
-    while tab.bars[b + 1] and n.q >= tab.bars[b + 1].q0 - 1e-9 do b = b + 1 end
+    b = bar_at(b, n.q)
     local bar = tab.bars[b]
     if bar and n.s and n.fret then
-      bar.notes[#bar.notes + 1] = { q = n.q - bar.q0, len = n.len, s = n.s, fret = n.fret, fx = n.fx }
-      for _, tq in ipairs(n.ties or {}) do -- (the held parts of a tied note: drawn "(4)", in the bar where they start)
-        local tb = b
-        while tab.bars[tb + 1] and tq >= tab.bars[tb + 1].q0 - 1e-9 do tb = tb + 1 end
-        local tbar = tab.bars[tb]
+      bar.notes[#bar.notes + 1] = { q = n.q - bar.q0, len = n.len, w = n.w, s = n.s, fret = n.fret, fx = n.fx }
+      for _, t in ipairs(n.ties or EMPTY) do -- (the held parts of a tied note: drawn "(4)", in the bar where they start)
+        local tbar = tab.bars[bar_at(b, t.q)]
         tbar.ties = tbar.ties or {}
-        tbar.ties[#tbar.ties + 1] = { q = tq - tbar.q0, s = n.s, fret = n.fret, tie = true }
+        tbar.ties[#tbar.ties + 1] = { q = t.q - tbar.q0, w = t.w, s = n.s, fret = n.fret, tie = true }
       end
     end
     if bar and n.s and n.fret and not (n.fx and n.fx.dead) then
@@ -869,7 +890,7 @@ function GP.tab(doc, track)
     local x = at[key]
     local name = x.name or ((x.len or 0) >= 1 - 1e-6 and GP.chord_name(x.midis)) or nil -- (a fast riff: no names)
     if name and name ~= shown then
-      while tab.bars[b + 1] and x.q >= tab.bars[b + 1].q0 - 1e-9 do b = b + 1 end
+      b = bar_at(b, x.q)
       local bar = tab.bars[b]
       if bar then
         bar.chords[#bar.chords + 1] = { q = x.q - bar.q0, name = name }

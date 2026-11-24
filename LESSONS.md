@@ -36,6 +36,29 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-24 | Tab Viewer | file-format | the section name showed as "<![CDATA[Solo]]>"
+  Cause: the reader expected <Text><![CDATA[...]]></Text> with nothing between; the real file has line breaks.
+  Why the tests missed it: the made-up XML had no spaces (written by Claude, not taken from a real file).
+  Test: "repeats as written: ..." (tests\tabviewer.lua: "spaces and line breaks around the CDATA"), failed before
+    the fix.
+  Other scripts: searched; the track names use a strict pattern but show right on the real files (left).
+  Status: fixed, not confirmed
+```
+
+```
+2026-11-24 | Tab Viewer | edge-case | "/" (a triplet beat) did not work properly
+  Cause: "/" kept each note as long as the gap to the next one, so 1 note on the beat stayed a quarter (no change),
+    and a triplet beat was known only from its note places, so "/" again did nothing; 2 notes got a quarter and
+    an 8th triplet, and the "3" waited for 2 beats.
+  Why the tests missed it: the test used only a beat with 3 notes (the 1 case where it works); no test of 1 note,
+    2 notes or "/" twice.
+  Test: "\"/\" (lessons 24 November 2026): 1 note on the beat becomes a triplet 8th and back; 2 notes show the 3"
+    (tests\tabviewer.lua), failed before the fix.
+  Other scripts: searched, none has note lengths or triplets.
+  Status: confirmed (the user, 24 November 2026)
+```
+
+```
 2026-11-24 | Tab Viewer | imgui-input | a click on the tab, then a click on another place opened the note box, as if
   it was a double-click
   Cause: a single click on an empty place of a string opened the box of a new note (copied from Note Detective),

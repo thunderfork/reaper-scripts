@@ -3,7 +3,8 @@
 -- and Tab Viewer: the 1 source is Tab Viewer\Tempo.lua; ReaPack installs a copy next to each script (@provides).
 --   local TP = dofile(<folder> .. "Tempo.lua")
 --   local Tempo = TP.new(host)  -- host: see TP.new
--- Moved from Note Detective unchanged (23 November 2026, segment 2d); its tests are in tests\notedetective.lua.
+-- Moved from Note Detective (23 November 2026, segment 2d; the tab part, Tempo.from_tab / Beat.tab_plan, came with
+-- 2e); its tests are in tests\notedetective.lua and tests\tabviewer.lua.
 
 local r = reaper
 local TP = { Beat = {} }
@@ -320,7 +321,7 @@ function TP.new(host)
   local R = host.R
   local Tempo = {}
 
-  -- The tracks of Beats from: { { tr, label } }: metronome tracks first, then drums, then the other tracks with items.
+  -- The tracks to listen to (Note Detective: Beats from; Tab Viewer: the Find tempo menu): { { tr, label } }: metronome tracks first, then drums, then the other tracks with items.
   function Tempo.sources()
     if R.tsrc then return R.tsrc end
     local groups = { {}, {}, {} }
@@ -340,7 +341,7 @@ function TP.new(host)
     R.tsrc = all
     return all
   end
-  -- The chosen track of Beats from (the first one until the user picks one).
+  -- The chosen track to listen to (the first one until the user picks one).
   function Tempo.source()
     local all = Tempo.sources()
     for _, e in ipairs(all) do if e.tr == R.tsrc_sel then return e end end
@@ -425,7 +426,7 @@ function TP.new(host)
     if tm and tm.run then TP.close(tm.run.rd); tm.run = nil end
   end
 
-  -- "The tab (its tempo)": no listening; the tempo, its changes and the time signatures of the tab (bars:
+  -- From the tab (Tab Viewer's "From tab"): no listening; the tempo, its changes and the time signatures of the tab (bars:
   -- GP.timeline). Bar 1 goes where the first note of the tab (qn: quarter notes from its start) meets the first sound
   -- of the song. Bar 1 (by beats), Play with click and Set tempo work as after Find tempo.
   function Tempo.from_tab(bars, qn)
@@ -468,7 +469,7 @@ function TP.new(host)
   -- The found beats (s from the read start); bar 1, the short bars and the style start again.
   function Tempo.set_beats(bpm, rel)
     local tm = R.tempo
-    tm.bpm, tm.rel, tm.beats, tm.short = bpm, rel, {}, {}
+    tm.bpm, tm.beats, tm.short = bpm, {}, {}
     for k, t in ipairs(rel) do tm.beats[k] = t + tm.f0 end
     tm.i0 = Beat.bar1(rel, tm.env)
     local _, _, dev = Beat.fit(tm.beats, tm.i0)
