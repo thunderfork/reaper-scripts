@@ -1423,7 +1423,8 @@ end)
 
 test("notes tab: no Guitar Pro tab here: the found notes as a tab; a fix is saved with the list; Undo of the list", function()
   local N = C.Notes
-  Project.load("") -- (no Guitar Pro tab in this project)
+  r.SetProjExtState(0, C.CFG.EXT, C.CFG.PEXT_KEY, "") -- (no Guitar Pro tab in this project: also in its saved data)
+  Project.load("")
   local p = N.List.default()
   local function note(t, t1, midi) return { t = t, t1 = t1, pc = midi % 12, midi = midi } end
   p.notes = { note(2, 2.4, 36), note(2.5, 2.9, 43) } -- (120 BPM: bar 2)
@@ -1442,6 +1443,21 @@ test("notes tab: no Guitar Pro tab here: the found notes as a tab; a fix is save
   eq(q.tab.edits[1][1][1].fret, 5, "and read back")
   local list, open = Tabs.notes_of_tab()
   eq(list[1].midi, open[list[1].s] + 5, "Import to list takes the fix")
+  -- another change of the project (a new track): the same tab; a tempo change: the tab again (simplify, 24 November 2026)
+  Project.update(); Tabs.notes_step() -- (what the fix above asked for first)
+  local doc0 = R.doc
+  r.InsertTrackAtIndex(r.CountTracks(0), false)
+  r.Undo_OnStateChange2(0, "test: a track")
+  Project.update(); Tabs.notes_step()
+  ok(R.doc == doc0, "a new track: the tab is not made again")
+  r.SetTempoTimeSigMarker(0, -1, 30, -1, -1, 100, 0, 0, false)
+  r.Undo_OnStateChange2(0, "test: a tempo marker")
+  Project.update(); Tabs.notes_step()
+  ok(R.doc ~= doc0 and R.doc and R.doc.found, "a tempo change: the tab again")
+  r.DeleteTempoTimeSigMarker(0, r.CountTempoTimeSigMarkers(0) - 1)
+  r.DeleteTrack(r.GetTrack(0, r.CountTracks(0) - 1))
+  r.Undo_OnStateChange2(0, "test: back")
+  Project.update(); Tabs.notes_step()
   R.undo, R.redo = {}, {}
   N.set_P(N.List.default())
   R.notes_dirty = true

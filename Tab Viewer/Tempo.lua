@@ -1,10 +1,10 @@
 -- @noindex
--- Tempo: "Tempo and bars" (find the tempo of a song from a track, put REAPER's bars on it). Shared by Note Detective
--- and Tab Viewer: the 1 source is Tab Viewer\Tempo.lua; ReaPack installs a copy next to each script (@provides).
+-- Tempo: Find tempo (find the tempo of a song from a track or from the tab, put REAPER's bars on it). Used by Tab
+-- Viewer (its Find tempo, and the Note Detection tab); ReaPack installs it next to the script (@provides).
 --   local TP = dofile(<folder> .. "Tempo.lua")
 --   local Tempo = TP.new(host)  -- host: see TP.new
 -- Moved from Note Detective (23 November 2026, segment 2d; the tab part, Tempo.from_tab / Beat.tab_plan, came with
--- 2e); its tests are in tests\notedetective.lua and tests\tabviewer.lua.
+-- 2e); its tests are in tests\notes.lua and tests\tabviewer.lua.
 
 local r = reaper
 local TP = { Beat = {} }
@@ -308,20 +308,19 @@ function Beat.fit_bar(t0, t1, beat)
 end
 
 ---------------------------------------------------------------------------
--- TEMPO (Tempo and bars: Find tempo reads a track in steps; Set tempo writes the tempo map of the song)
+-- TEMPO (Find tempo reads a track in steps, or takes the tempo of the tab; Set tempo writes the tempo map of the song)
 ---------------------------------------------------------------------------
--- The Tempo and bars of a script. host: { R (its runtime table: R.proj, and the state R.tempo, R.tsrc, R.tsrc_sel
--- live there), name ("Note Detective"), undo_try (the undo step of Play with click), note (optional: "bass note" in
--- the Set tempo notice; default "note"), notice(text, warn),
--- song() (the item of the song, its start, its end; or nil and why), first_note(tm) (optional: the time of the first
--- note of the song; else the first sound of the song item), shift(d, tm) (optional: the audio moved d s),
--- written() (optional: after each tempo write), set_extra(d) (optional: more text for the Set tempo notice) }.
+-- Find tempo of a script. host: { R (its runtime table: R.proj, and the state R.tempo, R.tsrc, R.tsrc_sel live
+-- there), name ("Tab Viewer"), undo_try (the undo step of Play with click), notice(text, warn),
+-- song() (the item of the song, its start, its end; or nil and why), first_note(tm) (the time of the first note of the
+-- song, or nil: then the first sound of the song item), shift(d, tm) (the audio moved d s), written() (after each tempo
+-- write), set_extra(d) (more text for the Set tempo notice) }.
 -- Returns the functions of the section (Tempo.begin, Tempo.step, Tempo.set ...).
 function TP.new(host)
   local R = host.R
   local Tempo = {}
 
-  -- The tracks to listen to (Note Detective: Beats from; Tab Viewer: the Find tempo menu): { { tr, label } }: metronome tracks first, then drums, then the other tracks with items.
+  -- The tracks to listen to (the Find tempo menu): { { tr, label } }: metronome tracks first, then drums, then the other tracks with items.
   function Tempo.sources()
     if R.tsrc then return R.tsrc end
     local groups = { {}, {}, {} }
@@ -664,17 +663,17 @@ function TP.new(host)
     r.PreventUIRefresh(-1)
     r.UpdateTimeline()
     r.Undo_EndBlock2(R.proj, undo_name, -1)
-    if host.written then host.written() end
+    host.written()
     return m[1].t, d
   end
 
-  -- The time of the first note of the song: the host's (Note Detective: the first found note of its list), else the
+  -- The time of the first note of the song: the host's (Tab Viewer: the first found note of the Notes list), else the
   -- first sound of the song item. nil: none.
   function Tempo.first_note()
     local tm = R.tempo
     local item = TP.item_by_guid(R.proj, tm.song.guid)
     if not item then return nil end
-    return (host.first_note and host.first_note(tm)) or TP.first_sound_of(item)
+    return host.first_note(tm) or TP.first_sound_of(item)
   end
   -- Set tempo, after the grid (decided 23 November 2026 by the user): the audio of the song moves so its first note
   -- sits exactly on the nearest beat. Every item that lies at least half inside the song moves (so a backing track of
@@ -696,7 +695,7 @@ function TP.new(host)
     end
     tm.song.t0, tm.song.t1 = t0 + d, t1 + d
     for k, t in ipairs(tm.beats) do tm.beats[k] = t + d end
-    if host.shift then host.shift(d, tm) end
+    host.shift(d, tm)
     return d
   end
 
@@ -741,14 +740,13 @@ function TP.new(host)
     local t, d = Tempo.write(host.name .. ": set the tempo", true)
     local _, m = r.TimeMap2_timeToBeats(R.proj, t + 1e-6)
     local msg = string.format("Tempo set: %s, bar 1 of the song is bar %d.", tm.lbl_bpm, m + 1)
-    local note = host.note or "note"
     if d and math.abs(d) >= 0.0005 then
-      msg = msg .. string.format(" The audio moved %d ms %s: the first %s is on the beat.", math.floor(math.abs(d) * 1000 + 0.5), d > 0 and "later" or "earlier", note)
+      msg = msg .. string.format(" The audio moved %d ms %s: the first note is on the beat.", math.floor(math.abs(d) * 1000 + 0.5), d > 0 and "later" or "earlier")
     elseif not d then
-      msg = msg .. string.format(" No first %s found: the audio stays.", note)
+      msg = msg .. " No first note found: the audio stays."
     end
     msg = msg .. " One Ctrl+Z takes it back."
-    if host.set_extra then msg = msg .. host.set_extra(d) end
+    msg = msg .. host.set_extra(d)
     host.notice(msg)
     return m
   end

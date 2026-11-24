@@ -178,6 +178,13 @@ Ideas, not started.
     Cue starts (roadmap step 8). (Dev 4, "later", decided 24 November 2026) 1 project watcher: Tab Viewer's
     `Project.update` tells the Note Detection tab, so the order (its list first, then the tab) is in code, not in a
     comment (`stale-state`).
+  - From the full simplify run of 24 November 2026 (skipped: larger, or a change of behaviour): for the debug-time
+    round: a bar loop (Tab tab) and a row loop (Note Detection tab) at the same time: the 2nd saves the 1st's repeat
+    as "before", so repeat can stay on (`Tabs.loop` / `UI.play_row`: 1 shared loop helper); Notes' `Project.save`
+    does not update its `R.state_cc` (with Dev 4). Later, each small: "play from" 3 times (`UI.play_at`,
+    `UI.play_from`, `Tempo.try`), "is it an audio take" 5 times, the start of `GP.tab` copied in `Imp.found_doc`
+    (the 16th count rule twice), `Tabs.start_qn` and text sizes measured every frame, the P.M. runs scanned per line,
+    the `R.doc.found` special cases (with Dev 6).
   - From the checkup of 24 November 2026 (larger changes, each a segment; ask first): note places as whole numbers
     (48 per beat); a cached copy of the file's tab, so a fix rebuilds only its bar.
 - On hold (do NOT ask until the user brings it up):

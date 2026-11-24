@@ -1,6 +1,6 @@
 -- @noindex
--- Guitar Pro: reads Guitar Pro files (the tracks, tunings, bars and notes). Shared by Tab Viewer and Note Detective:
--- the 1 source is Tab Viewer\Guitar Pro.lua; ReaPack installs a copy next to each script (their @provides).
+-- Guitar Pro: reads Guitar Pro files (the tracks, tunings, bars and notes). Used by Tab Viewer (the Tab tab and the
+-- Note Detection tab); ReaPack installs it next to the script (@provides).
 -- Plain Lua 5.4 (no REAPER calls): the tests and a plain Lua can run it.
 --   local GP = dofile(<folder> .. "Guitar Pro.lua")
 --   local doc, why = GP.read(path)
@@ -819,7 +819,7 @@ end
 -- lowest string), fret } }; ties join the note before. A repeat bar mark (%, the SimileMark of a bar) plays the bar
 -- that played 1 bar before (Simple) or 2 bars before (FirstOfDouble, SecondOfDouble). Second value: the chord names
 -- of the file in the order they play: { { q, name } }. dead: keep the muted (dead) notes (the tab shows them as x;
--- Note Detective leaves them out); each note has its playing marks (fx, as GP.fx) when it has any.
+-- without dead they are left out); each note has its playing marks (fx, as GP.fx) when it has any.
 local SIMILE_BACK = { Simple = 1, FirstOfDouble = 2, SecondOfDouble = 2 }
 local EMPTY = {} -- (never changed: a list with nothing in it, without a new table)
 -- A note of GP.notes from note x of a bar that starts at q (w: the written length; len: how long it rings, with ties).

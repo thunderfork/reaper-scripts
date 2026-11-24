@@ -36,7 +36,7 @@
 
 local r = reaper
 
--- The files next to this script: the Guitar Pro reader (Guitar Pro.lua), Tempo and bars (Tempo.lua) and the Note Detection tab
+-- The files next to this script: the Guitar Pro reader (Guitar Pro.lua), Find tempo (Tempo.lua) and the Note Detection tab
 -- (Notes.lua: a function that makes the Notes module, NotesNew, below).
 local GP, TP, NotesNew
 do
@@ -81,8 +81,8 @@ CFG.SET_LABEL_W, CFG.SET_CTRL_W = 236, 220 -- the Settings label column and its 
 CFG.UNDO_TRY = "Tab Viewer: try the tempo" -- the undo step of Play with click (taken back before the next one)
 CFG.UNDO_MAX = 100             -- the tab edits that Undo (Ctrl+Z in the window) can take back
 CFG.FRETS = 24                 -- the highest fret of an edited note
-CFG.TAB_DIGITS = 0.8           -- s: 2 digits typed within this time are 1 fret ("1" "2" = 12), as in Note Detective
--- the tab: the same sizes as Note Detective's
+CFG.TAB_DIGITS = 0.8           -- s: 2 digits typed within this time are 1 fret ("1" "2" = 12)
+-- the tab
 CFG.TAB_SLOT = 12              -- the width of a 16th note (at least; a crowded bar gets more: Tabs.min_slot)
 CFG.TAB_GAP = 5                -- the least space between 2 texts on 1 string
 CFG.TAB_PAD = 10               -- the space at the start of a bar
@@ -134,7 +134,7 @@ local function apply_theme(light)
 end
 
 local Util, Project, Tabs, UI = {}, {}, {}, {}
-local Tempo -- Tempo and bars (TP.new, below)
+local Tempo -- Find tempo (TP.new, below)
 local Notes -- the Note Detection tab (Notes.lua, made after ImGui, below)
 
 -- R: runtime state (not saved). P: the project data. S: settings of this computer.
@@ -155,20 +155,20 @@ local R = {
   tnum = nil,        -- the digits typed for the selected note ({ txt, t }: "1" "2" = fret 12)
   tlast = nil,       -- the place of the last click on the tab (Tabs.click: a double-click must be on the same place)
   tbox = nil,        -- the open note box ({ txt, focus, new; a new note: bi, q, s }; UI.tab_box)
-  tempo = nil,       -- Tempo and bars (the shared Tempo.lua): the found tempo, bar 1, a running Find tempo
+  tempo = nil,       -- Find tempo (Tempo.lua): the found tempo, bar 1, a running Find tempo
   tsrc = nil,        -- the tracks of the Find tempo menu (cached until the project changes); tsrc_sel: the chosen track
   cur = nil,         -- the tab in the window (its index in P.tabs; nil: none)
   docs = {},         -- the tabs read in this project, by full path (cleared at a project switch)
   rgns = nil,        -- the regions of the project: { by = { [guid] = region }, list } (Tabs.regions)
   tab_labels = nil,  -- the Tab dropdown: { txt, sel } per tab (Tabs.relist)
   follow_last = nil, -- the tab at the play or edit cursor in the frame before (0: a region without a tab; Tabs.follow)
-  page = 1,          -- the open tab of the window (1 Tab, UI.PAGE_SETTINGS, UI.PAGE_HELP; not saved)
+  page = 1,          -- the open tab of the window (1 Tab, 2 Note Detection: UI.PAGE_NOTES, UI.PAGE_SETTINGS, UI.PAGE_HELP; not saved)
 }
 -- tabs: the tabs of the project, each { file, rgn, track, bar }. file: the tab (relative to the project folder:
 -- "Tabs/song.gp"; else a full path); rgn: the GUID of its region (nil: no region, it starts from the song's bar 1);
 -- track: the chosen track (nil: the default, Tabs.default_track); bar: the bar where bar 1 of the tab starts,
 -- counted from the first bar of its region (nil: 1); lines: your line breaks (the written bars that start a line,
--- Tabs.set_lines; nil: automatic lines)
+-- Tabs.set_lines; nil: automatic lines); also joins, per (Layout), meters, edits: see Project.parse
 local P = { tabs = {} }
 local S = {
   light = false,     -- Light theme (Dark is the default)
@@ -393,7 +393,7 @@ function Tabs.relist()
   end
   R.tab_labels = labels
 end
--- The window shows tab i (nil: none). Another tab: Tempo and bars starts again (its tempo was for the tab before).
+-- The window shows tab i (nil: none). Another tab: a Find tempo result or run is dropped (it was for the tab before).
 function Tabs.select(i)
   i = P.tabs[i] and i or nil
   if i ~= R.cur and R.tempo then
@@ -1475,6 +1475,17 @@ function Tabs.place_of(t)
   return lo, q - tab.bars[lo].q0
 end
 
+-- The tempo map of the project as 1 text (the tempo and time signature markers, and the tempo without them): the tab
+-- of the found notes is made again only when it changes (another change of the project: not needed).
+function Tabs.tempo_sig()
+  local proj = R.proj
+  local t = { string.format("%.9f %d", r.TimeMap2_QNToTime(proj, 1), (r.TimeMap_GetTimeSigAtTime(proj, 0))) }
+  for k = 0, r.CountTempoTimeSigMarkers(proj) - 1 do
+    local _, tp, _, _, bpm, num, den, lin = r.GetTempoTimeSigMarker(proj, k)
+    t[#t + 1] = string.format("%.9f %.9f %d %d %s", tp, bpm, num, den, tostring(lin))
+  end
+  return table.concat(t, "|")
+end
 -- Reads the tab in the window (read once per project: R.docs), or why not. No tab here: the found notes of the Notes
 -- list as a tab (Notes.found_doc; its entry R.found_e: your fixes, saved with the list), else none.
 function Tabs.load()
@@ -1483,6 +1494,7 @@ function Tabs.load()
   if not e then
     local doc = Notes.found_doc()
     R.found_e = doc and Notes.found_entry() or nil
+    R.tsig = doc and Tabs.tempo_sig() or nil -- (the tempo map that its bars are made from)
     Tabs.show(doc)
     return
   end
@@ -1736,7 +1748,8 @@ function Project.update()
     else
       Tabs.regions() -- (a region may have moved: its tab moves with it)
       if fn ~= old then Tabs.moved(old)
-      elseif R.doc and R.doc.found then R.notes_dirty = true -- (the found notes: on the bars of the new tempo)
+      elseif R.doc and R.doc.found then -- (the found notes: on the bars of a new tempo; another change: the same tab)
+        if Tabs.tempo_sig() ~= R.tsig then R.notes_dirty = true end
       elseif R.tab then Tabs.relabel() end -- (the region or the tempo may have changed)
     end
   end
@@ -1810,11 +1823,11 @@ Want the lines as in your Guitar Pro page? Select a note in a bar, then press & 
 
 A fix changes the bar as it is written, so a repeat of that bar changes too. Made a mistake? Ctrl+Z in this window (or Undo next to Start) takes it back. Want the file's notes back? Tab dropdown > Undo all fixes (only the track in the window). Ctrl+Z remembers the fixes of this session only: after a restart, Undo all fixes is the way back. Your fixes are green (Settings > Tab > Mark my fixes). Your fixes are saved in the project; the Guitar Pro file and its copy stay as they are. Drum tracks can not be fixed yet.]] },
   { title = "Where your stuff is saved", text = [[
-In the project: its tabs, the region of each one, the track you picked, the bar where the tab starts, your line breaks, and your fixes of the tab. Tab Viewer copies each tab into a "Tabs" folder next to the project file, so the project keeps its tab when you move or delete the original. Not saved yet? The copy is made when you save the project.
+In the project: its tabs, the region of each one, the track you picked, the bar where the tab starts, your line breaks, the bars per line (Layout...), your time signatures, and your fixes of the tab. Tab Viewer copies each tab into a "Tabs" folder next to the project file, so the project keeps its tab when you move or delete the original. Not saved yet? The copy is made when you save the project.
 
 In the project, also: the Notes list until you click More... > Done: clean up (the found notes, the tuning, the key changes, and your fixes of the found notes' tab). Save the project to keep it.
 
-On this computer: the Light theme, the hidden tabs, the folded Settings sections, Follow playback, Chord names, Mark my fixes, Playing marks, Note lengths, Repeats as written, the window dock, Settings > Note Detection, the Write choice and the export folder.
+On this computer: the Light theme, the hidden tabs, the folded Settings sections, Follow playback, Chord names, Mark my fixes, Playing marks, Note lengths, Tremolo as notes, Repeats as written, the window dock, Settings > Note Detection, the Write choice and the export folder.
 
 Not saved: the loop and the speed (back to 100% when Tab Viewer closes).]] },
 }
@@ -2390,7 +2403,8 @@ function UI.draw_tabs()
   ImGui.SetCursorScreenPos(ctx, x0, strip_b)
 end
 
--- The Tab dropdown: the tabs of the project (their region), the region of this tab, Remove this tab.
+-- The Tab dropdown: the tabs of the project (their region), the region of this tab, Undo all fixes, Layout..., Remove
+-- this tab.
 function UI.draw_tab_list()
   if not P.tabs[1] then return end
   Tabs.follow(UI.cursor())
@@ -2515,7 +2529,8 @@ function UI.import_to_list()
 end
 
 local STYLES = { { "steady", "1 tempo" }, { "follow", "Follow the song" } }
--- Find tempo, in the toolbar after Open tab... (only with a tab): its menu (From tab, then the tracks: a choice starts
+-- Find tempo, in the toolbar after Open tab... (always, also without a tab; and on the Tempo row of the Note
+-- Detection tab): its menu (From tab, then the tracks: a choice starts
 -- at once), while it listens the progress and Cancel, with a result the blue Set tempo (decided 24 November 2026).
 function UI.draw_find_tempo(x, y, H)
   local tm = R.tempo
@@ -2540,7 +2555,7 @@ function UI.draw_find_tempo(x, y, H)
   UI.draw_tempo_menu()
 end
 
--- The Find tempo menu: From tab, the tracks, then (with a result) the fine controls; as in Note Detective (no 1/2,
+-- The Find tempo menu: From tab, the tracks, then (with a result) the fine controls (no 1/2,
 -- x2, Style or Short bars from the tab: the tab has them).
 function UI.draw_tempo_menu()
   if not ImGui.BeginPopup(ctx, "##findtempo") then return end
@@ -2679,7 +2694,7 @@ function UI.item_w(it) return (UI.item_size(it)) end
 function UI.tab_item(dl, tab, ln, ox, it, x, y, col, selected)
   local tw, th = UI.item_size(it)
   ImGui.DrawList_AddRectFilled(dl, x - tw / 2 - 2, y - th / 2, x + tw / 2 + 2, y + th / 2, COL.PANEL_BG)
-  if selected then -- (the selected note: a blue box, as in Note Detective)
+  if selected then -- (the selected note: a blue box)
     ImGui.DrawList_AddRect(dl, x - tw / 2 - 4, y - th / 2 - 1, x + tw / 2 + 4, y + th / 2 + 1, COL.ACCENT, 3, 0, 2)
   end
   ImGui.DrawList_AddText(dl, x - tw / 2, y - th / 2 + 1, col, it.txt)
@@ -3273,7 +3288,7 @@ function UI.draw_panel_menu()
 end
 
 -- The window: the toolbar, the tab strip, then the panel of the open tab (a rounded area): the Tab tab has the Track
--- dropdown and the tab; Settings and Help scroll.
+-- dropdown and the tab, the Note Detection tab is Notes.draw; Settings and Help scroll.
 function UI.draw_main()
   UI.draw_toolbar()
   UI.draw_tabs()
@@ -3377,6 +3392,12 @@ end
 ---------------------------------------------------------------------------
 -- MAIN LOOP
 ---------------------------------------------------------------------------
+-- The project data, when it changed (a fix of the found notes' tab: saved with the list).
+local function save_project()
+  if not R.pdirty then return end
+  if R.doc and R.doc.found then Notes.touch() end
+  Project.save()
+end
 local function loop()
   R.frames = R.frames + 1
   Notes.step() -- (first: the list of this project, before the tab of the found notes is made)
@@ -3419,10 +3440,7 @@ local function loop()
   end
   UI.pop_style()
   ImGui.PopFont(ctx)
-  if R.pdirty then
-    if R.doc and R.doc.found then Notes.touch() end -- (a fix of the found notes' tab: saved with the list)
-    Project.save()
-  end
+  save_project()
   Notes.save(ImGui.IsMouseDown(ctx, 0))
   if R.sdirty and not ImGui.IsMouseDown(ctx, 0) then Util.save_settings() end
   if R.close then open = false end
@@ -3435,10 +3453,7 @@ local function on_exit()
   Tempo.click_back()
   Tabs.loop_off()
   if R.pitch_old or r.Master_GetPlayRate(R.proj) ~= 1 then Tabs.speed(1) end
-  if R.pdirty then
-    if R.doc and R.doc.found then Notes.touch() end
-    Project.save()
-  end
+  save_project()
   Notes.exit()
   if R.sdirty then Util.save_settings() end
   local _, _, sec, cmd = r.get_action_context()

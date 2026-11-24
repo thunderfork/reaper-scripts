@@ -19,7 +19,7 @@ part in REAPER. Plan and answers: decided 23 November 2026; into Tab Viewer: dec
 - `P` (ProjExtState "Tab Viewer"/"notes"; nothing saved when it is empty): `key=`, `mode=` (only when not "bar"),
   `src=` (the GUID of the bass item), `row=` time, doubtful 0 / 1, the time of each note, the text (tabs between), `mk=`
   the GUIDs of the written markers (also of older writes: Ctrl+Z brings those back), `tab.<key>=` the tab of the found
-  notes (an entry as Tab Viewer's tabs: `tab.edit=`, `tab.bar=`, `tab.lines=` ...; `P.tab`). Finish removes all of it.
+  notes (an entry as Tab Viewer's tabs: `tab.edit=`, `tab.bar=`, `tab.lines=` ...; `P.tab`). Done: clean up removes all of it.
   `P_EXT:TabViewer` = 1 on the Notes track and on its text items ("midi" on the Bass MIDI track).
 - `S` (ExtState "Tab Viewer", Tab Viewer's section; the keys do not meet Tab Viewer's): `out` ("markers", "track",
   "both"), `frets` (Settings > Note Detection > String and fret for high notes, default on),
@@ -51,8 +51,8 @@ part in REAPER. Plan and answers: decided 23 November 2026; into Tab Viewer: dec
   (lines of bars for the width), `UI.draw_tab` (only the visible lines; click = play from the nearest note; the
   playing note blue and its line scrolled into view); `R.tab` is rebuilt after a list, project or tempo change.
 - Simple mode (`S.simple`, Settings > Note Detection, ON by default, decided 23 November 2026): `List.opt()` gives only the
-  string and fret of high notes (no fingering of runs, no slide mark), no beat counts; the window hides Tempo and bars,
-  View (Tab) and Export; Settings > Note Detection shows only Simple mode and String names. The tests set it off at the start.
+  string and fret of high notes (no fingering of runs, no slide mark), no beat counts, no split repeated notes; the
+  window hides Export (in More...); Settings > Note Detection shows only Simple mode and String names. The tests set it off at the start.
 - 1 fingering (Dev 2, 23 November 2026): `List.places(notes, tun)` = `Key.finger` over the saved notes (a string the
   user chose: `n.s`, the 7th field of `note=`); the list (a high note, a run) and the tab (`x.i` of `Export.notes`)
   use it. Tab corrections (Dev 3): right-click a note: `UI.tab_menu` -> `List.note_edit` / `List.note_delete`
@@ -137,7 +137,7 @@ part in REAPER. Plan and answers: decided 23 November 2026; into Tab Viewer: dec
 - `reaper.array` / `GetAudioAccessorSamples` give silence inside a Lua coroutine: `Find` reads the samples outside, and
   only `Det.analyse` runs in the coroutine.
 - A project change: the saved text decides (`Project.update`), so "Save as" keeps the list.
-- After Finish the script no longer knows its markers (a new Write adds new ones).
+- After Done: clean up the script no longer knows its markers (a new Write adds new ones).
 
 ## Deployment and tests
 
