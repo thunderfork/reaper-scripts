@@ -36,6 +36,27 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-24 | Tab Viewer | file-format | tremolo picking did not show on the bass of a real tab
+  Cause: .gp writes the tremolo as a part of a quarter note ("1/2" = 8ths); the reader expected "1/8" = 8ths (a guess).
+  Why the tests missed it: the made-up test used the same guess; no real file was checked first.
+  Test: "playing marks: ..." (tests\tabviewer.lua), now "1/4"; checked on the user's real tab: 60 bass notes found
+  Other scripts: only Guitar Pro.lua reads it
+  Status: fixed, not confirmed
+
+2026-11-24 | Tab Viewer | file-format | an ending of 2 bars: its 2nd bar played in the 2nd pass, the "2." bar was missing
+  Cause: the file marks only the 1st bar of an ending; GP.order cleared the pass at the :|, so "2." looked like pass 1.
+  Why the tests missed it: the made-up endings were all 1 bar long.
+  Test: "repeats as written: ..." (tests\tabviewer.lua), written with the fix (the user's tab showed the failure)
+  Other scripts: Note Detective uses the same GP.order: fixed with it
+  Status: confirmed
+
+2026-11-24 | Tab Viewer | edge-case | lines ended short of the right edge, or past it (a :| cut off)
+  Cause: Tabs.layout stretched the repeat signs and time signatures too, and capped the stretch at 1.6 on every line.
+  Why the tests missed it: no test checked the right end of a line.
+  Test: "the tab on the window: ..." (tests\tabviewer.lua), 3 widths with repeat signs
+  Other scripts: Note Detective has its own layout without repeat signs: not affected
+  Status: confirmed
+
 2026-11-24 | Tab Viewer | file-format | the section name showed as "<![CDATA[Solo]]>"
   Cause: the reader expected <Text><![CDATA[...]]></Text> with nothing between; the real file has line breaks.
   Why the tests missed it: the made-up XML had no spaces (written by Claude, not taken from a real file).

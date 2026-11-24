@@ -609,6 +609,14 @@ test("repeats as written: each written bar once, |: :|, x3, the endings 1. 2.; a
   eq(t.end_row, true)
   eq(Tabs.pass_near(t, 1, 4), 3, "playing in the 2nd ending: bar 1's 2nd pass is nearest"); eq(Tabs.pass_near(t, 1, nil), 1)
   eq(Tabs.neighbour(t, 2, 1), 4, "after the 1st ending: the 2nd ending (the view's order)")
+  -- (lessons 24 November 2026: an ending of 2 bars; the file marks only its 1st bar. Bars 1 |:, 2, 3 "1.", 4 :|,
+  -- 5 "2.", 6: they play 1 2 3 4 1 2 5 6, and the 1. bracket is over bars 3 and 4)
+  local m2 = { { rstart = true, count = 0 }, { count = 0 }, { alt = { [1] = true }, count = 0 }, { rend = true, count = 2 },
+    { alt = { [2] = true }, count = 0 }, { count = 0 } }
+  eq(table.concat(GP.order(m2), " "), "1 2 3 4 1 2 5 6", "an ending of 2 bars")
+  ok(m2[4].alt and m2[4].alt[1] and not m2[6].alt, "bar 4 in the 1st ending; bar 6 after the 2nd ending")
+  eq(table.concat(GP.order({ { rend = true, count = 2 }, { count = 0 }, { rend = true, count = 2 } }), " "), "1 1 2 3 2 3",
+    "2 repeats without |:, the 2nd from after the 1st :|")
   mbars[2].count = 3
   t = tab(); Tabs.view(t, mbars, true)
   eq(t.bars[2].times, "x3", "3 times: x3")
@@ -626,6 +634,41 @@ test("repeats as written: each written bar once, |: :|, x3, the endings 1. 2.; a
   mbars[1].section = "Verse"
   t = tab(); Tabs.view(t, mbars, true)
   eq(t.bars[1].section, "Verse"); eq(t.sec_row, true); eq(t.bars[2].section, nil)
+end)
+
+test("your time signature: the notes fit the bar, the tempo keeps its time; this bar or up to the file's next change; saved, Undo", function()
+  -- (the user's tab, 24 November 2026: written in 4/4 at 125, really 6/8 at 93.75 from a bar on)
+  local doc = { tempo = 125, tmap = {}, tracks = { { open = { 40 } } }, mbars = {}, bars = {} }
+  for k = 1, 4 do
+    doc.mbars[k] = { num = k == 4 and 3 or 4, den = 4, count = 0, bars = { tostring(k) } }
+    doc.bars[tostring(k)] = { { pos = 0, len = 2 / 3, midi = 40, s = 1, fret = k }, { pos = 2, len = 2, midi = 40, s = 1, fret = 9 } }
+  end
+  local mb = doc.mbars
+  Tabs.meters(doc, nil)
+  eq(Tabs.meter_bars(mb, 2, false)[2], nil, "this bar only")
+  eq(table.concat(Tabs.meter_bars(mb, 2, true), " "), "2 3", "up to the file's next change (bar 4: 3/4)")
+  Tabs.meters(doc, { [2] = { 6, 8 }, [3] = { 6, 8 } })
+  eq(mb[2].num .. "/" .. mb[2].den, "6/8"); near(mb[2].fit, 0.75, 1e-9); eq(mb[1].fit, nil)
+  local n = GP.notes(doc, 1)
+  near(n[3].q, 4, 1e-9, "bar 2 starts after a 4/4 bar"); near(n[3].w, 0.5, 1e-9, "an 8th triplet: a 16th")
+  near(n[4].q, 5.5, 1e-9, "beat 3 of 4/4: 1.5 quarters into 6/8")
+  near(n[5].q, 7, 1e-9, "bar 3 starts 3 quarters later")
+  local tl = GP.timeline(doc)
+  near(tl[2].tempos[1].bpm, 93.75, 1e-9, "the tempo times 3/4: the bar lasts as long")
+  eq(tl[3].tempos[1], nil, "the same fit: no new tempo"); near(tl[4].tempos[1].bpm, 125, 1e-9, "the file's tempo again")
+  Tabs.meters(doc, nil)
+  eq(mb[2].num .. "/" .. mb[2].den, "4/4", "without your changes: the file's again"); eq(mb[2].fit, nil)
+  local pe = Project.parse("tab=x.gp\nmeter=12 6/8\nmeter=13 6/8\n").tabs[1]
+  eq(pe.meters[13][1] .. "/" .. pe.meters[13][2], "6/8", "read")
+  eq(Project.serialize(Project.parse("tab=x.gp\nmeter=12 6/8\n")), "tab=x.gp\nmeter=12 6/8\n", "written")
+  -- in the window: 1 Undo step; the file's own value removes the change
+  Tabs.open(src)
+  ok(Tabs.set_meter(1, 6, 8, false), "6/8 on bar 1")
+  eq(Tabs.cur().meters[R.tab.bars[1].wb][1], 6); eq(R.tab.bars[1].len, 3, "3 quarter notes")
+  eq(select(2, Tabs.set_meter(1, 6, 7, false)), "A time signature from 1 to 32 over 2, 4, 8 or 16, please.")
+  ok(Tabs.undo(-1), "Ctrl+Z"); eq(Tabs.cur().meters, nil)
+  R.undo, R.redo = {}, {}
+  Project.save()
 end)
 
 test("score marks: the time signature and the tempo where they change, the final double bar", function()
@@ -652,6 +695,25 @@ test("playing marks: read from a .gp note; the links to the next note, held part
     .. '<Property name="PalmMuted"><Enable /></Property><Vibrato>Slight</Vibrato></Note>')
   ok(fx and fx.ho and fx.pm and fx.vib and fx.slide == 2 and not fx.bend, "read")
   eq(GP.fx("<Note><Property name=\"Fret\"><Fret>3</Fret></Property></Note>"), nil, "no marks")
+  -- tremolo picking: a mark of the .gp beat, on each of its notes (16ths: 2 slashes)
+  -- (a part of a quarter note: 1/4 = 16ths, as a real file writes it; lessons 24 November 2026)
+  local tdoc = GP.parse((D.GPIF:gsub("<Rhythm ref=", "<Tremolo>1/4</Tremolo><Rhythm ref=")))
+  local tn = GP.notes(tdoc, 1, true)
+  ok(#tn > 0 and tn[1].fx and tn[1].fx.trem == 2, "tremolo picking 1/4: 16ths, trem 2")
+  -- Tremolo as notes: a whole note with 8ths: 8 8ths; a triplet dotted whole (4 quarters): 12 triplet 8ths; a held
+  -- part of a picked note: picked too; the last note keeps the hammer-on, all keep P.M.
+  local tt = { bars = {
+    { notes = { { q = 0, w = 4, len = 8, s = 1, fret = 3, fx = { trem = 1, pm = true, ho = true } } } },
+    { notes = { { q = 0, w = 4, len = 4, s = 2, fret = 5, fx = { trem = 1, tup = 2 / 3 } } } },
+    { notes = {}, ties = { { q = 0, w = 2, s = 1, fret = 3, tie = true, trem = { trem = 2 } } } },
+    { notes = { { q = 0, w = 1, len = 1, s = 1, fret = 0, fx = { trem = 3 } }, { q = 1, w = 1, len = 1, s = 1, fret = 2 } } } } }
+  Tabs.tremolo(tt)
+  local n1 = tt.bars[1].notes
+  eq(#n1, 8, "8 8ths"); eq(n1[2].q, 0.5); eq(n1[8].w, 0.5)
+  ok(n1[1].fx.pm and not n1[1].fx.ho and n1[8].fx.ho and n1[8].fx.pm, "P.M. on all, the hammer-on on the last")
+  eq(#tt.bars[2].notes, 12, "a triplet dotted whole: 12 triplet 8ths"); near(tt.bars[2].notes[2].q, 1 / 3, 1e-9)
+  eq(#tt.bars[3].notes, 8, "the held part (a half note, 16ths): 8 notes"); eq(#tt.bars[3].ties, 0)
+  eq(#tt.bars[4].notes, 9, "a quarter with 32nds (8) and the next note")
   -- Tabs.link: a hammer-on to the next note on its string, a held part "(7)", a held part whose note was fixed: off
   local n1, n2, n3 = { q = 0, s = 1, fret = 5, fx = { ho = true, pm = true } }, { q = 0.5, s = 1, fret = 7, fx = { pm = true } },
     { q = 1, s = 2, fret = 3 }
@@ -760,6 +822,18 @@ test("the tab on the window: a click on a place gives its bar and 16th, and the 
   local bi, q = Tabs.hit(tab, C.CFG.TAB_LEFT + b.x + b.pad + 4.5 * b.sw, C.CFG.TAB_TOP)
   eq(bi, 2); eq(q, 1, "the 5th 16th: 1 quarter note in")
   eq(Tabs.hit(tab, 1, C.CFG.TAB_TOP), nil, "on the string names")
+  -- (lessons 24 November 2026: each line ends at the right edge exactly, with repeat signs too, not short, not cut)
+  for _, w in ipairs({ 600, 260, 2000 }) do
+    tab.bars[1].rs, tab.bars[2].re = true, true
+    local lines = Tabs.layout(tab, w)
+    for k, l in ipairs(lines) do
+      local right = C.CFG.TAB_LEFT + Tabs.x_end(tab.bars[l.last])
+      if k < #lines then near(right, w - 1, 1e-6, w .. " px, line " .. k .. ": to the edge")
+      else ok(right <= w - 1 + 1e-6, w .. " px, the last line: not past the edge") end
+    end
+    tab.bars[1].rs, tab.bars[2].re = nil, nil
+  end
+  tab.lines, tab.h = Tabs.layout(tab, 600)
   local b4, ln2 = tab.bars[4], tab.lines[2]
   bi, q = Tabs.hit(tab, C.CFG.TAB_LEFT + b4.x + b4.pad + 0.5 * b4.sw, ln2.y + C.CFG.TAB_TOP)
   eq(bi, 4); eq(q, 0)
@@ -1244,18 +1318,28 @@ end)
 
 test("line breaks as in Guitar Pro: & pulls the next line's first bar up, Ctrl+Enter moves the rest down; saved, Undo", function()
   -- 8 bars on 2 lines: 1-3 and 4-8 (the places of the view = the bars here)
+  -- (only your own breaks and joins are kept; the lines after them fill again: the user, 24 November 2026)
   local tab = { bars = {}, lines = { { first = 1, last = 3 }, { first = 4, last = 8 } } }
-  for k = 1, 8 do tab.bars[k] = { vp = k, ln = k <= 3 and 1 or 2 } end
-  eq(table.concat(Tabs.line_starts(tab, 3, "&"), " "), "5", "& on bar 3: 4 + 4 bars")
-  eq(table.concat(Tabs.line_starts(tab, 2, "enter"), " "), "3", "Ctrl+Enter on bar 2: bar 3 goes down")
+  for k = 1, 8 do tab.bars[k] = { vp = k, wb = k, ln = k <= 3 and 1 or 2 } end
+  local l, j = Tabs.line_starts(tab, 2, "enter")
+  eq(table.concat(l, " "), "3", "Ctrl+Enter on bar 2: a break before bar 3"); eq(j, nil)
+  l, j = Tabs.line_starts(tab, 3, "&", { 4, 6 }, nil)
+  eq(table.concat(l, " "), "6", "& on bar 3: my break before bar 4 goes"); eq(table.concat(j, " "), "4", "bar 4 joins")
+  l, j = Tabs.line_starts(tab, 6, "enter", nil, { 7 })
+  eq(table.concat(l, " "), "7", "Ctrl+Enter on a joined bar: the break wins"); eq(j, nil)
   eq(select(2, Tabs.line_starts(tab, 3, "enter")), "This bar ends its line already.")
   eq(select(2, Tabs.line_starts(tab, 6, "&")), "This is the last line: no bar below to pull up.")
-  eq(table.concat(Tabs.line_starts(tab, 6, "enter"), " "), "4 7", "Ctrl+Enter on the last line: a new line")
-  tab.lines[2] = { first = 4, last = 4 }; tab.lines[3] = { first = 5, last = 8 }
-  eq(table.concat(Tabs.line_starts(tab, 1, "&"), " "), "5", "a line of 1 bar: it joins the line above")
   eq(select(2, Tabs.line_starts(tab, 99, "&")), "Select a note in the tab first.")
-  eq(table.concat(Project.parse("tab=x.gp\nlines=5 9 14\n").tabs[1].lines, " "), "5 9 14", "read")
-  eq(Project.serialize({ tabs = { { file = "x.gp", lines = { 5, 9 } } } }), "tab=x.gp\nlines=5 9\n", "written")
+  local pe = Project.parse("tab=x.gp\nlines=5 9 14\njoins=3\n").tabs[1]
+  eq(table.concat(pe.lines, " ") .. "/" .. table.concat(pe.joins, " "), "5 9 14/3", "read")
+  eq(Project.serialize({ tabs = { { file = "x.gp", lines = { 5, 9 }, joins = { 2 } } } }), "tab=x.gp\nlines=5 9\njoins=2\n", "written")
+  -- the layout: after a break the bars fill the lines again (not all on 1 line); a joined bar stays on its line
+  local lt = { bars = {}, lh = 10, starts = { [2] = true }, joins = { [5] = true } }
+  for k = 1, 8 do lt.bars[k] = { n16 = 16, slot = 10, len = 4 } end -- (170 px a bar)
+  local ls = Tabs.layout(lt, C.CFG.TAB_LEFT + 3 * 170 + 5)
+  local txt = {}
+  for _, x in ipairs(ls) do txt[#txt + 1] = x.first .. "-" .. x.last end
+  eq(table.concat(txt, " "), "1-1 2-5 6-8", "a break before 2; 3 fit, bar 5 joined; then 3 again")
   -- in the window: Ctrl+Enter, saved as written bars, Ctrl+Z
   C.S.written = true
   Tabs.open(src)
@@ -1266,7 +1350,12 @@ test("line breaks as in Guitar Pro: & pulls the next line's first bar up, Ctrl+E
   R.tab.lines, R.tab.h = Tabs.layout(R.tab, 5000, nil)
   eq(#R.tab.lines, 2, "2 lines now")
   ok(Tabs.undo(-1), "Ctrl+Z"); eq(Tabs.cur().lines, nil, "the automatic lines again")
-  ok(Tabs.undo(1)); ok(Tabs.reset_lines(), "Reset line breaks"); eq(Tabs.cur().lines, nil)
+  ok(Tabs.undo(1)); ok(Tabs.set_layout(4, true), "Layout: 4 bars a line, Reset"); eq(Tabs.cur().lines, nil)
+  eq(Tabs.cur().per, 4); eq(Tabs.set_layout(4, true), false, "no change: no Undo step")
+  ok(Project.serialize(C.get_P()):find("layout=4\n", 1, true), "saved")
+  R.tab.lines = Tabs.layout(R.tab, 5000, nil)
+  eq(R.tab.lines[1].last, math.min(4, #R.tab.view), "4 bars on a wide window")
+  ok(Tabs.undo(-1)); eq(Tabs.cur().per, nil, "Ctrl+Z: automatic again"); ok(Tabs.cur().lines, "and my break back")
   R.undo, R.redo = {}, {}
   C.S.written = false
   Tabs.build()

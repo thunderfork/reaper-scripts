@@ -29,7 +29,13 @@
   line shrinks; your own lines fill the width: the user, 24 November 2026): built, Tab Viewer 41 tests, deployed,
   manual test PASSED (24 November 2026).
 - Section names (manual test PASSED), then tempo marks, time signatures and the final double bar (the user: "do",
-  24 November 2026): built, Tab Viewer 42 tests, deployed, committed. Manual test of the score marks: open.
+  24 November 2026): built, Tab Viewer 42 tests, deployed, committed (e2dc5ed; all the work above too). Manual test
+  PASSED (24 November 2026). The 2 not checked items (made-up data only, a tempo change in a later pass): not
+  relevant (the user, 24 November 2026). NEXT: the release of Tab Viewer (see "Then" below).
+- After e2dc5ed (24 November 2026, all manual tests PASSED, NOT COMMITTED): rests inside the strings, lines to the right
+  edge, a frame, endings of 2+ bars (`GP.endings`, Note Detective too), tremolo picking (slashes; Settings > Tab >
+  Tremolo as notes, on), line breaks that keep only yours (`joins=`), Tab dropdown > Layout... (`layout=`), right-click
+  a bar > Time signature... (`meter=`, the notes fit). Tab Viewer 43 tests, Note Detective 72.
 - Not fixed (low risk): the speed of a project left with another project tab stays (REAPER has no call for a
   project that is not active); in the reader: 2 voices sharing a tie, tempo automations out of order, a repeat
   without a start mark (uncertain).
@@ -185,6 +191,8 @@ skipped or failed test stays here; remove it when it passed.
 27. Set-aside test (Note Detective, Set tempo aligns, 23 November 2026): Find tempo, Set tempo: the notice says how far
     the audio moved; the first bass note sits on a beat (zoom in); the other stems moved with it, other songs and a
     long backing track did not; one Ctrl+Z takes back the grid and the move. With a list: it moved too. In the tab: select the 2nd piece of a split note, press J.
+28. Note Detective and tremolo picking (decided 24 November 2026): keep 1 marker per written note (not the picked
+    notes); do it when the user works on Note Detective again.
 
 ## Later
 
@@ -193,6 +201,9 @@ Ideas, not started.
 - Tab Viewer and Note Detective (moved from Open now at the checkup, 24 November 2026):
   - Segment 2c (Note Detective List | Tab) later (decided 23 November 2026). The song inside a .gp file (its audio
     and sync points) as the alignment reference: not wanted (the user).
+  - Time signature, "Keep their time (move bar lines)" (segment 3; put here by the user, 24 November 2026): the notes
+    keep their place in the song and the bar lines move; needs new bars that the file does not have (repeats, fixes,
+    line breaks, bar numbers). "Fit into the bar" is built.
   - The shared alignment test (the tab's first note on the song's first note, empty bars and a pickup, a random item
     position) for Tab Viewer and Note Detective; the user checks Note Detective's import for the same error with
     segment 2c (decided 23 November 2026).

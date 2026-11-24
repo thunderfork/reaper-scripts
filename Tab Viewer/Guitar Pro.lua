@@ -628,7 +628,10 @@ function GP.read_old(data)
     if f1 & 0x02 ~= 0 then fx.ho = true end
     if f1 & 0x10 ~= 0 then skip(v >= 500 and 5 or 4) end
     if f2 & 0x02 ~= 0 then fx.pm = true end
-    if f2 & 0x04 ~= 0 then skip(1) end -- (tremolo picking)
+    if f2 & 0x04 ~= 0 then -- (tremolo picking: 1 8ths, 2 16ths, 3 32nds)
+      local t = u8()
+      if t >= 1 and t <= 3 then fx.trem = t end
+    end
     if f2 & 0x08 ~= 0 then -- (slide)
       local s = i8()
       fx.slide = v >= 500 and (s & 0x3F) or SLIDE4[s]
@@ -708,21 +711,37 @@ function GP.read_old(data)
 end
 
 -- The order in which the master bars play: the repeats played out (count = how often), alternate endings on their pass.
+-- The bars of an ending: the file marks only its first bar ("1." on bar 85); the bars after it up to its :| belong
+-- to it too (mb.alt; the user's tab, 24 November 2026: an ending of 2 bars). An ending after the last :| stays 1 bar.
+function GP.endings(mbars)
+  local cur, run = nil, {}
+  for _, mb in ipairs(mbars) do
+    if mb.rstart then cur, run = nil, {} end
+    if mb.alt then cur, run = mb.alt, {}
+    elseif cur then run[#run + 1] = mb end
+    if mb.rend then
+      if cur then for _, x in ipairs(run) do x.alt = cur end end
+      cur, run = nil, {}
+    end
+  end
+end
 function GP.order(mbars)
-  local order, i, start, pass = {}, 1, 1, {}
+  GP.endings(mbars)
+  local order, i, start, pass, after = {}, 1, 1, {}, nil
   while i <= #mbars and #order < 20000 do
     local mb = mbars[i]
     if mb.rstart then start = i end
-    local p = pass[start] or 1
+    local p = pass[start] or after or 1 -- (after: the last pass, for the endings just after its :|, "2.")
     if mb.alt and not mb.alt[p] then
       i = i + 1
     else
       order[#order + 1] = i
+      if not mb.alt then after = nil end
       if mb.rend and p < math.max(1, mb.count) then
         pass[start] = p + 1
         i = start
       else
-        if mb.rend then pass[start] = nil end
+        if mb.rend then pass[start], after, start = nil, p, i + 1 end -- (a :| without |: repeats from here)
         i = i + 1
       end
     end
@@ -747,6 +766,9 @@ function GP.fx(n)
   return fx
 end
 
+-- (tremolo picking, a part of a quarter note: 1/2 8ths, 1/4 16ths, 1/8 32nds -> fx.trem, the slashes; a real file
+-- has "1/4" for 16ths, lessons 24 November 2026)
+local TREMOLO = { ["2"] = 1, ["4"] = 2, ["8"] = 3 }
 local NOTE_VALUE = { Zero = 0, Whole = 4, Half = 2, Quarter = 1, Eighth = 0.5, ["16th"] = 0.25, ["32nd"] = 0.125, ["64th"] = 0.0625 }
 -- The notes of 1 bar, voice after voice: { { pos (quarter notes from the start of the bar), len, midi, s (1 = the
 -- lowest string), fret, tie, fx (GP.fx; a muted (dead) note: fx.dead) } }; grace notes are left out. bar: the text of a bar of a .gp
@@ -773,6 +795,7 @@ function GP.bar_notes(doc, bar, open, diag)
         out.chords = out.chords or {}
         out.chords[#out.chords + 1] = { pos = pos, name = cname }
       end
+      local trem = TREMOLO[beat:match("<Tremolo>1/(%d+)</Tremolo>") or ""] -- (tremolo picking: a mark of the beat)
       for nid in (beat:match("<Notes>([%d%s]+)</Notes>") or ""):gmatch("%d+") do
         local n = doc.notes[nid] or ""
         local midi = tonumber(n:match('<Property name="Midi">%s*<Number>(%d+)</Number>') or "")
@@ -780,8 +803,10 @@ function GP.bar_notes(doc, bar, open, diag)
         local fret = tonumber(n:match('<Property name="Fret">%s*<Fret>(%d+)</Fret>') or "")
         if not midi and s and fret and open and open[s + 1] then midi = open[s + 1] + fret end
         if midi then
+          local fx = GP.fx(n)
+          if trem then fx = fx or {}; fx.trem, fx.tup = trem, tn and tonumber(td) / tonumber(tn) end -- (tup: 2/3 a triplet)
           out[#out + 1] = { pos = pos, len = len, midi = midi, s = s and s + 1, fret = fret,
-            tie = n:match('<Tie origin="%a+" destination="true"') ~= nil, fx = GP.fx(n) }
+            tie = n:match('<Tie origin="%a+" destination="true"') ~= nil, fx = fx }
         end
       end
       pos = pos + len
@@ -798,8 +823,9 @@ end
 local SIMILE_BACK = { Simple = 1, FirstOfDouble = 2, SecondOfDouble = 2 }
 local EMPTY = {} -- (never changed: a list with nothing in it, without a new table)
 -- A note of GP.notes from note x of a bar that starts at q (w: the written length; len: how long it rings, with ties).
-local function new_note(x, q)
-  return { q = q + x.pos, len = x.len, w = x.len, midi = x.midi, s = x.s, fret = x.fret, fx = x.fx }
+-- f: mb.fit of its bar (a new time signature with the notes fitted into the bar: Tab Viewer; else 1).
+local function new_note(x, q, f)
+  return { q = q + x.pos * f, len = x.len * f, w = x.len * f, midi = x.midi, s = x.s, fret = x.fret, fx = x.fx }
 end
 function GP.notes(doc, track, dead)
   local out, q, last, played, seen, names = {}, 0, {}, {}, {}, {}
@@ -812,18 +838,19 @@ function GP.notes(doc, track, dead)
     if back then bar = played[j - back] end
     played[j] = bar
     if bar and not seen[bar] then seen[bar] = GP.bar_notes(doc, bar, open, diag) end -- (a repeated bar: read once)
-    for _, c in ipairs(bar and seen[bar] and seen[bar].chords or {}) do names[#names + 1] = { q = q + c.pos, name = c.name } end
+    local f = mb.fit or 1
+    for _, c in ipairs(bar and seen[bar] and seen[bar].chords or {}) do names[#names + 1] = { q = q + c.pos * f, name = c.name } end
     for _, x in ipairs(bar and seen[bar] or {}) do
       local prev = last[x.midi]
       if x.fx and x.fx.dead then -- (a dead note: only for the tab; never part of a tie)
-        if dead then out[#out + 1] = new_note(x, q) end
-      elseif x.tie and prev and math.abs(prev.q + prev.len - q - x.pos) < 1e-3 then -- (a tie: the note before goes
+        if dead then out[#out + 1] = new_note(x, q, f) end
+      elseif x.tie and prev and math.abs(prev.q + prev.len - q - x.pos * f) < 1e-3 then -- (a tie: the note before goes
         -- on, only when it ends here (not 1 from bars before: a damaged file, a gap); ties: its held parts { q, w }, for the tab)
-        prev.len = q + x.pos + x.len - prev.q
+        prev.len = q + (x.pos + x.len) * f - prev.q
         prev.ties = prev.ties or {}
-        prev.ties[#prev.ties + 1] = { q = q + x.pos, w = x.len }
+        prev.ties[#prev.ties + 1] = { q = q + x.pos * f, w = x.len * f }
       else
-        local n = new_note(x, q)
+        local n = new_note(x, q, f)
         out[#out + 1] = n
         last[x.midi] = n
       end
@@ -874,7 +901,8 @@ function GP.tab(doc, track)
       for _, t in ipairs(n.ties or EMPTY) do -- (the held parts of a tied note: drawn "(4)", in the bar where they start)
         local tbar = tab.bars[bar_at(b, t.q)]
         tbar.ties = tbar.ties or {}
-        tbar.ties[#tbar.ties + 1] = { q = t.q - tbar.q0, w = t.w, s = n.s, fret = n.fret, tie = true }
+        tbar.ties[#tbar.ties + 1] = { q = t.q - tbar.q0, w = t.w, s = n.s, fret = n.fret, tie = true,
+          trem = n.fx and n.fx.trem and n.fx } -- (a tremolo-picked note: its held parts are picked too)
       end
     end
     if bar and n.s and n.fret and not (n.fx and n.fx.dead) then
@@ -939,19 +967,27 @@ function GP.timeline(doc)
     if mb then
       local list = at[x.bar] or {}
       at[x.bar] = list
-      local q = x.q or (x.frac or 0) * 4 * mb.num / mb.den
+      local q = x.q and x.q * (mb.fit or 1) or (x.frac or 0) * 4 * mb.num / mb.den
       local dup = false
       for _, y in ipairs(list) do if math.abs(y.q - q) < 1e-6 then y.bpm, dup = x.bpm, true end end -- (each track: once)
       if not dup then list[#list + 1] = { q = q, bpm = x.bpm } end
     end
   end
   for _, list in pairs(at) do table.sort(list, function(a, b) return a.q < b.q end) end
-  local out = {}
+  -- (a bar with its notes fitted, mb.fit: its tempo times fit, so it lasts as long as before: 4/4 at 125 -> 6/8 at
+  -- 93.75; the bar after it gets the tempo of the file back)
+  local out, bpm, pf = {}, doc.tempo or 120, 1
   for j, k in ipairs(GP.order(doc.mbars)) do
     local mb = doc.mbars[k]
+    local f = mb.fit or 1
     local tempos = {}
-    for i, x in ipairs(at[k] or {}) do tempos[i] = x end
-    if j == 1 and not (tempos[1] and tempos[1].q < 1e-6) then table.insert(tempos, 1, { q = 0, bpm = doc.tempo or 120 }) end
+    for i, x in ipairs(at[k] or {}) do tempos[i] = { q = x.q, bpm = x.bpm * f, file = x.bpm } end
+    if (j == 1 or math.abs(f - pf) > 1e-9) and not (tempos[1] and tempos[1].q < 1e-6) then
+      table.insert(tempos, 1, { q = 0, bpm = bpm * f, file = bpm })
+    end
+    if tempos[1] then bpm = tempos[#tempos].file end
+    for _, x in ipairs(tempos) do x.file = nil end
+    pf = f
     out[j] = { len = 4 * mb.num / mb.den, num = mb.num, den = mb.den, tempos = tempos }
   end
   return out

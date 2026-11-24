@@ -111,14 +111,19 @@ lengths, fixes of the tab (saved in the project), loop and speed. Chart Cue look
   `b.rs`, `b.re`, `b.times` ("x3"), `b.alt` ("1.") with `alt_first` / `alt_last`, `tab.end_row` (`CFG.TAB_ENDING`
   row at the top). Lines hold places of the view (`Tabs.vbar`); `Tabs.neighbour` walks the view (Left / Right);
   `Tabs.pass_near` (a click while playing: the pass nearest the one that plays); `UI.tab_repeat` draws |: :| (room:
-  `CFG.TAB_REPEAT`, `b.tail`). `S.written` (Settings > Tab > Repeats as written, ExtState `written`, on). D.S., Coda
+  `CFG.TAB_REPEAT`, `b.tail`). An ending runs from its marked bar to its :| (`GP.endings`; 24 November 2026).
+  Each line fills the width exactly (only the 16ths and pads stretch; the last line at most `CFG.TAB_STRETCH`);
+  rests in the middle of the strings; a frame around the tab (24 November 2026). `S.written` (Settings > Tab > Repeats as written, ExtState `written`, on). D.S., Coda
   and Fine are not read (the bars play in file order with the repeats). Checked only with made-up data.
 - Line breaks (decided 24 November 2026, as in Guitar Pro): "&" (the typed character, `UI.len_char`) pulls the
   next line's first bar up, Ctrl+Enter moves the bars after the selected one down (`Tabs.line_starts`, a plain
-  function; `Tabs.set_lines`, 1 Undo step: `R.undo` entry with `lines`). Saved per tab: `lines=` (the written bars
-  that start a line; `e.lines`); `Tabs.view` makes `tab.starts`; `Tabs.layout` keeps those lines and shrinks a line
-  that is too wide (decided). Only with Repeats as written (played out: automatic lines). Tab dropdown > Reset line
-  breaks (`Tabs.reset_lines`).
+  function; `Tabs.set_lines`, 1 Undo step: `R.undo` entry with `lines` and `joins`). Saved per tab (only yours,
+  decided 24 November 2026: the lines after a break fill again): `lines=` (your breaks: written bars; `e.lines`),
+  `joins=` (the "&" bars kept on the line before; `e.joins`); `Tabs.view` makes `tab.starts` / `tab.joins`;
+  `Tabs.layout` breaks there and where a bar does not fit, never before a joined bar (a too wide line shrinks). Only with Repeats as written (played out: automatic lines). Tab dropdown > Reset line
+  breaks, replaced 24 November 2026 by Tab dropdown > Layout... (`UI.draw_layout`, as Guitar Pro's Score system
+  layout: Bars per line Automatic / 1-8, `layout=` = `e.per`, `tab.per`; Reset of your breaks and joins; OK =
+  `Tabs.set_layout`, 1 Undo step with `Tabs.lines_state`).
 - Section names (24 November 2026): `mb.section` (.gp: `<Section>` Text, else Letter; .gp3/4/5: the marker name);
   `Tabs.view` gives each bar shown `b.section` and `tab.sec_row` (`CFG.TAB_SECTION`, the top row: then the endings,
   P.M., the bar numbers). The old formats' markers: checked only with made-up data.
@@ -126,6 +131,13 @@ lengths, fixes of the tab (saved in the project), loop and speed. Chart Cue look
   signature at bar 1 and where it changes; room: `CFG.TAB_SIG`, `Tabs.head_w`), `b.tempo` ({ q, "= 120" } where the
   rounded tempo changes; in the top row, so `tab.sec_row` is always on with a tempo; a later pass is not drawn) and
   `b.final` (the double bar on the last bar, not after a :|; room: `b.tail`). `UI.tab_score` draws them. No switch.
+- Your time signatures (segment 1, 24 November 2026; the user's tab: written in 4/4 at 125, really 6/8 at 93.75):
+  `meter=<written bar> <num>/<den>` per tab (`e.meters`, all tracks); `Tabs.meters(doc, meters)` sets `mb.num` /
+  `mb.den` (the file's in `num0` / `den0`) and `mb.fit` (new length / old): the notes stay in their bar and fit it
+  (`GP.notes`), the tempo times fit (`GP.timeline`: the bar lasts as long). `Tabs.meter_bars` (this bar, or up to the
+  file's next change: decided), `Tabs.set_meter` (1 Undo step). Segment 2: right-click a bar > Time signature...
+  (`R.bar_menu`, `UI.draw_meter`, `R.meter`). "Keep their time (move bar lines)": PLAN.md > Later (the user). An
+  edited bar keeps its saved places (not fitted).
 - The tab on the song (step 2b, 23 November 2026): `P.bar` (`bar=`, only when not 1; a new Open tab clears it) = the
   song bar (REAPER's, from 1) of bar 1 of the tab; `Tabs.set_bar` ("<" / ">", `UI.repeat_button`: hold = repeat),
   `Tabs.relabel` (the bar numbers = the song's, the bar line text). From that bar the tab follows the project's
@@ -166,7 +178,10 @@ lengths, fixes of the tab (saved in the project), loop and speed. Chart Cue look
   `GP.tab` puts them in `bar.ties` ({ q, s, fret, tie }), drawn "(4)", not selectable. `Tabs.link` (after the edits):
   `nx` / `nxb` = the next item on the string; a held part is off when a note is at its place or the note before has
   another fret; `tab.pm` = the palm-mute runs. `UI.tab_marks`: an arc to `nx` (a tie always; a hammer-on / pull-off),
-  a sloped line (a slide), stubs (slide in / out), a bend arrow, a vibrato wave; `UI.tab_pm`: the "P.M. - - -|" row
+  a sloped line (a slide), stubs (slide in / out), a bend arrow, a vibrato wave, tremolo picking (`fx.trem` 1-3: .gp
+  beat `<Tremolo>1/4</Tremolo>` = 16ths (a part of a quarter; checked on a real file), .gp4/5 note byte; 1-3 slashes above the note, the user, 24 November 2026; with `S.tremnotes` (Settings > Tab > Tremolo as notes,
+  ExtState `tremnotes`, on) `Tabs.tremolo` writes it out as the picked notes instead (`fx.tup`: a triplet; held parts
+  `t.trem`); Note Detective: still 1 marker per note, its own decision later); `UI.tab_pm`: the "P.M. - - -|" row
   above the bar numbers (`CFG.TAB_PM`, only with palm mutes). `Tabs.note_txt`: x (always), `<12>` with the marks. A
   note of an edited bar at a file note's place and string keeps its marks (a dead note with a new fret: none).
   `S.pmarks` (Settings > Tab > Playing marks, ExtState `pmarks`, on). Checked only with made-up data: the first real
