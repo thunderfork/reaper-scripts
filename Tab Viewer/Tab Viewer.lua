@@ -644,6 +644,7 @@ function Tabs.set_meter(bi, num, den, following)
     new[wb] = not (num == mb.num0 and den == mb.den0) and { num, den } or nil
   end
   e.meters, R.pdirty = next(new) and new or nil, true
+  Tabs.loop_off(); Tabs.unselect() -- (the bars have other times now: as "<" / ">")
   Tabs.build()
   return true
 end
@@ -993,7 +994,7 @@ function Tabs.undo(dir)
   if u.meters ~= nil then -- (your time signatures: Tabs.set_meter)
     to[#to + 1] = { e = u.e, meters = u.e.meters or false }
     u.e.meters, R.pdirty = u.meters or nil, true
-    if u.e == Tabs.cur() then Tabs.build() end
+    if u.e == Tabs.cur() then Tabs.loop_off(); Tabs.unselect(); Tabs.build() end
     return true
   end
   if u.lines ~= nil then -- (the lines of the tab: Tabs.set_lines, Tabs.set_layout)
@@ -1678,7 +1679,7 @@ Several songs in 1 project, each in its own region? Put the edit cursor in a reg
 
 The Track dropdown has every track of the tab: its name, how many strings it has and its tuning ("Standard", "Drop D", "Eb Standard", or the notes of the open strings), and the capo. Point at a track for its open strings. Tab Viewer starts with the bass (else a guitar), and the project remembers your choice.]] },
   { title = "Reading the tab", text = [[
-The lines are the strings, the lowest at the bottom; the numbers on them are the frets. Notes 1 above the other are played together (a chord). The chord names above the tab come from the tab; where it has none, Tab Viewer names the chord from its notes (off: Settings > Tab > Chord names). The grey marks show how to play a note, as in Guitar Pro: an arc to the next note is a hammer-on or pull-off, a sloped line a slide, a curved arrow a bend, a wave a vibrato, "P.M. - - -|" a palm mute, <12> a harmonic (off: Settings > Tab > Playing marks). A note in brackets, (4), is held on from the note before it (an arc joins them). An x is a dead note (muted, no pitch). Under the tab you see how long each note is, as in printed music: stems, joined 8ths and 16ths, dots, rests and the 3 of triplets (off: Settings > Tab > Note lengths). The section names of the tab ("Intro", "Solo") are over their first bar, and the tempo (a quarter note "= 120") where it changes. The time signature (4 over 4) is at the start and where it changes; a double bar ends the song.Repeats look as in Guitar Pro: |: and :| around the bars that repeat, x3 when they play 3 times, and the endings 1. and 2. over the bars of each pass. While the song plays, the blue line jumps back at a repeat. Rather read the bars one after the other, as they play? Turn off Settings > Tab > Repeats as written.
+The lines are the strings, the lowest at the bottom; the numbers on them are the frets. Notes 1 above the other are played together (a chord). The chord names above the tab come from the tab; where it has none, Tab Viewer names the chord from its notes (off: Settings > Tab > Chord names). The grey marks show how to play a note, as in Guitar Pro: an arc to the next note is a hammer-on or pull-off, a sloped line a slide, a curved arrow a bend, a wave a vibrato, "P.M. - - -|" a palm mute, <12> a harmonic (off: Settings > Tab > Playing marks). A tremolo-picked note is written out as the notes you pick (off: Settings > Tab > Tremolo as notes; then it gets slashes above it). A note in brackets, (4), is held on from the note before it (an arc joins them). An x is a dead note (muted, no pitch). Under the tab you see how long each note is, as in printed music: stems, joined 8ths and 16ths, dots, rests and the 3 of triplets (off: Settings > Tab > Note lengths). The section names of the tab ("Intro", "Solo") are over their first bar, and the tempo (a quarter note "= 120") where it changes. The time signature (4 over 4) is at the start and where it changes; a double bar ends the song.Repeats look as in Guitar Pro: |: and :| around the bars that repeat, x3 when they play 3 times, and the endings 1. and 2. over the bars of each pass. While the song plays, the blue line jumps back at a repeat. Rather read the bars one after the other, as they play? Turn off Settings > Tab > Repeats as written.
 
 Want to hear a part? Click it: the song plays from there. While it plays, a blue line shows where the song is, and the tab scrolls along (off: Settings > Tab > Follow playback). Stopped, the blue line shows the edit cursor.
 
@@ -1961,7 +1962,7 @@ function UI.draw_settings()
     "On (the default): the notes you fixed or added are green, so you see what is yours and what is from the file.")
   if ch then R.sdirty = true end
   ch, S.pmarks = UI.toggle_line("Playing marks", S.pmarks,
-    "On (the default): how to play each note, as in Guitar Pro (arcs for hammer-ons and pull-offs, lines for slides, bend arrows, vibrato waves, a P.M. row for palm mutes, <12> harmonics). Held notes (4) and dead notes x always show.")
+    "On (the default): how to play each note, as in Guitar Pro (arcs for hammer-ons and pull-offs, lines for slides, bend arrows, vibrato waves, a P.M. row for palm mutes, <12> harmonics, slashes for tremolo picking when Tremolo as notes is off). Held notes (4) and dead notes x always show.")
   if ch then R.sdirty = true; Tabs.build() end
   ch, S.lengths = UI.toggle_line("Note lengths", S.lengths,
     "On (the default): how long each note is, under the tab, as in Guitar Pro (stems, joined 8ths and 16ths, dots, rests, the 3 of triplets). A bar with 32nd notes gets wider.")

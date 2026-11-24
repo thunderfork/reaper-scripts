@@ -36,6 +36,13 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-24 | Tab Viewer | stale-state | (debug-time) a new time signature kept the loop and the selection of the old bar times
+  Cause: Tabs.set_meter (and its Undo) changed the bar lengths without Tabs.loop_off / Tabs.unselect, as "<" / ">" do.
+  Why the tests missed it: the new test did not have a loop on.
+  Test: "your time signature: ..." (tests\tabviewer.lua), failed before the fix
+  Other scripts: no other script changes bar lengths
+  Status: fixed, not confirmed
+
 2026-11-24 | Tab Viewer | file-format | tremolo picking did not show on the bass of a real tab
   Cause: .gp writes the tremolo as a part of a quarter note ("1/2" = 8ths); the reader expected "1/8" = 8ths (a guess).
   Why the tests missed it: the made-up test used the same guess; no real file was checked first.
