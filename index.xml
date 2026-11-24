@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="Thunderfork Scripts" commit="ab083bc80a2f59c10616eed40eb5facf1b8b5d20">
+<index version="1" name="Thunderfork Scripts" commit="d07f725c73734e55f9018c743d89bbc600024a71">
   <category name="Chart Cue">
     <reapack name="Chart Cue.lua" type="script" desc="Chart Cue: Open PDF Viewer">
       <metadata>
@@ -318,6 +318,25 @@ Short notices at the bottom of the window instead of OK windows.]]></changelog>
         <changelog><![CDATA[First release: Prep (Scan, preview, Apply), Rules (presets, match words, name, color, folder),
 FX Chains, Buses (FX returns) and Gain staging. One Ctrl+Z undoes an Apply.]]></changelog>
         <source main="main">https://github.com/thunderfork/reaper-scripts/raw/ab083bc80a2f59c10616eed40eb5facf1b8b5d20/Session%20Prep/Session%20Prep.lua</source>
+      </version>
+    </reapack>
+  </category>
+  <category name="Tab Viewer">
+    <reapack name="Tab Viewer.lua" type="script" desc="Tab Viewer: Guitar Pro tabs next to the song">
+      <metadata>
+        <description><![CDATA[{\rtf1\ansi\deff0{\fonttbl{\f0 \fswiss Helvetica;}{\f1 \fmodern Courier;}}
+{\colortbl;\red255\green0\blue0;\red0\green0\blue255;}
+\widowctrl\hyphauto
+
+{\pard \ql \f0 \sa180 \li0 \fi0 Tab Viewer - shows a Guitar Pro tab (.gp, .gpx, .gp5, .gp4, .gp3) of a guitar or bass track on the bars of your song, as Guitar Pro draws it (playing marks, note lengths, repeats), with a blue line that follows playback. Fix the tab, loop a bar, play slower, find the tempo from the tab. A tab per region; the project keeps a copy of it in a "Tabs" folder next to the project file. Requires: the free ReaImGui extension (ReaPack).\par}
+}
+]]></description>
+      </metadata>
+      <version name="1.0" author="Nick Gkogkomitros" time="2026-11-24T13:35:28Z">
+        <changelog><![CDATA[First version.]]></changelog>
+        <source main="main">https://github.com/thunderfork/reaper-scripts/raw/d07f725c73734e55f9018c743d89bbc600024a71/Tab%20Viewer/Tab%20Viewer.lua</source>
+        <source file="Guitar Pro.lua">https://github.com/thunderfork/reaper-scripts/raw/d07f725c73734e55f9018c743d89bbc600024a71/Tab%20Viewer/Guitar%20Pro.lua</source>
+        <source file="Tempo.lua">https://github.com/thunderfork/reaper-scripts/raw/d07f725c73734e55f9018c743d89bbc600024a71/Tab%20Viewer/Tempo.lua</source>
       </version>
     </reapack>
   </category>
