@@ -168,6 +168,31 @@ part in REAPER. Plan and answers: decided 23 November 2026; into Tab Viewer: dec
   tempo for it; its bar numbers are always the song's.
 - Not checked on the screen by the user yet; the new manual tests: PLAN.md, Open now.
 
+## The musician review (decided 24 November 2026: UX 1-9 all yes; built in 4 segments)
+
+- Segment 1 (built): the Song section starts with a Tempo row ("Not set" in yellow, or "120 BPM, set"; the toolbar's
+  Find tempo, `UI.draw_find_tempo`; `R.tempo_lbl`) and a Track row (named Track, not Bass: the user), the bass track
+  that Find notes listens to (`Find.track`: your choice `R.trk`, not saved; else the track of the last bass item
+  `P.src`, else of the selected item; cached in `R.trk_def`). `Find.source`: the selected audio item on that track,
+  else its longest one (`Find.pick`). No item selection in REAPER is needed any more.
+- Segment 2 (built): a click on a line (and Up, Down, N) loops it (`UI.play_row`: REAPER's time selection over
+  `List.row_span`, repeat on; `R.loop` keeps the old repeat and time selection; `UI.loop_off` on Space / a stop (after
+  0.5 s), Escape, another project, the window closing). 1 undo (`List.step(reaper, keep_list)`): `R.undo` also holds
+  `{ reaper = the undo name, list }` for Write, Clear and Export; `List.undo` (the Undo button and Ctrl+Z in the tab)
+  does REAPER's undo too when that step is still REAPER's last one; an empty `R.undo`: Ctrl+Z is REAPER's undo.
+- Segment 3 (built): Write, its dropdown, then "Written (n markers)" in green (`R.written_lbl`, `Out.written_text`;
+  no ✓: the font may not have it) until the list changes; "More..." at the right holds Export... (not in Simple mode)
+  and "Done: clean up..." (was Finish...; its window "Done: clean up", its button "Clean up").
+- Segment 4 (built): no key known after Find notes: "Sounds like C minor. Use it?" (`Key.guess`: the time of each
+  pitch class against the Krumhansl-Kessler profiles; at least `CFG.KEY_MIN_NOTES` notes). The words: "Repeats" (was
+  Places), "not sure" (was doubtful; Next not sure, right-click > Sure). A grey example under Markers (`MODE_EXAMPLE`).
+  A new Tuning (the user chose "listen to the affected notes", 24 November 2026): `List.set_tuning` ->
+  `Find.retune`: only the notes that can now be an octave lower (`Find.retune_need`: in the lowest octave of the old
+  tuning, and the new one goes lower for that pitch class) are heard again, 0.08-0.15 s each from the bass item
+  (`Det.odd_even` at the new lowest octave, the default limit `CFG.OCT_DB`, A = 440: the song's tuning and limit are
+  not kept; `Find.retune_pick`); too short or no item (the notes of a tab): the octave stays (yellow when heard short).
+  The rows: `List.remake` (a row that differs from what the old tuning made stays: your correction).
+
 ## Later (ideas, moved from PLAN.md 24 November 2026)
 
 - Note Detective, asked 23 November 2026 (feedback given, not approved): (1) find the tempo and set it, (2) line the

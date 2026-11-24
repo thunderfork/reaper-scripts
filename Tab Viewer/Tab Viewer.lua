@@ -1814,7 +1814,7 @@ A fix changes the bar as it is written, so a repeat of that bar changes too. Mad
   { title = "Where your stuff is saved", text = [[
 In the project: its tabs, the region of each one, the track you picked, the bar where the tab starts, your line breaks, and your fixes of the tab. Tab Viewer copies each tab into a "Tabs" folder next to the project file, so the project keeps its tab when you move or delete the original. Not saved yet? The copy is made when you save the project.
 
-In the project, also: the Notes list until you click Finish (the found notes, the tuning, the key changes, and your fixes of the found notes' tab). Save the project to keep it.
+In the project, also: the Notes list until you click More... > Done: clean up (the found notes, the tuning, the key changes, and your fixes of the found notes' tab). Save the project to keep it.
 
 On this computer: the Light theme, the hidden tabs, the folded Settings sections, Follow playback, Chord names, Mark my fixes, Playing marks, Note lengths, Repeats as written, the window dock, Settings > Note Detection, the Write choice and the export folder.
 

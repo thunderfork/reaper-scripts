@@ -41,6 +41,10 @@ CFG.TRACK = "Notes"            -- the name of the Notes track
 CFG.MODE_W, CFG.OUT_W = 150, 200 -- the Markers choice in Finish, the Write dropdown
 CFG.COL_NUM_W, CFG.COL_BAR_W, CFG.COL_PLACES_W = 34, 52, 64 -- the columns of the list
 CFG.UNDO_MAX = 50              -- the steps of the Undo button (the list)
+CFG.KEY_MIN_NOTES = 8          -- Key.guess: fewer found notes give no suggestion
+CFG.TAB_GAP_Q = 0.5            -- the tab of the found notes: a gap shorter than this (quarter notes: an 8th) is no rest
+CFG.TAB_PULL8 = 0.09           -- and a start this close to an 8th (quarter notes: about a 3rd of a 16th) is on the 8th
+CFG.LOOP_LAST = 4              -- s: the loop of the last row (to the end of the bass item, at most this long)
 CFG.MK_MAX = 3000              -- the kept IDs of written markers (the older ones are dropped)
 -- The detection (the values of the trials of 23 November 2026)
 CFG.SR, CFG.HOP = TP.CFG.SR, TP.CFG.HOP -- the bass is read at 4000 Hz; 1 frame every 10 ms (as Tempo and bars)
@@ -124,6 +128,13 @@ local R = {
   undo = {},         -- the Undo button: the older project data texts
   view = nil,        -- the texts of the list rows (UI.view; rebuilt after a change)
   src_name = nil,    -- the name of the bass item (cached until the project changes)
+  trk = nil,         -- the Track row: your choice (not saved; Find.track)
+  written_lbl = nil, -- "Written (12 markers)" next to Write, until the list changes (Out.written_text)
+  loop = nil,        -- the loop of a row (UI.play_row): { proj, rep, ts (before it), t0, t1 }
+  trk_lbl = nil,     -- the text of the Track row (of the track trk_for), tempo_lbl: of the Tempo row (cached until the
+  trk_for = nil,     -- project changes)
+  trk_def = nil,     -- the default track (false: none; nil: not looked for yet)
+  tempo_lbl = nil,
   finish = nil,      -- the open Finish window
   export = nil,      -- the open Export window: { item, file, step (Rhythm), open }
 }
@@ -151,7 +162,7 @@ function Util.clean(s) return ((s or ""):gsub("[\t\r\n]", " "):gsub("^%s+", ""):
 -- After a change of the list: saved at the end of the frame; the texts of the list and the tab of the found notes
 -- are made again (host.notes_changed).
 function Util.mark_pdirty()
-  R.pdirty, R.view, R.places = true, nil, nil
+  R.pdirty, R.view, R.places, R.written_lbl = true, nil, nil, nil
   if host.notes_changed then host.notes_changed() end
 end
 -- The item of this project with this GUID (nil: none; TP.item_by_guid).
@@ -230,6 +241,36 @@ Key.LIST = {}
 for pc = 0, 11 do
   Key.LIST[#Key.LIST + 1] = TONIC.major[pc] .. " major"
   Key.LIST[#Key.LIST + 1] = TONIC.minor[pc] .. " minor"
+end
+
+-- The key that the notes sound like (the musician review, 24 November 2026: a suggestion after Find notes): the time
+-- of each pitch class against the major and minor profiles of Krumhansl and Kessler (the best correlation), as in
+-- Key.LIST; nil with fewer than CFG.KEY_MIN_NOTES notes.
+local PROFILE = {
+  major = { 6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88 },
+  minor = { 6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17 },
+}
+function Key.guess(notes)
+  if #notes < CFG.KEY_MIN_NOTES then return nil end
+  local w = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
+  for _, n in ipairs(notes) do w[n.pc + 1] = w[n.pc + 1] + math.max(0.05, (n.t1 or n.t) - n.t) end
+  local function corr(a, b)
+    local ma, mb = 0, 0
+    for i = 1, 12 do ma, mb = ma + a[i] / 12, mb + b[i] / 12 end
+    local s, sa, sb = 0, 0, 0
+    for i = 1, 12 do s, sa, sb = s + (a[i] - ma) * (b[i] - mb), sa + (a[i] - ma) ^ 2, sb + (b[i] - mb) ^ 2 end
+    return sa > 0 and sb > 0 and s / math.sqrt(sa * sb) or 0
+  end
+  local best, bv = nil, -2
+  for pc = 0, 11 do
+    for _, mode in ipairs({ "major", "minor" }) do
+      local rot = {}
+      for i = 1, 12 do rot[i] = PROFILE[mode][(i - 1 - pc) % 12 + 1] end
+      local v = corr(w, rot)
+      if v > bv then best, bv = TONIC[mode][pc] .. " " .. mode, v end
+    end
+  end
+  return best
 end
 
 function Key.pc(letter, acc)
@@ -1111,13 +1152,24 @@ function List.shift(d)
   if P.t_end then P.t_end = P.t_end + d end
   Util.mark_pdirty()
 end
-function List.step()
-  R.undo[#R.undo + 1] = List.serialize(P)
+-- 1 Undo step (the Undo button and Ctrl+Z in the tab: 1 undo for both, decided 24 November 2026). An entry is the
+-- list before a change (text), or { reaper = the REAPER undo name of a Write, Clear or Export, list = the list
+-- before it (Clear) or nil }: its undo is REAPER's undo too, when that step is still REAPER's last one.
+function List.step(reaper, keep_list)
+  local txt = List.serialize(P)
+  R.undo[#R.undo + 1] = reaper and { reaper = reaper, list = not keep_list and txt or nil } or txt
   if #R.undo > CFG.UNDO_MAX then table.remove(R.undo, 1) end
 end
 function List.undo()
-  local txt = table.remove(R.undo)
-  if not txt then return end
+  local e = table.remove(R.undo)
+  if not e then return end
+  R.written_lbl = nil
+  local txt = e
+  if type(e) == "table" then
+    if r.Undo_CanUndo2(R.proj) == e.reaper then r.Main_OnCommand(40029, 0) end -- Edit: Undo (else: already undone)
+    txt = e.list
+    if not txt then return end
+  end
   local mk = P.mk
   P = List.parse(txt)
   if #mk > 0 then P.mk = mk end -- (the newest IDs of the written markers; none after Finish)
@@ -1144,7 +1196,7 @@ function List.why(i)
     for _, n in ipairs(P.notes) do
       if n.t >= t0 and n.t < t1 and n.why and not seen[n.why] then seen[n.why] = true; parts[#parts + 1] = WHY_TEXT[n.why] end
     end
-    row.why_txt = "Doubtful: " .. (#parts > 0 and table.concat(parts, "; ") or "listen to it") .. "."
+    row.why_txt = "Not sure: " .. (#parts > 0 and table.concat(parts, "; ") or "listen to it") .. "."
   end
   return row.why_txt
 end
@@ -1340,12 +1392,43 @@ function List.set_mode(mode)
   R.sel, R.edit = nil, nil
   Util.mark_pdirty()
 end
--- The tuning of the song. The octaves of the found notes depend on it: Find notes again makes the list with it.
+-- The tuning of the song (UX 7 of the musician review, decided 24 November 2026: no new Find notes). The found notes
+-- that can now be an octave lower (Find.retune_need) are heard again (Find.retune: a short piece of the bass item
+-- each); the others keep their octave. The rows follow (strings, frets); a row that you corrected keeps your text.
 function List.set_tuning(id)
   if id == P.tuning then return end
   List.step()
+  local old_open = Key.tuning(P.tuning).open[1]
+  local auto = #P.notes > 0 and List.auto_rows() -- (the rows as the old tuning made them: to find your corrections)
   P.tuning = id
+  local heard = 0
+  if #P.notes > 0 then
+    heard = Find.retune(P.notes, old_open, Key.tuning(id).open[1])
+    List.remake(auto)
+  end
   Util.mark_pdirty()
+  return heard
+end
+-- The rows that Group.make gives now (with the key changes), without changing P.rows.
+function List.auto_rows()
+  local keep = P.rows
+  P.rows = Group.make(P.notes, P.mode, P.key, R.proj, P.t_end, List.opt())
+  List.respell()
+  local rows = P.rows
+  P.rows = keep
+  return rows
+end
+-- The rows again from the notes; a row that differs from auto (the rows that the notes gave before: your correction,
+-- or a line you joined, split or added) stays as it is.
+function List.remake(auto)
+  local was = {}
+  for _, row in ipairs(auto or {}) do was[string.format("%.4f", row.t)] = row.text end
+  local new, by_t = List.auto_rows(), {}
+  for _, row in ipairs(new) do by_t[string.format("%.4f", row.t)] = row end
+  for i, row in ipairs(P.rows) do
+    local k = string.format("%.4f", row.t)
+    if was[k] == row.text and by_t[k] then P.rows[i] = by_t[k] end
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -1381,7 +1464,7 @@ function Project.update()
   if proj ~= R.proj then
     if R.pdirty then Project.save() end
     R.proj, R.projfn, R.state_cc = proj, fn, r.GetProjectStateChangeCount(proj)
-    R.src_name = nil
+    R.src_name, R.trk, R.trk_lbl, R.tempo_lbl, R.trk_def, R.written_lbl = nil, nil, nil, nil, nil, nil
     Project.load(Project.read())
     return
   end
@@ -1389,6 +1472,7 @@ function Project.update()
   if cc ~= R.state_cc or fn ~= R.projfn then
     local other = fn ~= R.projfn
     R.state_cc, R.projfn, R.view, R.src_name = cc, fn, nil, nil -- (also the tempo: the bar numbers)
+    R.trk_lbl, R.tempo_lbl, R.trk_def = nil, nil, nil -- (a renamed track, a new tempo, another selection)
     local txt = Project.read()
     if txt ~= R.plast_txt then Project.load(txt) -- (never write the old list into the next project)
     elseif other and txt == "" then Project.load(txt) end -- (2 projects without a list: the Undo steps go too)
@@ -1400,16 +1484,114 @@ end
 -- FIND (reads the selected bass item in steps)
 ---------------------------------------------------------------------------
 -- The selected audio item. Returns item, take, or nil and the reason.
+-- A new tuning: what happens to found note n (lowest: the lowest open string before / after). "hear": it can now be an
+-- octave lower (it was in the lowest octave of the old tuning, and the new one goes lower for its pitch class); else
+-- its new midi (the same, or up into the new lowest octave).
+function Find.retune_need(n, old, new)
+  local ol, nl = Key.low(n.pc, old), Key.low(n.pc, new)
+  if nl < ol and n.midi == ol then return "hear" end
+  if n.midi < nl then return nl end -- (below the new lowest octave: up into it)
+  return n.midi
+end
+-- The octave of a note heard again: oe (Det.odd_even at the new lowest octave nl; nil: too short to tell) -> midi,
+-- doubtful. The odd harmonics far below the even ones: the higher octave (as Det.analyse, with the default limit).
+function Find.retune_pick(oe, nl)
+  if not oe then return nl + 12, true end -- (too short: the octave it had, yellow)
+  return oe < CFG.OCT_DB and nl + 12 or nl, math.abs(oe - CFG.OCT_DB) < CFG.OCT_SURE
+end
+-- Changes the octaves of the found notes for a new tuning (old / new: the lowest open strings). The notes to hear
+-- again are read from the bass item of the list (P.src), a short piece each; no item (gone, or the notes of a tab):
+-- they keep their octave. Returns how many were heard.
+function Find.retune(notes, old, new)
+  local item = Find.item()
+  local take = item and r.GetActiveTake(item)
+  local acc = take and not r.TakeIsMIDI(take) and r.CreateTakeAudioAccessor(take)
+  local pos = item and r.GetMediaItemInfo_Value(item, "D_POSITION") or 0
+  local buf, heard = r.new_array(2 * math.ceil(CFG.SR * 0.2)), 0
+  for _, n in ipairs(notes) do
+    local need = Find.retune_need(n, old, new)
+    if need ~= "hear" then n.midi = need
+    elseif acc then
+      local nl = Key.low(n.pc, new)
+      local t = n.t + CFG.START_COMP -- (the found start is this much early)
+      local len = math.min(0.15, (n.t1 or t) - t)
+      local oe
+      if len >= 0.08 then
+        local c = math.floor(len * CFG.SR)
+        buf.clear()
+        r.GetAudioAccessorSamples(acc, CFG.SR, 2, t - pos, c, buf)
+        local v, x = buf.table(1, c * 2), {}
+        for k = 1, c do x[k] = (v[2 * k - 1] + v[2 * k]) * 0.5 end
+        oe = Det.odd_even(x, 0, len, nl, 0)
+      end
+      local doubt
+      n.midi, doubt = Find.retune_pick(oe, nl)
+      if doubt then n.doubt, n.why = true, n.why or "octave" end
+      heard = heard + 1
+    end
+  end
+  if acc then r.DestroyAudioAccessor(acc) end
+  return heard
+end
+
+-- The item of the Track row to listen to: the selected item on it, else its longest one. cands: { { sel, len } } of
+-- its audio items (a plain rule: tested). Returns the index, or nil (no audio item).
+function Find.pick(cands)
+  local best
+  for i, c in ipairs(cands) do
+    if c.sel then return i end
+    if not best or c.len > cands[best].len then best = i end
+  end
+  return best
+end
+-- The audio items of track tr: { { item, take, sel, len } }.
+function Find.audio_items(tr)
+  local list = {}
+  for k = 0, r.CountTrackMediaItems(tr) - 1 do
+    local item = r.GetTrackMediaItem(tr, k)
+    local take = r.GetActiveTake(item)
+    if take and not r.TakeIsMIDI(take) then
+      list[#list + 1] = { item = item, take = take, sel = r.IsMediaItemSelected(item),
+        len = r.GetMediaItemInfo_Value(item, "D_LENGTH") }
+    end
+  end
+  return list
+end
+-- The Track row: your choice (R.trk; not saved), else the track of the bass item of the last Find notes, else the
+-- track of the selected item. nil: none yet. fresh: look again (Find notes), not the cached default (every frame).
+function Find.track(fresh)
+  if R.trk and r.ValidatePtr2(R.proj, R.trk, "MediaTrack*") then return R.trk end
+  R.trk = nil
+  if R.trk_def == nil or fresh then -- (cached: Find.item looks through all items; cleared when the project changes)
+    local item = Find.item() or r.GetSelectedMediaItem(R.proj, 0)
+    R.trk_def = item and r.GetMediaItem_Track(item) or false
+  end
+  return R.trk_def or nil
+end
+-- The tracks with an audio item, for the Track dropdown (made when it opens): { { tr, label } }.
+function Find.tracks()
+  local list = {}
+  for k = 0, r.CountTracks(R.proj) - 1 do
+    local tr = r.GetTrack(R.proj, k)
+    if #Find.audio_items(tr) > 0 then list[#list + 1] = { tr = tr, label = Find.track_label(tr) } end
+  end
+  return list
+end
+function Find.track_label(tr)
+  local _, name = r.GetTrackName(tr)
+  return string.format("%d: %s", math.floor(r.GetMediaTrackInfo_Value(tr, "IP_TRACKNUMBER")), name)
+end
+
 function Find.source()
-  local n = r.CountSelectedMediaItems(R.proj)
-  if n == 0 then return nil, "Select the bass item first." end
-  if n > 1 then return nil, "Select 1 item only: the bass." end
-  local item = r.GetSelectedMediaItem(R.proj, 0)
-  local take = r.GetActiveTake(item)
-  if not take or r.TakeIsMIDI(take) then return nil, "The selected item is not audio. Select the bass item." end
+  local tr = Find.track(true)
+  if not tr then return nil, "Pick the bass track first (Track)." end
+  local list = Find.audio_items(tr)
+  local i = Find.pick(list)
+  if not i then return nil, "The track " .. Find.track_label(tr) .. " has no audio item. Pick the bass track (Track)." end
+  local item, take = list[i].item, list[i].take
   local src = r.GetMediaItemTake_Source(take)
   if not src or r.GetMediaSourceSampleRate(src) <= 0 then
-    return nil, "The file of the selected item is missing or offline."
+    return nil, "The file of the bass item is missing or offline."
   end
   return item, take
 end
@@ -1485,7 +1667,7 @@ function Find.cancel()
 end
 -- The found notes become the list (the Undo button brings the old list back).
 function Find.done(f, notes, tune, t_end)
-  if #notes == 0 then UI.notice("No notes found. Is this the bass item?", true); return end
+  if #notes == 0 then UI.notice("No notes found. Is this the bass track (Track)?", true); return end
   List.step()
   P.notes, P.t_end, P.tab = notes, t_end, nil -- (the fixes of the tab were for the notes before)
   P.src = f.guid
@@ -1494,7 +1676,12 @@ function Find.done(f, notes, tune, t_end)
   List.respell() -- (the key changes)
   R.sel, R.edit, R.src_name = nil, nil, nil
   Util.mark_pdirty()
-  UI.notice(string.format("Found %d markers, %d doubtful. Tuning: A = %.0f Hz.", #P.rows, List.doubtful(), 440 * 2 ^ (tune / 12)))
+  UI.notice(string.format("Found %d markers, %d not sure. Tuning: A = %.0f Hz.", #P.rows, List.doubtful(), 440 * 2 ^ (tune / 12)))
+  local g = P.key == "" and Key.guess(notes) -- (no key known: a suggestion)
+  if g then
+    UI.ask("Sounds like " .. g .. ". Use it as the key of the song? (It decides the note names: Ab or G#.)",
+      "Use it", function() List.set_key(g) end, "Not now")
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -1629,7 +1816,7 @@ function Out.clear()
   r.Undo_EndBlock2(R.proj, CFG.UNDO_NAME .. ": clear", -1)
   r.TrackList_AdjustWindows(false)
   r.UpdateArrange()
-  List.step()
+  List.step(CFG.UNDO_NAME .. ": clear")
   P.rows, P.keys, P.src, P.notes, P.t_end, P.tab = {}, {}, "", {}, nil, nil
   R.sel, R.edit, R.written, R.src_name = nil, nil, nil, nil
   Util.mark_pdirty()
@@ -1646,10 +1833,17 @@ function Out.write(what)
   if what ~= "markers" then Out.add_items(what == "both") end
   r.PreventUIRefresh(-1)
   r.Undo_EndBlock2(R.proj, CFG.UNDO_NAME .. ": write notes", -1)
+  List.step(CFG.UNDO_NAME .. ": write notes", true)
   r.TrackList_AdjustWindows(false)
   r.UpdateArrange()
   R.written = List.serialize(P)
+  R.written_lbl = Out.written_text(what, #P.rows)
   R.pdirty = true
+end
+-- The line next to Write after a Write (until the list changes: Util.mark_pdirty, List.undo, another project).
+function Out.written_text(what, n)
+  local unit = what == "track" and (n == 1 and "text item" or "text items") or (n == 1 and "marker" or "markers")
+  return string.format("Written (%d %s)", n, unit)
 end
 
 -- The song title in the name of a bass file: "Far Away-Bass-C minor-120bpm" -> "Far Away".
@@ -1899,6 +2093,7 @@ function Export.run(e)
     Export.item(list, q_start)
     r.PreventUIRefresh(-1)
     r.Undo_EndBlock2(R.proj, CFG.UNDO_NAME .. ": export MIDI", -1)
+    List.step(CFG.UNDO_NAME .. ": export MIDI", true)
     r.TrackList_AdjustWindows(false)
     r.UpdateArrange()
     done[#done + 1] = "a MIDI item on the \"" .. CFG.MIDI_TRACK .. "\" track"
@@ -1956,10 +2151,55 @@ end
 -- project from the bar of the first note to the bar of the last one), m0 (the measure of its bar 1, from 0), tab() (a
 -- new tab of the notes, as GP.tab gives it: Tab Viewer changes it) }. The notes on the 16th grid of the project (as the
 -- export), with the strings and frets of the list (List.places). nil: no notes.
+-- The tab of the found notes is written as a bass player writes it (the user, 24 November 2026: a staccato stem gave
+-- a rest after almost every note): a note lasts until the next one when the gap is shorter than gap quarter notes;
+-- only a longer gap is a rest. list: { q0, q1 } in order (Export.notes); changes q1.
+function Imp.legato(list, gap)
+  for i = 1, #list - 1 do
+    local x, nx = list[i], list[i + 1]
+    if nx.q0 > x.q1 and nx.q0 - x.q1 < gap - 1e-9 then x.q1 = nx.q0 end
+  end
+  return list
+end
+-- The grid of the tab of the found notes (the user, 24 November 2026: 8ths moved to 16ths, an extra 16th before a
+-- note): list (Export.notes with step 0: q0, q1 not on a grid; man = from a tab) less the delay d -> on the grid.
+-- 1. A start within CFG.TAB_PULL8 of an 8th goes on the 8th; else on the nearest 16th.
+-- 2. A short note (at most a 16th) off the 8ths, straight before a note on an 8th that is longer: a scoop or a false
+--    2nd pluck. The same note: 1 note (from the 8th); 1-2 semitones away: it goes (a slide into the note).
+function Imp.grid(list, d)
+  local function snap(q, man)
+    if man then return math.floor(q / 0.25 + 0.5) * 0.25 end
+    q = q - d
+    local q8 = math.floor(q / 0.5 + 0.5) * 0.5
+    if math.abs(q - q8) <= CFG.TAB_PULL8 then return q8 end
+    return math.floor(q / 0.25 + 0.5) * 0.25
+  end
+  for _, x in ipairs(list) do
+    x.q0, x.q1 = snap(x.q0, x.man), snap(x.q1, x.man)
+    x.q1 = math.max(x.q1, x.q0 + 0.25)
+  end
+  table.sort(list, function(a, b) if a.q0 ~= b.q0 then return a.q0 < b.q0 end return a.i < b.i end)
+  local out = {}
+  for _, x in ipairs(list) do
+    local p = out[#out]
+    if p and x.q0 <= p.q0 + 1e-9 then -- (2 notes on 1 place: the first stays)
+    elseif p and not p.man and x.q0 - p.q0 <= 0.25 + 1e-9 and p.q0 % 0.5 > 1e-9 and x.q0 % 0.5 < 1e-9
+      and x.q1 - x.q0 > 0.25 + 1e-9 and math.abs(x.midi - p.midi) <= 2 then
+      out[#out] = x -- (the short one before goes: the same note, or a slide into it)
+    else
+      if p and p.q1 > x.q0 then p.q1 = x.q0 end
+      out[#out + 1] = x
+    end
+  end
+  return out
+end
 function Imp.found_doc()
   if #P.notes == 0 then return nil end
   local proj, tun = R.proj, Key.tuning(P.tuning)
-  local list = Export.notes(P.notes, 0.25)
+  local raw = Export.notes(P.notes, 0)
+  local ons = {} -- (the found starts: the delay of the whole list, as the export)
+  for _, x in ipairs(raw) do if not x.man then ons[#ons + 1] = x.q0 end end
+  local list = Imp.grid(raw, #ons > 0 and Export.delay(ons) or 0)
   local places = List.places(P.notes, tun) -- (by the index of the saved note: x.i)
   local function measure(q) -- (the measure of a quarter note of the project, from 0)
     local _, m = r.TimeMap2_timeToBeats(proj, r.TimeMap2_QNToTime(proj, q) + 1e-6)
@@ -1972,6 +2212,7 @@ function Imp.found_doc()
     mbars[#mbars + 1] = { num = math.max(1, math.floor(num)), den = math.max(1, math.floor(den)) }
     starts[#starts + 1] = qs
   end
+  Imp.legato(list, CFG.TAB_GAP_Q)
   local open = tun.open
   local doc = { found = true, m0 = m0, mbars = mbars, tempos = 0,
     tracks = { { name = "Found notes", kind = "bass", inst = "Bass", open = open, capo = 0 } } }
@@ -2032,29 +2273,29 @@ function N.attach(c) ctx = c end
 
 -- The Help topics of the Note Detection tab (Tab Viewer's Help shows them after its own).
 N.HELP_TOPICS = {
-  { title = "Notes: markers to learn the part", text = [[
+  { title = "Note Detection: markers to learn the part", text = [[
 Want the bass notes as markers, to learn the part in REAPER? That is the Note Detection tab.
 
 1. Got a Guitar Pro tab of the song? Open it (Open tab...), set the tempo (Find tempo), then click "Import to list" in the Tab tab: the list gets the exact notes, strings and frets of the tab.
-2. No tab? Separate the song, put the bass file on a track, select the bass item and click "Find notes" in the Note Detection tab: Tab Viewer listens to it.
-3. Check the list. Yellow lines are doubtful: click one to hear it, point at it to see why.
+2. No tab? Separate the song and put the bass file on a track. In the Note Detection tab: Find tempo (the Tempo row), pick that track (Track), then click "Find notes": Tab Viewer listens to it.
+3. Check the list. Yellow lines are not sure: click one to hear it in a loop, point at it to see why.
 4. Click "Write". One Ctrl+Z takes it all away again.
 
 No plugins needed: Tab Viewer reads the bass file itself, so an octave shifter or a tuner on the track changes nothing. Do Find tempo first, so the markers land on the real bars of the song (Set tempo then also moves the list with the audio).]] },
   { title = "Checking the list", text = [[
-Click a line: REAPER plays from there. Double-click it (or press F2) to type other notes. You can add anything, for example a string and a fret: F (D 3).
+Click a line: REAPER plays it in a loop, again and again (Space, Escape or a click on another line ends it; Up, Down and N loop the next one). Double-click it (or press F2) to type other notes. You can add anything, for example a string and a fret: F (D 3).
 
-Same mistake in more places? After a correction, Tab Viewer offers to change the other lines with the same notes too. The Places column shows how many there are.
+Same mistake in more places? After a correction, Tab Viewer offers to change the other lines with the same notes too. The Repeats column shows how many there are.
 
-Yellow but right? Click "OK" in the line, or right-click > Not doubtful.
+Yellow but right? Click "OK" in the line, or right-click > Sure.
 
 Join puts a line together with the next one. Split cuts a line at the edit cursor (or in the middle). "+ Add" makes a new line at the edit cursor (while playing: at the play position). Right-click a line for more.
 
-Made a mistake? Undo takes back the changes of the list. Ctrl+Z is REAPER's own undo (the written markers).
+Made a mistake? Undo (or Ctrl+Z in this tab) takes back the last step: a change of the list, or Write, Clear or Export.
 
-Want to start again? "Clear..." removes the list and what the Note Detection tab wrote (its markers, the Notes track items, the Bass MIDI item). It asks first; Undo and Ctrl+Z bring it back.
+Want to start again? "Clear..." removes the list and what the Note Detection tab wrote (its markers, the Notes track items, the Bass MIDI item). It asks first; Undo (or Ctrl+Z) brings it all back.
 
-Keys: Up / Down = previous / next line, N = next doubtful line, Space = play / stop, F2 = type the notes, Delete = delete the line.]] },
+Keys: Up / Down = previous / next line, N = next line that is not sure, Space = play / stop, F2 = type the notes, Delete = delete the line.]] },
   { title = "The found notes as a tab", text = [[
 No Guitar Pro tab for the song? After Find notes, the Tab tab shows the found notes as bass tab, with the strings and frets of the list. It works as a Guitar Pro tab: click to play from a note, fix a note while the song is stopped, see the note lengths, loop a bar.
 
@@ -2084,7 +2325,7 @@ Too much? Settings > Note Detection > Simple mode (on by default): the markers s
 
 Rather string numbers, as in tab books ("E (3 7)")? Settings > Note Detection > String names.
 
-Pick the "Tuning" of the bass for the song (Standard, Half step down, Drop D, Drop C, 5-string) before Find notes. Only the names, no frets? Turn off Settings > Note Detection > String and fret for high notes, and Settings > Note Detection > Fingering for runs.]] },
+Pick the "Tuning" of the bass for the song (Standard, Half step down, Drop D, Drop C, 5-string). Changed it after Find notes? The list follows at once: the strings and frets, and the low notes that can now be an octave lower are heard again (your corrections stay). Only the names, no frets? Turn off Settings > Note Detection > String and fret for high notes, and Settings > Note Detection > Fingering for runs.]] },
   { title = "Markers or a Notes track", text = [[
 The dropdown next to "Write" decides what it makes: markers, text items on a "Notes" track above the bass, or both. The text items have more room than the marker names: they also show the beat of each note, counted "1 e & a" ("1 F · 2& Eb · 3 C"; off: Settings > Note Detection > Beat count in the Notes track).
 
@@ -2097,8 +2338,8 @@ It makes a MIDI item on a "Bass MIDI" track below the bass (an older export ther
 Set the tempo first (Find tempo), so the notes land on the right bars. Rhythm moves the notes to 16th notes (or 8th notes, or not at all).
 
 The export uses the notes of the list (found, or imported from the tab), not the texts of the list: your typed corrections are not in it. Guitar Pro chooses its own strings and frets.]] },
-  { title = "Finish", text = [[
-Finish makes a region over the whole song with the artist, the title and the key. If you like, it also removes the plugins from the bass track and deletes the metronome track (you see what before you click).
+  { title = "Done: clean up", text = [[
+Done: clean up (in More...) makes a region over the whole song with the artist, the title and the key. If you like, it also removes the plugins from the bass track and deletes the metronome track (you see what before you click).
 
 Then the list leaves the project. The markers and the Notes track stay. Ctrl+Z brings the plugins and tracks back.]] },
   { title = "Why are some notes wrong?", text = [[
@@ -2107,6 +2348,8 @@ Fast fills, slides, and drums or guitars that stayed in the bass file. 2 methods
 A note that fades out can turn into its own overtone (a 5th higher). These lines are yellow too.]] },
 }
 local MODES = { { "bar", "1 per bar" }, { "change", "Every note change" }, { "sec", "About 2 seconds" } }
+-- An example of each Markers choice (the grey line under it).
+local MODE_EXAMPLE = { bar = "For example: Bar 5: C - G", change = "For example: C, then G, then F", sec = "For example: 0:12 C - G" }
 local OUTS = { { "markers", "Markers" }, { "track", "Notes track" }, { "both", "Markers and Notes track" } }
 
 -- UI.trunc, kept per text until the width changes (the rows of the list: not cut again every frame).
@@ -2164,7 +2407,7 @@ function UI.view()
     v.items[#v.items + 1] = { row = i }
     v.item_of[i] = #v.items
   end
-  v.status = #P.rows == 0 and "" or string.format("%d %s, %d doubtful", #P.rows, #P.rows == 1 and "marker" or "markers", v.n_doubt)
+  v.status = #P.rows == 0 and "" or string.format("%d %s, %d not sure", #P.rows, #P.rows == 1 and "marker" or "markers", v.n_doubt)
   R.view = v
   return v
 end
@@ -2175,12 +2418,39 @@ function UI.play_at(t)
   r.SetEditCurPos2(R.proj, t, true, playing)
   if not playing then r.OnPlayButtonEx(R.proj) end
 end
--- Plays from a row.
-function UI.play_row(i)
+-- The time of row i: its start to the start of the next row (the last row: to the end of the bass item, at most
+-- CFG.LOOP_LAST s). nil: no such row.
+function List.row_span(i)
   local row = P.rows[i]
-  if not row then return end
+  if not row then return nil end
+  local nx = P.rows[i + 1]
+  local t1 = nx and nx.t or math.min(P.t_end or math.huge, row.t + CFG.LOOP_LAST)
+  return row.t, math.max(t1, row.t + 0.2)
+end
+-- Plays a row in a loop (the musician review, decided 24 November 2026: hear a note again and again): REAPER's time
+-- selection over the row, repeat on, from its start. Space, Escape, a stop or another project end it (Loop.off).
+function UI.play_row(i)
+  local t0, t1 = List.row_span(i)
+  if not t0 then return end
   R.sel = i
-  UI.play_at(row.t)
+  local old = R.loop or { rep = r.GetSetRepeatEx(R.proj, -1), ts = { r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false) } }
+  R.loop = { proj = R.proj, rep = old.rep, ts = old.ts, t0 = t0, t1 = t1, since = r.time_precise() }
+  r.GetSet_LoopTimeRange2(R.proj, true, true, t0, t1, false)
+  r.GetSetRepeatEx(R.proj, 1)
+  UI.play_at(t0)
+end
+-- Ends the loop of a row: repeat and the time selection as before (the time selection only when it is still the
+-- loop's: one that you made meanwhile stays).
+function UI.loop_off()
+  local l = R.loop
+  if not l then return end
+  R.loop = nil
+  if not r.ValidatePtr(l.proj, "ReaProject*") then return end
+  r.GetSetRepeatEx(l.proj, l.rep)
+  local a, b = r.GetSet_LoopTimeRange2(l.proj, false, true, 0, 0, false)
+  if math.abs(a - l.t0) < 1e-6 and math.abs(b - l.t1) < 1e-6 then
+    r.GetSet_LoopTimeRange2(l.proj, true, true, l.ts[1], l.ts[2], false)
+  end
 end
 
 function UI.select(i, play)
@@ -2224,7 +2494,7 @@ function UI.row_menu()
   if not row then ImGui.CloseCurrentPopup(ctx)
   else
     if ImGui.MenuItem(ctx, "Type the notes...", "F2") then UI.edit_row(i) end
-    if ImGui.MenuItem(ctx, "Not doubtful", nil, false, row.doubt) then List.checked(i) end
+    if ImGui.MenuItem(ctx, "Sure", nil, false, row.doubt) then List.checked(i) end
     ImGui.Separator(ctx)
     if ImGui.MenuItem(ctx, "Join with the next line", nil, false, P.rows[i + 1] ~= nil) then List.join(i) end
     if ImGui.MenuItem(ctx, "Split") then UI.split(i) end
@@ -2253,7 +2523,7 @@ function UI.draw_top()
   end
   local busy = host.R.tempo and host.R.tempo.run ~= nil
   if UI.heading("Notes", false, { "Find notes", "primary", busy, busy and "Wait for Find tempo."
-    or "Select the bass item first. Tab Viewer listens to it and fills the list. Nothing is written to the project yet." }) then
+    or "Tab Viewer listens to the bass track (Track) and fills the list. Nothing is written to the project yet." }) then
     UI.find()
   end
   local room = math.max(40, ImGui.GetContentRegionAvail(ctx))
@@ -2303,11 +2573,11 @@ end
 function UI.draw_finish()
   local f = R.finish
   if not f then return end
-  if f.open then ImGui.OpenPopup(ctx, "Finish##finish"); f.open = false end
+  if f.open then ImGui.OpenPopup(ctx, "Done: clean up##finish"); f.open = false end
   local wx, wy = ImGui.GetWindowPos(ctx)
   local ww, wh = ImGui.GetWindowSize(ctx)
   ImGui.SetNextWindowPos(ctx, wx + ww / 2, wy + wh / 2, ImGui.Cond_Appearing(), 0.5, 0.5)
-  if not ImGui.BeginPopupModal(ctx, "Finish##finish", nil, ImGui.WindowFlags_AlwaysAutoResize()) then R.finish = nil; return end
+  if not ImGui.BeginPopupModal(ctx, "Done: clean up##finish", nil, ImGui.WindowFlags_AlwaysAutoResize()) then R.finish = nil; return end
   local x0 = ImGui.GetCursorPosX(ctx)
   local function field(label, v)
     UI.label(label)
@@ -2346,7 +2616,7 @@ function UI.draw_finish()
   ImGui.TextColored(ctx, COL.TEXT_DIM, "The list leaves the project. The markers and the Notes track stay.")
   ImGui.PopTextWrapPos(ctx)
   UI.vgap(8)
-  if UI.button("Finish", 100, nil, "primary") then
+  if UI.button("Clean up", 100, nil, "primary") then
     ImGui.CloseCurrentPopup(ctx)
     local name = Out.finish(f)
     UI.notice(name ~= "" and ("Done. Region: " .. name) or "Done. No region (no artist, title or key).")
@@ -2431,6 +2701,34 @@ function UI.draw_song()
   ImGui.PopTextWrapPos(ctx)
   UI.heading("Song")
   local fw = UI.field_w()
+  -- Tempo: the 1st step (the markers land on the bars of the song); the same Find tempo as in the toolbar
+  UI.field("Tempo")
+  if not R.tempo_lbl then
+    R.tempo_lbl = r.CountTempoTimeSigMarkers(R.proj) == 0 and "Not set"
+      or string.format("%.4g BPM, set", r.TimeMap2_GetDividedBpmAtTime(R.proj, r.GetCursorPositionEx(R.proj)))
+  end
+  UI.row_text(R.tempo_lbl, R.tempo_lbl == "Not set" and COL.YELLOW or COL.TEXT_DIM)
+  UI.tip("Find tempo first: then the markers land on the real bars of the song.")
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  local x, y = ImGui.GetCursorPos(ctx)
+  UI.draw_find_tempo(x, y, ImGui.GetFrameHeight(ctx))
+  -- Track: the bass track that Find notes listens to
+  UI.field("Track")
+  local tr = Find.track()
+  if R.trk_for ~= tr then R.trk_for, R.trk_lbl = tr, nil end
+  R.trk_lbl = R.trk_lbl or (tr and Find.track_label(tr) or "Pick the bass track")
+  ImGui.BeginDisabled(ctx, R.find ~= nil)
+  ImGui.SetNextItemWidth(ctx, fw)
+  if ImGui.BeginCombo(ctx, "##ndtrack", R.trk_lbl) then
+    local list = Find.tracks()
+    if not list[1] then ImGui.TextDisabled(ctx, "No tracks with audio yet.") end
+    for _, e in ipairs(list) do
+      if ImGui.Selectable(ctx, e.label, e.tr == tr) then R.trk = e.tr end
+    end
+    ImGui.EndCombo(ctx)
+  end
+  ImGui.EndDisabled(ctx)
+  UI.tip_disabled("The track of the separated bass. Find notes listens to its selected item, else its longest one.")
   UI.field("Key")
   ImGui.SetNextItemWidth(ctx, fw)
   if ImGui.BeginCombo(ctx, "##key", P.key ~= "" and P.key or "Not known") then
@@ -2447,8 +2745,12 @@ function UI.draw_song()
   if ImGui.BeginCombo(ctx, "##tuning", tun.label) then
     for _, t in ipairs(CFG.TUNINGS) do
       if ImGui.Selectable(ctx, t.label, t.id == P.tuning) and t.id ~= P.tuning then
-        List.set_tuning(t.id)
-        if #P.rows > 0 then UI.notice("Tuning: " .. t.label .. ". Click Find notes again: the octaves and frets follow it.") end
+        local heard = List.set_tuning(t.id)
+        if #P.rows > 0 then
+          UI.notice("Tuning: " .. t.label .. ". The strings and frets follow it" .. (heard > 0
+            and string.format("; %d low %s heard again for the octave.", heard, heard == 1 and "note" or "notes") or ".")
+            .. " Undo brings the old list back.")
+        end
       end
     end
     ImGui.EndCombo(ctx)
@@ -2475,6 +2777,8 @@ function UI.draw_song()
   end
   ImGui.EndDisabled(ctx)
   UI.tip_disabled(locked and "Click Find notes again to change this." or "How the notes become markers. No steady tempo? Use \"About 2 seconds\".")
+  ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + host.CFG.LABEL_W) -- (under the dropdown)
+  ImGui.TextColored(ctx, COL.TEXT_DIM, MODE_EXAMPLE[P.mode] or "")
 end
 
 -- The number of rows and Next doubtful (under the "Notes" heading).
@@ -2483,9 +2787,9 @@ function UI.draw_head(v)
   if #P.rows == 0 then return end
   UI.row_text(v.status, v.n_doubt > 0 and COL.YELLOW or COL.TEXT_DIM)
   if v.n_doubt > 0 then
-    local w = UI.btn_w("Next doubtful")
+    local w = UI.btn_w("Next not sure")
     ImGui.SameLine(ctx, math.max(0, aw - w))
-    if UI.button("Next doubtful", w, nil, "ghost") then UI.select(List.next_doubtful(R.sel), true) end
+    if UI.button("Next not sure", w, nil, "ghost") then UI.select(List.next_doubtful(R.sel), true) end
     UI.tip("Go to the next yellow line and play it (N).")
   end
 end
@@ -2494,7 +2798,7 @@ function UI.draw_list(v, h)
   if #P.rows == 0 then
     ImGui.Dummy(ctx, 0, 4)
     ImGui.PushTextWrapPos(ctx, 0)
-    ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the bass..." or "No notes yet. Select the bass item and click Find notes (or Import to list in the Tab tab).")
+    ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the bass..." or "No notes yet. Pick the bass track (Track) and click Find notes (or Import to list in the Tab tab).")
     ImGui.PopTextWrapPos(ctx)
     return
   end
@@ -2505,7 +2809,7 @@ function UI.draw_list(v, h)
   ImGui.TableSetupColumn(ctx, "#", fixed, CFG.COL_NUM_W)
   ImGui.TableSetupColumn(ctx, "Bar", fixed, CFG.COL_BAR_W)
   ImGui.TableSetupColumn(ctx, "Notes", ImGui.TableColumnFlags_WidthStretch(), 1)
-  ImGui.TableSetupColumn(ctx, "Places", fixed, CFG.COL_PLACES_W)
+  ImGui.TableSetupColumn(ctx, "Repeats", fixed, CFG.COL_PLACES_W)
   ImGui.TableHeadersRow(ctx)
   if not R.clipper or not ImGui.ValidatePtr(R.clipper, "ImGui_ListClipper*") then R.clipper = ImGui.CreateListClipper(ctx) end
   ImGui.ListClipper_Begin(R.clipper, #v.items)
@@ -2564,7 +2868,7 @@ function UI.draw_list(v, h)
       else
         UI.row_text(UI.trunc_c(row.text, cw), col)
         if ImGui.IsItemHovered(ctx) then -- (the text only when it shows)
-          ImGui.SetTooltip(ctx, row.text .. (row.doubt and "\n" .. List.why(i) or "") .. "\nClick: play from here. Double-click: type the notes.")
+          ImGui.SetTooltip(ctx, row.text .. (row.doubt and "\n" .. List.why(i) or "") .. "\nClick: hear it in a loop. Double-click: type the notes.")
         end
       end
       ImGui.TableNextColumn(ctx)
@@ -2572,7 +2876,7 @@ function UI.draw_list(v, h)
       if row.doubt and not editing then
         ImGui.SameLine(ctx, 0, 4)
         if UI.button("OK", 34, fh, "ghost") then act = { "ok", i } end
-        UI.tip("These notes are right: no longer doubtful.")
+        UI.tip("These notes are right: no longer yellow.")
       end
       ImGui.PopID(ctx)
       ::next_item::
@@ -2608,31 +2912,32 @@ function UI.draw_foot()
     UI.edit_row(i)
   end)
   btn("Delete", sel ~= nil, "Deletes the selected line (Delete key).", function() List.delete(sel) end)
-  btn("Undo", #R.undo > 0, "Takes back the last change of the list. (Ctrl+Z is REAPER's undo: the written markers.)", List.undo)
+  btn("Undo", #R.undo > 0, "Takes back the last step here: a change of the list, or Write, Clear or Export (the same as Ctrl+Z in this tab).", List.undo)
   local cw = UI.btn_w("Clear...")
   ImGui.SameLine(ctx, math.max(0, aw - cw))
   ImGui.BeginDisabled(ctx, #P.rows == 0 or R.find ~= nil)
   if UI.button("Clear...", cw, nil, "ghost") then
-    UI.ask("Start again? This removes the list and what Note Detective wrote: its markers, the Notes track items and "
-      .. "the Bass MIDI item. Your own markers, the tempo and the audio stay.\n\n1 Ctrl+Z brings the project part back; "
-      .. "the Undo button brings the list back.", "Clear", Out.clear)
+    UI.ask("Start again? This removes the list and what this tab wrote: its markers, the Notes track items and "
+      .. "the Bass MIDI item. Your own markers, the tempo and the audio stay.\n\nUndo (or Ctrl+Z) brings it all back.", "Clear", Out.clear)
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled("Start from the beginning: removes the list and what Note Detective wrote. It asks first.")
+  UI.tip_disabled("Start from the beginning: removes the list and what this tab wrote. It asks first.")
+  -- Write (the main button; the musician review, 24 November 2026), what it makes, "Written (n markers)" until the
+  -- list changes; Export and Done: clean up in More...
   local cur = OUTS[1][2]
   for _, o in ipairs(OUTS) do if o[1] == S.out then cur = o[2] end end
-  local ww, fw = UI.btn_w("Write", 80), UI.btn_w("Finish...")
-  local ew = S.simple and -CFG.CTRL_GAP or UI.btn_w("Export...") -- (Simple mode: no Export)
+  local ww, mw = UI.btn_w("Write", 80), UI.btn_w("More...")
   local has = #P.rows > 0 and not R.find
   ImGui.BeginDisabled(ctx, not has)
   if UI.button("Write", ww, nil, "primary") then
     Out.write(S.out)
-    UI.notice(string.format("Written: %d. One Ctrl+Z takes it away again.", #P.rows))
+    UI.notice("Written. Changed your mind? Ctrl+Z (or Undo) takes it away again.")
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled(has and "Writes the list into the project. Only Note Detective's own markers and text items are replaced." or "Find the notes first.")
+  UI.tip_disabled(has and "Writes the list into the project. Only the markers and text items of this tab are replaced." or "Find the notes first.")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  ImGui.SetNextItemWidth(ctx, math.max(60, math.min(CFG.OUT_W, aw - ww - fw - ew - 3 * CFG.CTRL_GAP)))
+  local cw2 = math.max(60, math.min(CFG.OUT_W, aw - ww - mw - 2 * CFG.CTRL_GAP))
+  ImGui.SetNextItemWidth(ctx, cw2)
   if ImGui.BeginCombo(ctx, "##out", cur) then
     for _, o in ipairs(OUTS) do
       if ImGui.Selectable(ctx, o[2], o[1] == S.out) then S.out = o[1]; R.sdirty = true end
@@ -2640,20 +2945,30 @@ function UI.draw_foot()
     ImGui.EndCombo(ctx)
   end
   UI.tip("What Write makes: markers, text items on a \"Notes\" track above the bass, or both.")
-  if not S.simple then
-    local can_export = #P.notes > 0 and not R.find
-    ImGui.SameLine(ctx, math.max(0, aw - fw - ew - CFG.CTRL_GAP))
-    ImGui.BeginDisabled(ctx, not can_export)
-    if UI.button("Export...", ew) then R.export = { item = true, file = true, step = CFG.GRIDS[1][1], open = true } end
-    ImGui.EndDisabled(ctx)
-    UI.tip_disabled(can_export and "The found notes as MIDI: a MIDI item to listen to, and a .mid file for Guitar Pro. It shows the choices first."
-      or "Find notes first: the export uses the notes that Find notes found.")
+  if R.written_lbl then
+    local room = aw - ww - cw2 - mw - 4 * CFG.CTRL_GAP
+    if room > 40 then
+      ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+      UI.row_text(UI.trunc_c(R.written_lbl, room), COL.GREEN)
+      UI.tip("The list is in the project as it is now. A change of the list: click Write again.")
+    end
   end
-  ImGui.SameLine(ctx, math.max(0, aw - fw))
-  ImGui.BeginDisabled(ctx, not has)
-  if UI.button("Finish...", fw) then Out.finish_begin() end
-  ImGui.EndDisabled(ctx)
-  UI.tip_disabled(has and "The song region, and the cleanup of the project. It shows what it does first." or "Find the notes first.")
+  ImGui.SameLine(ctx, math.max(0, aw - mw))
+  if UI.button("More...", mw) then ImGui.OpenPopup(ctx, "##ndmore") end
+  UI.tip("Export to MIDI, and Done: clean up (the song region, and the cleanup of the project).")
+  if ImGui.BeginPopup(ctx, "##ndmore") then
+    if not S.simple then -- (Simple mode: no Export)
+      local can_export = #P.notes > 0 and not R.find
+      if ImGui.MenuItem(ctx, "Export...", nil, false, can_export) then
+        R.export = { item = true, file = true, step = CFG.GRIDS[1][1], open = true }
+      end
+      UI.tip_disabled(can_export and "The found notes as MIDI: a MIDI item to listen to, and a .mid file for Guitar Pro. It shows the choices first."
+        or "Find notes first: the export uses the notes that Find notes found.")
+    end
+    if ImGui.MenuItem(ctx, "Done: clean up...", nil, false, has) then Out.finish_begin() end
+    UI.tip_disabled(has and "Finished with this song? A region over the song, and the cleanup of the project; the list leaves the project. It shows what it does first." or "Find the notes first.")
+    ImGui.EndPopup(ctx)
+  end
 end
 
 -- The Note Detection tab (in Tab Viewer's panel; h: the height it has): Find notes, Key / Markers / Tuning, the list, then
@@ -2684,11 +2999,13 @@ function N.keys()
     or R.edit or R.ask or R.finish or R.export or ImGui.IsPopupOpen(ctx, "", ImGui.PopupFlags_AnyPopup()) then return end
   local C, SH = ImGui.Mod_Ctrl(), ImGui.Mod_Shift()
   local function key(k, rep) return ImGui.IsKeyPressed(ctx, k, rep or false) end
-  if ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Z()) then r.Main_OnCommand(40029, 0) -- Edit: Undo
+  if ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Z()) then -- (the tab's steps first: the list, Write, Clear, Export)
+    if #R.undo > 0 then List.undo() else r.Main_OnCommand(40029, 0) end -- Edit: Undo
   elseif ImGui.IsKeyChordPressed(ctx, C | SH | ImGui.Key_Z()) or ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Y()) then
     r.Main_OnCommand(40030, 0) -- Edit: Redo
   elseif ImGui.GetKeyMods(ctx) ~= ImGui.Mod_None() then return
-  elseif key(ImGui.Key_Space()) then r.Main_OnCommand(40044, 0) -- Transport: Play/stop
+  elseif key(ImGui.Key_Space()) then r.Main_OnCommand(40044, 0) -- Transport: Play/stop (a stop ends the loop: N.step)
+  elseif key(ImGui.Key_Escape()) and R.loop then UI.loop_off()
   elseif key(ImGui.Key_N()) then UI.select(List.next_doubtful(R.sel), true)
   elseif key(ImGui.Key_UpArrow(), true) then UI.select(math.max(1, (R.sel or 2) - 1), true)
   elseif key(ImGui.Key_DownArrow(), true) then UI.select(math.min(#P.rows, (R.sel or 0) + 1), true)
@@ -2704,6 +3021,8 @@ end
 function N.step()
   Project.update()
   Find.step()
+  local l = R.loop -- (stopped: the loop ends; not in its first 0.5 s, while REAPER starts to play)
+  if l and (l.proj ~= R.proj or r.GetPlayStateEx(R.proj) & 1 == 0 and r.time_precise() - l.since > 0.5) then UI.loop_off() end
 end
 -- The end of each frame: the list and the settings are saved when they changed (the settings not while a mouse button
 -- is down: a toggle is clicked).
@@ -2712,6 +3031,7 @@ function N.save(mouse_down)
   if R.sdirty and not mouse_down then Util.save_settings() end
 end
 function N.exit()
+  UI.loop_off()
   Find.cancel()
   if R.pdirty then Project.save() end
   if R.sdirty then Util.save_settings() end

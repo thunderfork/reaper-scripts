@@ -447,6 +447,47 @@ test("find: the notes of a WAV file, in project time, with the key of the name",
   eq(texts(), "C | Eb - F (D 3) | Ab")
 end)
 
+test("tuning: which found notes are heard again (only those that can now be an octave lower)", function()
+  local need = Find.retune_need
+  eq(need({ pc = 2, midi = 38 }, 28, 26), "hear", "Standard -> Drop D: a D in the lowest octave")
+  eq(need({ pc = 2, midi = 50 }, 28, 26), 50, "a higher D stays")
+  eq(need({ pc = 4, midi = 28 }, 28, 26), 28, "E: the same lowest octave")
+  eq(need({ pc = 2, midi = 26 }, 26, 28), 38, "Drop D -> Standard: the low D goes up into the lowest octave")
+  eq(need({ pc = 3, midi = 39 }, 28, 27), "hear", "Half step down: Eb")
+  eq(Find.retune_pick(nil, 26), 38, "too short: the octave it had")
+  eq(select(2, Find.retune_pick(nil, 26)), true, "and yellow")
+  eq(Find.retune_pick(-30, 26), 38, "odd harmonics far below: the higher octave")
+  eq(Find.retune_pick(10, 26), 26, "strong odd harmonics: the low octave")
+end)
+
+test("tuning: a low D (a generated WAV) found in Standard becomes D1 in Drop D; your correction stays; Undo", function()
+  clear_project(); clear_tempo()
+  -- D1 (26), A1 (33), D1, F2 (41): in Standard the lowest D is D2 (38)
+  local path = bass_wav("dropd.wav", { { 26, 1 }, { 33, 1 }, { 26, 1 }, { 41, 1 } })
+  local tr = add_track("Bass")
+  local it, tk = add_item(tr, path, 0)
+  local list, tune, stop = find_all(it, tk)
+  local _, guid = r.GetSetMediaItemInfo_String(it, "GUID", "", false)
+  local p = C.get_P()
+  p.key, p.mode, p.tuning = "D minor", "change", "std"
+  Find.done({ guid = guid, name = "dropd" }, list, tune, stop)
+  R.ask = nil -- (no key question: the key is known)
+  p = C.get_P()
+  local d = {}
+  for _, n in ipairs(p.notes) do if n.pc == 2 then d[#d + 1] = n.midi end end
+  eq(table.concat(d, " "), "38 38", "Standard: the D notes in its lowest octave")
+  eq(#p.rows, 4, texts())
+  p.rows[2].text = "A (mine)"
+  local heard = List.set_tuning("dropd")
+  eq(heard, 2, "the 2 D notes heard again")
+  d = {}
+  for _, n in ipairs(C.get_P().notes) do if n.pc == 2 then d[#d + 1] = n.midi end end
+  eq(table.concat(d, " "), "26 26", "Drop D: D1")
+  eq(C.get_P().rows[2].text, "A (mine)", "your correction stays")
+  List.undo()
+  eq(C.get_P().tuning, "std"); eq(C.get_P().notes[1].midi, 38, "Undo: the notes before")
+end)
+
 test("find: every note from E1 to G3 (the 2 methods agree on a clean note)", function()
   clear_project()
   local list = {}
@@ -497,21 +538,105 @@ end)
 
 test("find: what cannot be read says why", function()
   clear_project()
+  R.trk = nil
   local item, why = Find.source()
-  eq(item, nil); ok(why:find("Select the bass item"), why)
+  eq(item, nil); ok(why:find("Pick the bass track"), why)
   local tr = add_track("Bass")
   local midi = r.CreateNewMIDIItemInProj(tr, 0, 2, false)
   r.SetMediaItemSelected(midi, true)
   item, why = Find.source()
-  eq(item, nil); ok(why:find("not audio"), why)
-  local empty = r.AddMediaItemToTrack(tr)
+  eq(item, nil); ok(why:find("no audio item"), why)
+  r.AddMediaItemToTrack(tr) -- (an empty item: no take)
+  item, why = Find.source()
+  eq(item, nil); ok(why:find("no audio item"), why)
+end)
+
+test("undo: 1 undo for the list and Write, in the order they happened; Write undone in REAPER: only the list", function()
+  clear_project()
+  set_rows({ { 1, "C" }, { 3, "F" } })
+  Out.write("markers")
+  ok(markers() ~= "", "written: " .. markers())
+  List.delete(1)
+  eq(texts(), "F")
+  List.undo()
+  eq(texts(), "C | F", "1st: the list change")
+  ok(markers() ~= "", "the markers stay")
+  List.undo()
+  eq(markers(), "", "2nd: Write")
+  eq(texts(), "C | F", "the list stays")
+  Out.write("markers")
+  r.Main_OnCommand(40029, 0) -- (Write undone in REAPER itself)
+  List.delete(1)
+  List.undo(); List.undo()
+  eq(texts(), "C | F", "no 2nd REAPER undo for a step that is gone")
+  eq(#R.undo, 0)
+end)
+
+test("key: a suggestion from the found notes (major, minor, the usual names); too few notes: none", function()
+  local function seq(pcs, lens)
+    local list, t = {}, 0
+    for i, pc in ipairs(pcs) do list[i] = { pc = pc, t = t, t1 = t + (lens and lens[i] or 0.5) }; t = t + 1 end
+    return list
+  end
+  eq(C.Key.guess(seq({ 0, 4, 7, 0, 5, 7, 0, 2, 4, 0 }, { 2, 1, 1, 2, 0.5, 1, 2, 0.5, 1, 2 })), "C major")
+  eq(C.Key.guess(seq({ 9, 0, 4, 9, 2, 4, 9, 7, 0, 9 }, { 2, 1, 1, 2, 0.5, 1, 2, 0.5, 1, 2 })), "A minor")
+  eq(C.Key.guess(seq({ 3, 7, 10, 3, 8, 10, 3, 5, 7, 3 }, { 2, 1, 1, 2, 0.5, 1, 2, 0.5, 1, 2 })), "Eb major", "a flat key")
+  eq(C.Key.guess(seq({ 0, 4, 7 })), nil, "3 notes: none")
+end)
+
+test("found tab: a staccato note lasts to the next note; only a gap of an 8th or more is a rest", function()
+  local list = C.Imp.legato({ { q0 = 0, q1 = 0.25 }, { q0 = 0.5, q1 = 0.75 }, { q0 = 1.5, q1 = 1.75 }, { q0 = 2, q1 = 2.5 } }, 0.5)
+  eq(list[1].q1, 0.5, "a 16th gap: to the next note")
+  eq(list[2].q1, 0.75, "a gap of 3 16ths: a rest")
+  eq(list[3].q1, 2, "a 16th gap")
+  eq(list[4].q1, 2.5, "the last note stays")
+end)
+
+test("found tab grid: near an 8th -> the 8th; a scoop or a false 2nd pluck before an 8th goes; a real 16th run stays", function()
+  local function n(i, q0, q1, midi) return { i = i, q0 = q0, q1 = q1, midi = midi } end
+  local function starts(list)
+    local t = {}
+    for _, x in ipairs(list) do t[#t + 1] = string.format("%g:%d", x.q0, x.midi) end
+    return table.concat(t, " ")
+  end
+  eq(starts(C.Imp.grid({ n(1, 0.08, 0.4, 36), n(2, 0.57, 0.9, 36), n(3, 1.2, 1.4, 36) }, 0)), "0:36 0.5:36 1.25:36",
+    "a little late: the 8th; clearly off: the 16th")
+  eq(starts(C.Imp.grid({ n(1, 0.25, 0.4, 35), n(2, 0.5, 1, 36) }, 0)), "0.5:36", "B scooped into C: C only")
+  eq(starts(C.Imp.grid({ n(1, 0.25, 0.4, 36), n(2, 0.5, 1, 36) }, 0)), "0.5:36", "C plucked 2 times: 1 C")
+  eq(starts(C.Imp.grid({ n(1, 0, 0.25, 33), n(2, 0.25, 0.5, 35), n(3, 0.5, 0.75, 36), n(4, 0.75, 1, 38) }, 0)),
+    "0:33 0.25:35 0.5:36 0.75:38", "a 16th run stays")
+  eq(starts(C.Imp.grid({ n(1, 0.25, 0.4, 31), n(2, 0.5, 1, 36) }, 0)), "0.25:31 0.5:36", "a jump of a 4th: a real note")
+  eq(starts(C.Imp.grid({ n(1, 0.1, 0.4, 36) }, 0.1)), "0:36", "the delay")
+end)
+
+test("loop: a line loops from its start to the next line; the last one to the end of the item, at most 4 s", function()
+  set_rows({ { 1, "C" }, { 3, "F" }, { 10, "G" } })
+  local a, b = List.row_span(1); eq(a, 1); eq(b, 3)
+  a, b = List.row_span(3); eq(a, 10); eq(b, 14, "the last: 4 s")
+  C.get_P().t_end = 11.5
+  a, b = List.row_span(3); eq(b, 11.5, "the end of the bass item")
+  eq(List.row_span(4), nil, "no such line")
+end)
+
+test("find: the Track row: the selected audio item on the track, else its longest; your choice of track", function()
+  eq(Find.pick({}), nil, "no audio item")
+  eq(Find.pick({ { len = 2 }, { len = 9 }, { len = 4 } }), 2, "the longest")
+  eq(Find.pick({ { len = 2 }, { len = 9 }, { len = 4, sel = true } }), 3, "the selected one")
+  clear_project()
+  local bass, other = add_track("Bass"), add_track("Guitar")
+  local short = add_item(bass, tmp .. "\\steps.wav", 0)
+  r.SetMediaItemInfo_Value(short, "D_LENGTH", 1)
+  local long = add_item(bass, tmp .. "\\steps.wav", 10)
+  local g = add_item(other, tmp .. "\\steps.wav", 0)
   r.SelectAllMediaItems(0, false)
-  r.SetMediaItemSelected(empty, true)
-  item, why = Find.source()
-  eq(item, nil); ok(why:find("not audio"), why)
-  r.SetMediaItemSelected(midi, true)
-  item, why = Find.source()
-  eq(item, nil); ok(why:find("1 item"), why)
+  r.SetMediaItemSelected(g, true)
+  R.trk = nil
+  eq(Find.source(), g, "no choice: the track of the selected item")
+  R.trk = bass
+  eq(Find.source(), long, "your track: its longest item (the selected one is on another track)")
+  r.SetMediaItemSelected(short, true)
+  eq(Find.source(), short, "a selected item on your track")
+  R.trk = nil
 end)
 
 test("find: silence gives no notes and keeps the list", function()
@@ -694,7 +819,7 @@ test("saved notes: the found notes go out and come back with the list; Markers c
   eq(texts(), "C | F (D 3)", "grouped again from the saved notes")
 end)
 
-test("clear: the list and what Note Detective wrote go; Undo and Ctrl+Z bring them back", function()
+test("clear: the list and what the tab wrote go; 1 Undo brings both back", function()
   clear_project(); clear_tempo()
   add_track("Bass")
   local p = set_rows({ { 1, "C" }, { 3, "F" } })
@@ -710,9 +835,23 @@ test("clear: the list and what Note Detective wrote go; Undo and Ctrl+Z bring th
   eq(#C.get_P().rows, 0); eq(#C.get_P().notes, 0)
   eq(r.Undo_CanUndo2(0), "Tab Viewer: clear")
   List.undo()
-  eq(texts(), "C | F", "the Undo button: the list")
-  r.Main_OnCommand(40029, 0)
-  ok(markers():find("C@1.0", 1, true), "Ctrl+Z: the markers " .. markers())
+  eq(texts(), "C | F", "Undo: the list")
+  ok(markers():find("C@1.0", 1, true), "and the markers " .. markers())
+  eq(r.Undo_CanUndo2(0), "Tab Viewer: export MIDI", "the step before it stays")
+end)
+
+test("Write: 'Written (n markers)' until the list changes", function()
+  clear_project()
+  set_rows({ { 1, "C" }, { 3, "F" } })
+  eq(R.written_lbl, nil)
+  Out.write("markers")
+  eq(R.written_lbl, "Written (2 markers)")
+  List.delete(1)
+  eq(R.written_lbl, nil, "the list changed")
+  Out.write("track")
+  eq(R.written_lbl, "Written (1 text item)")
+  List.undo()
+  eq(R.written_lbl, nil, "Write undone")
 end)
 
 test("found notes as a tab: the bars from the bar of the first note, the 16th grid, the fingering of the list", function()
@@ -831,11 +970,11 @@ test("doubtful lines say why (UX 1); after a reopen only 'listen to it'", functi
   local p = set_rows({ { 2, "E", true }, { 4, "A" } })
   p.notes = notes({ { 4, 2, 2.5, true }, { 9, 4, 4.5 } })
   p.notes[1].why = "octave"
-  eq(List.why(1), "Doubtful: the octave is unsure (high or low?).")
+  eq(List.why(1), "Not sure: the octave is unsure (high or low?).")
   eq(List.why(2), nil, "not doubtful")
   p = set_rows({ { 2, "E", true } })
   p.notes = notes({ { 4, 2, 2.5, true } })
-  eq(List.why(1), "Doubtful: listen to it.", "no reason known")
+  eq(List.why(1), "Not sure: listen to it.", "no reason known")
 end)
 
 test("repeated notes: split on the 16th grid when the project has a tempo marker; the marker stays 1 note (generated WAV)", function()
