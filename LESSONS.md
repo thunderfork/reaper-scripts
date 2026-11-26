@@ -18,6 +18,7 @@ failed manual test, or a `debug-time` finding in committed code. Newest first.
 - `per-frame`: work in the UI loop that should be cached (text cuts, string building, scans).
 - `naming`: a name rule or match that gives the wrong new name.
 - `file-format`: a part of an outside file format (a mark, a sign, a version) that the script does not read.
+- `edge-case`: a case of the input that the code does not handle (1 or 2 items, a repeat, the end of a line).
 - `refactor`: a moved, renamed or removed name (a constant, a function, a field) that other code still reads.
 
 The rules that came from these entries are in `LESSONS-RULES.md` (loaded in every session).
