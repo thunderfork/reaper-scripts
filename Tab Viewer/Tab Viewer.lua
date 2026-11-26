@@ -2398,7 +2398,7 @@ end
 -- Open tab... (in the Tab tab: on the Tab row, or blue under the hint while the project has no tab).
 function UI.open_tab_button(w, kind)
   if UI.button("Open tab...", w, nil, kind) then UI.open_tab() end
-  UI.tip("Pick a Guitar Pro tab of the song (.gp, .gpx, .gp5, .gp4, .gp3). It goes to the region at the edit cursor (no region there: outside the regions). The project keeps a copy of it.")
+  UI.tip("A Guitar Pro file (.gp, .gpx, .gp5, .gp4, .gp3) for the region at the edit cursor.")
 end
 
 -- The toolbar icons (drawn, as Chart Cue's): ICON[kind](dl, cx, cy, col).
@@ -2561,11 +2561,9 @@ end
 -- The transport in the middle: |<, <, play / stop, >, >| (play in the middle of the 5). The tips: [tab or notes][dir].
 local GO = { { 0, "first", "##first" }, { -1, "prev", "##prev" }, false, { 1, "next", "##next" }, { 2, "last", "##last" } }
 local GO_TIPS = {
-  tab = { [0] = "To bar 1 of the tab.", [-1] = "Back 1 bar (the edit cursor; playing: the song jumps there).",
-    [1] = "On 1 bar (the edit cursor; playing: the song jumps there).", [2] = "To the last bar of the tab.",
+  tab = { [0] = "To bar 1.", [-1] = "Back 1 bar.", [1] = "On 1 bar.", [2] = "To the last bar.",
     off = "No tab here." },
-  notes = { [0] = "To the first line.", [-1] = "Back 1 line (the edit cursor; playing: the song jumps there).",
-    [1] = "On 1 line (the edit cursor; playing: the song jumps there).", [2] = "To the last line.",
+  notes = { [0] = "To the first line.", [-1] = "Back 1 line.", [1] = "On 1 line.", [2] = "To the last line.",
     off = "No lines yet." },
 }
 -- The width of the transport, and the middle of its play button from its left end.
@@ -2593,7 +2591,7 @@ function UI.draw_speed(H)
   local slow = math.abs(rate - 1) > 1e-3 -- (not 100%: yellow, so you see it at a glance)
   local hit, lx, ly = UI.icon_field("##speed", "note", cur, UI.speed_w(), H, true, slow and COL.YELLOW or nil)
   if hit then ImGui.OpenPopup(ctx, "##speedlist") end
-  UI.tip("Too fast to play along? Slow the song down (the pitch stays); yellow while it is not 100%. Back to 100% when Tab Viewer closes.")
+  UI.tip("Speed (the pitch stays). 100% again when Tab Viewer closes.")
   UI.list_below(lx, ly, UI.speed_w())
   if ImGui.BeginPopup(ctx, "##speedlist") then
     for i, v in ipairs(SPEEDS) do
@@ -2650,14 +2648,14 @@ end
 -- The tab size: the magnifying glass and the percent (a click: the list of sizes), + / - (S.zoom, saved on this
 -- computer; right-click on any of them: 100%). Only the Tab tab has a tab: grey in the other tabs.
 function UI.zoom_w() return UI.icon_field_w("200%") + 2 + CFG.STEP_W end
-local ZOOM_TIPS = { "The tab larger. Right-click: 100%.", "The tab smaller. Right-click: 100%." }
-local ZOOM_OFF = { "The size of the tab: in the Tab tab.", "The size of the tab: in the Tab tab." }
+local ZOOM_TIPS = { "Larger.", "Smaller." }
+local ZOOM_OFF = { "Tab size: in the Tab tab.", "Tab size: in the Tab tab." }
 function UI.draw_zoom(H)
   local off = R.page ~= 1
   local hit, lx, ly = UI.icon_field("##zoompct", "zoom", zoom_txt(S.zoom), UI.icon_field_w("200%"), H, not off)
   if hit then ImGui.OpenPopup(ctx, "##zoomlist") end
   if not off and ImGui.IsItemClicked(ctx, 1) and S.zoom ~= 1 then S.zoom = 1; R.sdirty = true end
-  UI.tip_disabled(off and ZOOM_OFF[1] or "The size of the tab: click for the list of sizes. Right-click: 100%.")
+  UI.tip_disabled(off and ZOOM_OFF[1] or "Tab size. Right-click: 100%.")
   ImGui.SameLine(ctx, 0, 2)
   local zin, zout = Tabs.zoom_step(S.zoom, 1), Tabs.zoom_step(S.zoom, -1)
   local d = UI.stepper("##zoom", H, not off and zin ~= S.zoom, not off and zout ~= S.zoom, off and ZOOM_OFF or ZOOM_TIPS)
@@ -2706,8 +2704,8 @@ function Tabs.toolbar_rows(x0, aw, w, PC, GG, NG, p)
 end
 local TB_W, TB_POS = {}, {} -- (the toolbar's widths and places: filled every frame, not made)
 local LOOP_TIPS = {
-  on = "Loop on: the selection repeats. Click: off (the selection stays; Escape: no selection).",
-  off = "Loop: the selection repeats (no selection: the bar at the edit cursor). Select by dragging over the tab, or Shift+click a note.",
+  on = "Loop on. Click: off.",
+  off = "Loop the selection (none: the bar at the edit cursor). Select: drag over the tab.",
   notes = "In the Detection tab, click a line to loop it.", none = "No tab here.",
 }
 -- The count-in (a plain function). pos: REAPER's play position; pos2: its 2nd play position, which waits at the start
@@ -2767,20 +2765,18 @@ end
 local SWITCHES = { -- (the Metronome and Count-in buttons: REAPER's own switches, in both tabs)
   { "##metro", "metro", function() return r.GetToggleCommandStateEx(0, CFG.CMD.METRO) == 1 end,
     function() r.Main_OnCommand(CFG.CMD.METRO, 0) end,
-    "Metronome: REAPER's click while the song plays. On: blue.", "Metronome on (REAPER's). Click: off." },
+    "Metronome (REAPER's).", "Metronome on. Click: off." },
   { "##countin", "countin", countin_state, Tabs.countin_toggle,
-    "Count-in: REAPER counts 1 2 3 4 in clicks before the song starts (no audio from before it; its length: REAPER's Metronome settings). On: blue.",
-    "Count-in on (REAPER's Count-in before playback). Click: off." },
+    "Count-in: clicks before the song starts.", "Count-in on. Click: off." },
 }
 if not r.SNM_SetIntConfigVar then -- (without the SWS extension a click opens REAPER's Metronome settings: the tips say so)
-  local s, more = SWITCHES[2], " Click: REAPER's Metronome settings (Count-in before playback; with the SWS extension the click switches it)."
-  s[5], s[6] = s[5] .. more, "Count-in on (REAPER's Count-in before playback)." .. more
+  local s, more = SWITCHES[2], "\nClick: REAPER's Metronome settings (Count-in before playback)."
+  s[5], s[6] = "Count-in: clicks before the song starts." .. more, "Count-in on." .. more
 end
 -- The texts of Transpose: "0", "+2", "-3" (made once).
 local TP_TXT = {}
 for v = -CFG.TRANSPOSE_MAX, CFG.TRANSPOSE_MAX do TP_TXT[v] = (v > 0 and "+" or "") .. v end
-local TP_TIPS = { "Transpose: the tab and the note names 1 half step higher (not the audio). Right-click: 0.",
-  "Transpose: 1 half step lower. Right-click: 0." }
+local TP_TIPS = { "1 half step higher.", "1 half step lower." }
 function UI.transpose_w() return UI.icon_field_w("-12") + 2 + CFG.STEP_W end
 -- Transpose (the tuning fork and the value, + / -; saved in the project; yellow when not 0). The value: a click or a
 -- right-click sets 0.
@@ -2788,8 +2784,8 @@ function UI.draw_transpose(H)
   local v = P.transpose or 0
   local hit = UI.icon_field("##tpval", "fork", TP_TXT[v], UI.icon_field_w("-12"), H, true, v ~= 0 and COL.YELLOW or nil)
   if (hit or ImGui.IsItemClicked(ctx, 1)) and v ~= 0 then Tabs.set_transpose(0) end
-  UI.tip(v ~= 0 and "Transposed: the tab's frets and the Detection list's note names (the audio stays; saved in the project). Yellow notes went an octave up or down (no string for them). Click: back to 0. Fixes of the tab need 0."
-    or "Transpose: the tab's frets and the Detection list's note names, in half steps (the audio stays; saved in the project). + / -: half steps up or down.")
+  UI.tip(v ~= 0 and "Transposed (not the audio). Yellow notes: moved an octave. Click: 0."
+    or "Transpose the tab and the note names (not the audio).")
   ImGui.SameLine(ctx, 0, 2)
   local d = UI.stepper("##tp", H, v < CFG.TRANSPOSE_MAX, v > -CFG.TRANSPOSE_MAX, TP_TIPS)
   if d then Tabs.set_transpose(d == 0 and 0 or v + d) end
@@ -2861,30 +2857,30 @@ function UI.draw_settings()
   local ch
   if head(1) then
     ch, S.follow = UI.set_toggle("Follow playback", S.follow,
-      "On (the default): while the song plays, the tab scrolls to the line that plays. Off: you scroll yourself (the blue line still shows where it plays).")
+      "On (the default): the tab scrolls along while the song plays.")
     ch, S.countshow = UI.set_toggle("Count-in display", S.countshow,
-      "On (the default): during REAPER's count-in (the hourglass at the top), a big 1 2 3 4 over the tab and a blue outline at each beat.")
+      "On (the default): 1 2 3 4 over the tab during REAPER's count-in.")
     ch, S.chords = UI.set_toggle("Chord names", S.chords,
-      "On (the default): the chord names above the tab, where the chord changes (the tab's own names; else named from its notes).")
+      "On (the default): chord names above the tab.")
     if ch then Tabs.build() end
     ch, S.marks = UI.set_toggle("Mark my fixes", S.marks,
-      "On (the default): the notes you fixed or added are green, so you see what is yours and what is from the file.")
+      "On (the default): your fixed notes are green.")
     ch, S.pmarks = UI.set_toggle("Playing marks", S.pmarks,
-      "On (the default): how to play each note, as in Guitar Pro (arcs for hammer-ons and pull-offs, lines for slides, bend arrows, vibrato waves, a P.M. row for palm mutes, <12> harmonics, slashes for tremolo picking when Tremolo as notes is off). Held notes (4) and dead notes x always show.")
+      "On (the default): hammer-ons, slides, bends, vibrato, palm mutes, harmonics.")
     if ch then Tabs.build() end
     ch, S.lengths = UI.set_toggle("Note lengths", S.lengths,
-      "On (the default): how long each note is, under the tab, as in Guitar Pro (stems, joined 8ths and 16ths, dots, rests, the 3 of triplets). A bar with 32nd notes gets wider.")
+      "On (the default): stems, dots and rests under the tab.")
     if ch then Tabs.build() end
     ch, S.tremnotes = UI.set_toggle("Tremolo as notes", S.tremnotes,
-      "On (the default): a tremolo-picked note is written out as the notes you pick (a whole note with 8th tremolo: 8 8ths), easy to read. Off: 1 note with slashes above it, as in Guitar Pro.")
+      "On (the default): tremolo picking written out as notes. Off: slashes, as in Guitar Pro.")
     if ch then Tabs.unselect(); Tabs.build() end
     ch, S.written = UI.set_toggle("Repeats as written", S.written,
-      "On (the default): the tab as Guitar Pro writes it: each bar once, with repeat signs |: :|, x3 and the endings 1. 2.; the blue line jumps back at a repeat. Off: the repeats played out, bar after bar as the song plays.")
+      "On (the default): repeat signs, as in Guitar Pro. Off: the repeats played out.")
     if ch then Tabs.unselect(); Tabs.loop_off(); Tabs.build() end
   end
   if head(2) then Notes.draw_settings() end
   if head(3) then
-    ch, S.light = UI.set_toggle("Light theme", S.light, "On: light panels and fields, dark text. Off: Dark (the default).")
+    ch, S.light = UI.set_toggle("Light theme", S.light, "Off (the default): dark.")
     if ch then apply_theme(S.light) end
     UI.set_label("Tabs")
     for i, nm in ipairs(PAGE_NAMES) do
@@ -2901,7 +2897,7 @@ function UI.draw_settings()
     UI.tip("On: Tab Viewer is in a REAPER docker. Off: a floating window.")
     UI.set_label("Window position")
     if UI.button("Reset", UI.btn_w("Reset", 80)) then R.reset_win = true end
-    UI.tip("Moves the window back to its default size and place, and undocks it.")
+    UI.tip("The window's default size and place (undocked).")
   end
   UI.vgap(CFG.SP_ROW + 6)
   ImGui.TextColored(ctx, COL.TEXT_DIM, "Tab Viewer " .. CFG.VERSION .. "  -  MIT license")
@@ -2931,7 +2927,7 @@ function UI.draw_layout()
     end
     ImGui.EndCombo(ctx)
   end
-  UI.tip("Automatic: as many bars as fit in the window. A number: that many bars on each line, as wide as the window.")
+  UI.tip("Bars per line. Automatic: as many as fit.")
   local mine = #(e.lines or {}) + #(e.joins or {})
   UI.label("Your line breaks")
   ImGui.SetCursorPosX(ctx, lx)
@@ -2940,7 +2936,7 @@ function UI.draw_layout()
   ImGui.BeginDisabled(ctx, mine == 0 or lay.reset)
   if UI.button("Reset", UI.btn_w("Reset")) then lay.reset = true end
   ImGui.EndDisabled(ctx)
-  UI.tip("Your own breaks (Ctrl+Enter) and joins (&). Reset: the lines from the setting above only.")
+  UI.tip("Your line breaks (Ctrl+Enter) and joins (&). Reset: remove them.")
   UI.vgap(8)
   if UI.button("OK", 80, nil, "primary") then
     if Tabs.set_layout(lay.per, lay.reset) then
@@ -3175,7 +3171,7 @@ function UI.draw_tab_list()
     end
     ImGui.EndCombo(ctx)
   end
-  UI.tip("The tabs of this project. Each one belongs to a region and moves with it; the window shows the tab where the song plays (stopped: at the edit cursor). Region: link this tab to another region.")
+  UI.tip("The tabs of this project, 1 per region.")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   UI.open_tab_button(ow)
 end
@@ -3213,7 +3209,7 @@ function UI.draw_tracks()
     ImGui.BeginDisabled(ctx, Notes.busy())
     if UI.button("Import to list", iw) then UI.import_to_list() end
     ImGui.EndDisabled(ctx)
-    UI.tip_disabled("The notes of this track (with your fixes, the repeats played out) become the list of the Detection tab: markers to learn the part. It asks first when the list has notes; Undo in the Detection tab brings the old list back.")
+    UI.tip_disabled("The notes of this track become the Detection list.")
   end
   ImGui.SetCursorPosX(ctx, x0) -- (the bars, time signature and tempo of the file, under Track)
   ImGui.TextColored(ctx, COL.TEXT_DIM, R.info)
@@ -3221,7 +3217,7 @@ function UI.draw_tracks()
     local BW = UI.btn_w("<")
     UI.field("Start")
     UI.row_text(R.bar_txt)
-    UI.tip("Where the tab starts: the bar of its region (no region: of the song, REAPER's bar numbers) that is bar 1 of the tab. From there the tab follows the song's beats. Wrong bar? Click < or > (hold: faster).")
+    UI.tip("The bar of the song where bar 1 of the tab plays. < >: move it (hold: faster).")
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
     ImGui.BeginDisabled(ctx, Tabs.bar() <= 1)
     if UI.repeat_button("<", BW) then Tabs.set_bar(Tabs.bar() - 1) end
@@ -3255,15 +3251,15 @@ local STYLES = { { "steady", "1 tempo" }, { "follow", "Follow the song" } }
 -- Find tempo listens to: true = From the tab (only a Guitar Pro tab has its own tempo: file; the default with one),
 -- else the track of Tempo.source. pick (R.tsrc_tab): true = you picked From the tab, false = a track, nil = no pick.
 function Tabs.tempo_from_tab(file, pick) return file and pick ~= false end
-local FROM_TAB_TIP = "No listening: the tempo, tempo changes and time signatures of the tab. Bar 1 goes where the tab's first note meets the first sound of the song (the selected item, else the longest one). Nothing changes yet."
-local TRACK_TIP = "Listens to this track while the song plays (the selected item, else the longest one; a click track is best, then the drums). Nothing changes yet."
+local FROM_TAB_TIP = "The tab's tempos and time signatures, no listening."
+local TRACK_TIP = "Listens to this track (best a click or the drums)."
 -- The rows of a result under Listen to (x: the control column): Tempo (found, half or double; from the tab: its tempo),
 -- Style (from a track) with the grey line of its suggestion, Bar 1 with < > (as the Tab tab's Start).
 local function tempo_rows(tm, x, fw)
   UI.field("Tempo")
   if tm.tab then
     UI.row_text(tm.lbl_bpm)
-    UI.tip("The tempo of the tab at bar 1. Set tempo writes its tempo changes and time signatures too.")
+    UI.tip("The tab's tempo at bar 1.")
   else
     ImGui.SetNextItemWidth(ctx, fw)
     if ImGui.BeginCombo(ctx, "##tbpm", tm.lbl_choice) then
@@ -3272,7 +3268,7 @@ local function tempo_rows(tm, x, fw)
       end
       ImGui.EndCombo(ctx)
     end
-    UI.tip("The tempo that Find tempo heard. Wrong by half or double (for example 83 instead of 166)? Pick the other one: Bar 1 starts again.")
+    UI.tip("The tempo heard. Half or double? Pick the other one.")
     UI.field("Style")
     local cur = STYLES[1][2]
     for _, s in ipairs(STYLES) do if s[1] == tm.style then cur = s[2] end end
@@ -3283,7 +3279,7 @@ local function tempo_rows(tm, x, fw)
       end
       ImGui.EndCombo(ctx)
     end
-    UI.tip("1 tempo: 1 steady grid. Follow the song: a tempo marker on every bar, so the bars stay on the drums.")
+    UI.tip("1 tempo: a steady grid. Follow the song: a tempo marker on every bar.")
   end
   if tm.lbl_note then
     ImGui.SetCursorPosX(ctx, x)
@@ -3292,7 +3288,7 @@ local function tempo_rows(tm, x, fw)
   local BW = UI.btn_w("<")
   UI.field("Bar 1")
   UI.row_text(tm.lbl_bar1)
-  UI.tip("Where bar 1 starts: the first beat with sound. Wrong? Move it 1 beat with < or >.")
+  UI.tip("The first beat of the song. < >: move it 1 beat.")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   if UI.button("<##bar1", BW) then Tempo.nudge(-1) end
   UI.tip("Bar 1 starts 1 beat earlier.")
@@ -3353,8 +3349,8 @@ function UI.draw_tempo_step()
   end
   if tm and tm.beats then -- (R.tempo can go in the click: the rows only with a result left)
     if UI.button("Set tempo", bw, nil, "primary") then Tabs.set_tempo() end
-    UI.tip(tm.tab and "Writes the tab's tempo, tempo changes and time signatures into the project from bar 1, and the tab starts on that bar: 1 undo step. The audio stays where it is."
-      or "Writes the tempo of this song into the project, and moves its audio a few ms so the first note is on the beat; the tab starts on bar 1: 1 undo step. Other songs keep their places.")
+    UI.tip(tm.tab and "Writes the tab's tempos into the project (1 undo step)."
+      or "Writes the tempo into the project (1 undo step).")
     if R.tempo == tm then tempo_rows(tm, x, fw) end
     return
   end
@@ -3362,12 +3358,12 @@ function UI.draw_tempo_step()
   ImGui.BeginDisabled(ctx, not can)
   if UI.button("Find tempo", bw, nil, not st.ok and "primary" or nil) then Tabs.find_tempo(src) end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled(can and "Put REAPER's bars on the song: from the tab's tempo, or by listening to a track. Nothing changes until Set tempo."
-    or "No tab and no track with audio yet: open a Guitar Pro tab (Tab tab > Open tab...) or add the song's tracks.")
+  UI.tip_disabled(can and "Puts REAPER's bars on the song (nothing changes until Set tempo)."
+    or "Open a tab or add the song's tracks first.")
   if not st.ok then -- (the project has the right tempo already: say so, and go on)
     ImGui.SetCursorPosX(ctx, x)
     if UI.button("The tempo is right", UI.btn_w("The tempo is right")) then Tabs.tempo_is_right() end
-    UI.tip("Is REAPER's tempo already right for this song (for example it was recorded to a click)? Click here: Tab Viewer puts 1 tempo marker at the start of the song with the tempo it has there (1 undo step), and you can go on to the Song section.")
+    UI.tip("Recorded to a click? Keep REAPER's tempo (1 tempo marker at the song's start).")
   end
 end
 
@@ -3790,8 +3786,8 @@ function UI.draw_tab(h)
   local lx = ox + TZ.LEFT -- (the left of the strings)
   ImGui.InvisibleButton(ctx, "##tabarea", math.max(1, w), math.max(1, tab.h))
   local playing = R.playing
-  UI.tip(playing and "Click: the song plays from there. Drag over the tab (or Shift+click a note): select from note to note; the Loop button at the top repeats it (Escape: no selection)."
-    or "Click a note to select it and fix it (Help: Fix the tab). Double-click: its box, or a new note on an empty place. Drag over the tab (or Shift+click a note): select from note to note; the Loop button at the top repeats it (Escape: no selection). Right-click a bar: its time signature.")
+  UI.tip(playing and "Click: play from there. Drag: select."
+    or "Click: select a note. Double-click: its box. Drag: select. Right-click a bar: time signature.")
   UI.tab_mouse(tab, ox, oy, playing)
   if ImGui.IsItemClicked(ctx, 1) then -- (right-click a bar: its menu)
     local mx, my = ImGui.GetMousePos(ctx)
@@ -3926,7 +3922,7 @@ function UI.tab_box(ox, oy, playing, sel_bi, sel_i)
   ImGui.PopID(ctx)
   a.txt = txt
   UI.tip(a.new and "The fret of the new note, then Enter. Escape: close."
-    or "Its fret, then Enter. Left / Right: move the note. + / -: twice as long / half. \".\": dotted. \"/\": a triplet beat. Escape: close.")
+    or "The fret, then Enter. Left / Right: move. + / - . /: length. Escape: close.")
   if not a.new and ImGui.IsItemActive(ctx) then
     local op = UI.len_char()
     if op and op ~= "&" then -- (in the box: the length keys only)

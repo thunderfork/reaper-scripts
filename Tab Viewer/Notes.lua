@@ -2552,16 +2552,16 @@ function N.draw_settings()
   local ch, pick
   local function dirty(c) if c then R.sdirty = true end end -- (the Detection settings: saved by Notes.lua)
   ch, S.frets = UI.set_toggle("String for high notes", S.frets,
-    "On (the default): a note above the lowest octave gets its string and fret, for example \"E (A 7)\". Off: only the note names. For the next Find notes.")
+    "On (the default): high notes get string and fret, \"E (A 7)\". For the next Find notes.")
   dirty(ch)
   ch, S.finger = UI.set_toggle("Fingering for runs", S.finger,
-    "On (the default): in a bar with 4 notes or more, every note gets the string and fret with the fewest hand moves, for example \"F (D 3) - Eb (D 1) - C (A 3) - Bb (A 1)\". For the next Find notes.")
+    "On (the default): runs of 4+ notes get string and fret, with the fewest hand moves. For the next Find notes.")
   dirty(ch)
   ch, S.splits = UI.set_toggle("Split repeated notes", S.splits,
-    "Off (the default). On: after Set tempo, every 16th of a long note is checked for a pluck that the first look missed (repeated 8ths or 16ths of 1 note). Held notes cut in pieces? Turn it off again. For the next Find notes.")
+    "Off (the default). On: finds missed repeated plucks (after Set tempo). Held notes cut up? Turn it off. For the next Find notes.")
   dirty(ch)
   pick = UI.set_combo("String names", S.strings, STRING_STYLES,
-    "How the strings are named in \"E (A 7)\": by the open string of their place, or by number as in tab books (4 = the lowest of 4 strings). For the next Find notes.")
+    "\"E (A 7)\" or, as in tab books, \"E (3 7)\". For the next Find notes.")
   if pick then S.strings = pick; R.sdirty = true end
 end
 
@@ -2649,12 +2649,12 @@ function UI.draw_export()
   if not ImGui.BeginPopupModal(ctx, "Export##export", nil, ImGui.WindowFlags_AlwaysAutoResize()) then R.export = nil; return end
   local x0 = ImGui.GetCursorPosX(ctx)
   e.item = select(2, UI.toggle_line("MIDI item on a \"" .. CFG.MIDI_TRACK .. "\" track", e.item,
-    "Below the bass, to listen to it and fix it in REAPER. An older export there is replaced."))
+    "Below the bass, to listen to. Replaces an older export."))
   ImGui.BeginDisabled(ctx, not e.path)
   e.file = select(2, UI.toggle_line(".mid file", e.file and e.path ~= false,
-    "For another program (Guitar Pro picks its own strings and frets). A file with the same name is replaced."))
+    "For another program. Replaces a file with the same name."))
   e.gp = select(2, UI.toggle_line("Guitar Pro file", e.gp and e.path ~= false,
-    "A .gp5 file: the notes as the Tab tab shows them, with their strings and frets, your fixes, the tuning, the bars and the tempo. Guitar Pro 5 to 8 open it. A file with the same name is replaced."))
+    "A .gp5 file of the Tab tab (Guitar Pro 5 to 8). Replaces a file with the same name."))
   ImGui.EndDisabled(ctx)
   UI.label("Folder")
   UI.row_text(e.dir_label, COL.TEXT_DIM)
@@ -2678,7 +2678,7 @@ function UI.draw_export()
     for _, g in ipairs(CFG.GRIDS) do if ImGui.Selectable(ctx, g[2], g[1] == e.step) then e.step = g[1] end end
     ImGui.EndCombo(ctx)
   end
-  UI.tip("The MIDI item and the .mid file: the note starts and ends move to the nearest step of REAPER's grid, so the rhythm reads well. (The Guitar Pro file has the rhythm of the Tab tab.)")
+  UI.tip("Moves the MIDI notes onto the grid.")
   ImGui.PushTextWrapPos(ctx, x0 + 320)
   if e.path then
     if e.files_txt ~= "" then ImGui.TextColored(ctx, COL.TEXT_DIM, e.files_txt) end
@@ -2700,9 +2700,9 @@ function UI.draw_export()
   ImGui.EndPopup(ctx)
 end
 
-local FIND_TIP = "Tab Viewer listens to the bass track (Track) and fills the list. Nothing is written to the project yet."
-local FIND_AGAIN_TIP = "Listen again: the new list replaces this one (it asks first; Undo brings it back)."
-local IMPORT_TIP = "Have the Guitar Pro tab of the song? Its notes become the list (the track picked in the Tab tab, with your fixes, the repeats played out). It asks first when the list has notes; Undo brings the old list back."
+local FIND_TIP = "Listens to the bass track and fills the list."
+local FIND_AGAIN_TIP = "Listen again: a new list (Undo brings this one back)."
+local IMPORT_TIP = "The notes of the Tab tab become the list."
 local NEED_TEMPO = "Set the tempo first (Tempo, above): the notes go on the song's bars."
 -- The "Song" section of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work; folding:
 -- 26 November 2026): Track with Find notes and Import from tab (both wait for the Tempo section;
@@ -2734,7 +2734,7 @@ function UI.draw_song()
     ImGui.EndCombo(ctx)
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled("The track of the separated bass. Find notes listens to its selected item, else its longest one. Works with bass only (for now): guitar or other audio gives wrong notes.")
+  UI.tip_disabled("The separated bass (bass only, for now).")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   if R.find then
     if UI.button("Cancel", bw) then Find.cancel() end
@@ -2768,7 +2768,7 @@ function UI.draw_song()
     end
     ImGui.EndCombo(ctx)
   end
-  UI.tip("The key of the song: it decides the note names (Ab or G#). Found in the file name when it is there.")
+  UI.tip("The key decides the note names (Ab or G#).")
   if one_row then
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
     local x = ImGui.GetCursorPosX(ctx)
@@ -2794,7 +2794,7 @@ function UI.draw_song()
     ImGui.EndCombo(ctx)
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled("The tuning of the bass in this song. It decides the octave of each note and the string and fret of the high notes (\"E (A 7)\").")
+  UI.tip_disabled("The bass tuning of this song.")
   UI.field("Lines")
   local cur = MODES[1][2]
   for _, m in ipairs(MODES) do if m[1] == P.mode then cur = m[2] end end
@@ -2814,7 +2814,7 @@ function UI.draw_song()
     ImGui.EndCombo(ctx)
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled(locked and "Click Find notes again to change this." or "How the notes are split into lines (each line becomes 1 marker at Write).")
+  UI.tip_disabled(locked and "Click Find notes again to change this." or "1 marker per line.")
   ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + host.CFG.LABEL_W) -- (under the dropdown)
   ImGui.TextColored(ctx, COL.TEXT_DIM, MODE_EXAMPLE[P.mode] or "")
 end
@@ -2932,8 +2932,8 @@ function UI.draw_foot()
   local aw = ImGui.GetContentRegionAvail(ctx)
   local sel = R.sel and P.rows[R.sel] and R.sel or nil
   if UI.foot_btn("Join", sel ~= nil and P.rows[sel + 1] ~= nil, "Puts the selected line together with the next one.") then List.join(sel) end
-  if UI.foot_btn("Split", sel ~= nil, "Cuts the selected line at the edit cursor (while playing: the play position), or in the middle.") then UI.split(sel) end
-  if UI.foot_btn("+ Add", true, "A new line at the edit cursor (while playing: at the play position).") then
+  if UI.foot_btn("Split", sel ~= nil, "Cuts the line at the edit cursor.") then UI.split(sel) end
+  if UI.foot_btn("+ Add", true, "A new line at the edit cursor.") then
     local i = List.add(UI.cursor())
     UI.select(i)
     UI.edit_row(i)
@@ -2952,7 +2952,7 @@ function UI.draw_foot()
     UI.notice("Written. Changed your mind? Ctrl+Z (or the Undo arrow) takes it away again.")
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled(has and "Writes the list into the project. Only the markers and text items of this tab are replaced." or "Find the notes first.")
+  UI.tip_disabled(has and "Writes the list into the project." or "Find the notes first.")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   local cw2 = math.max(60, math.min(CFG.OUT_W, aw - ww - mw - 2 * CFG.CTRL_GAP))
   ImGui.SetNextItemWidth(ctx, cw2)
@@ -2968,29 +2968,29 @@ function UI.draw_foot()
     if room > 40 then
       ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
       UI.row_text(UI.trunc_c(R.written_lbl, room), COL.GREEN)
-      UI.tip("The list is in the project as it is now. A change of the list: click Write again.")
+      UI.tip("Written. After a change: Write again.")
     end
   end
   ImGui.SameLine(ctx, math.max(0, aw - mw))
   if UI.button("More...", mw) then ImGui.OpenPopup(ctx, "##ndmore") end
-  UI.tip("Export (a Guitar Pro file, MIDI), Done: clean up (the song region, and the cleanup of the project), and Clear.")
+  UI.tip("Export, Done: clean up, Clear.")
   if ImGui.BeginPopup(ctx, "##ndmore") then
     do
       local can_export = #P.notes > 0 and not R.find
       if ImGui.MenuItem(ctx, "Export...", nil, false, can_export) then
         R.export = { item = true, file = true, gp = true, step = CFG.GRIDS[1][1], open = true }
       end
-      UI.tip_disabled(can_export and "The found notes as a Guitar Pro file (with the strings and frets of the Tab tab), a MIDI item to listen to, and a .mid file. It shows the choices first."
-        or "Find notes first: the export uses the notes that Find notes found.")
+      UI.tip_disabled(can_export and "A Guitar Pro file, a MIDI item or a .mid file."
+        or "Find notes first.")
     end
     if ImGui.MenuItem(ctx, "Done: clean up...", nil, false, has) then Out.finish_begin() end
-    UI.tip_disabled(has and "Finished with this song? A region over the song, and the cleanup of the project; the list leaves the project. It shows what it does first." or "Find the notes first.")
+    UI.tip_disabled(has and "Finished? A song region, and the list leaves the project." or "Find the notes first.")
     ImGui.Separator(ctx)
     if ImGui.MenuItem(ctx, "Clear...", nil, false, has) then
       UI.ask("Start again? This removes the list and what this tab wrote: its markers, the Notes track items and "
         .. "the Bass MIDI item. Your own markers, the tempo and the audio stay.\n\nUndo (or Ctrl+Z) brings it all back.", "Clear", Out.clear)
     end
-    UI.tip_disabled("Start from the beginning: removes the list and what this tab wrote. It asks first.")
+    UI.tip_disabled("Removes the list and what this tab wrote.")
     ImGui.EndPopup(ctx)
   end
 end
