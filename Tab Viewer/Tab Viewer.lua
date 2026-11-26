@@ -3583,7 +3583,8 @@ function UI.tab_rhythm(dl, b, lx, y, ym)
   local col, st, z = COL.TEXT_DIM, TZ.STEM, TZ.z
   local ye = y + st
   local rh = b.rh
-  local bh, bs, fl = 2 * z, 4 * z, 5 * z -- (a beam's height, the step between beams, a flag's length)
+  -- (a beam's height, the step between beams, a flag's length: bold, as Guitar Pro; the user, 26 November 2026)
+  local bh, bs, fl = 3 * z, 4.5 * z, 6 * z
   for k, e in ipairs(rh) do
     local x, v = lx + Tabs.x_of(b, e.q), e.v
     if e.rest then -- (in the middle of the strings, as Guitar Pro (ym; the user, 24 November 2026); an empty bar:
@@ -3598,12 +3599,17 @@ function UI.tab_rhythm(dl, b, lx, y, ym)
         for l = 0, m - 1 do ImGui.DrawList_AddRectFilled(dl, x, ye - bh - l * bs, lx + Tabs.x_of(b, nx.q), ye - l * bs, col) end
         for l = m, n - 1 do ImGui.DrawList_AddRectFilled(dl, x, ye - bh - l * bs, x + fl, ye - l * bs, col) end
       elseif e.flag then -- (an 8th or shorter alone: flags)
-        for l = 0, n - 1 do ImGui.DrawList_AddLine(dl, x, ye - l * bs, x + fl, ye - fl - l * bs, col, 1.5) end
+        for l = 0, n - 1 do ImGui.DrawList_AddLine(dl, x, ye - l * bs, x + fl, ye - fl - l * bs, col, 2.5 * z) end
       elseif k > 1 and rh[k - 1].join and n > (BEAMS[rh[k - 1].v.base] or 0) then -- (the last of a group: stubs back)
         for l = BEAMS[rh[k - 1].v.base], n - 1 do ImGui.DrawList_AddRectFilled(dl, x - fl, ye - bh - l * bs, x, ye - l * bs, col) end
       end
-      -- (the dot right of the stem, under its end: at the end it was hidden in a flag or a beam)
-      if v.dot then ImGui.DrawList_AddCircleFilled(dl, x + 3.5 * z, ye + 2.5 * z, 1.6 * z, col) end
+      -- (the dot right of the stem, as Guitar Pro: over the beams of a note with beams, else at the stem's end,
+      -- under its flags)
+      if v.dot then
+        local beamed = e.join or (k > 1 and rh[k - 1].join)
+        local yd = beamed and ye - bh - (n - 1) * bs - 2.5 * z or ye - 0.5 * z
+        ImGui.DrawList_AddCircleFilled(dl, x + 3.5 * z, yd, 1.6 * z, col)
+      end
     end
     if e.t3 then -- (a triplet group, as Guitar Pro draws it: a bracket from its first to its last note, "3" in a gap
       -- in its middle, the ends turned up to the notes; the user's screenshot, 24 November 2026)
