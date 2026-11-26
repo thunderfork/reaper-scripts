@@ -1,0 +1,25 @@
+# Runs the code checker (tools/check.ps1 -All: syntax, undefined globals, CFG names, docs, ImGui, publish) on each
+# push to any branch, so a push from a computer without the git hooks gets the same check.
+# The tests need REAPER and run only on the developer's computer (tools/test.ps1).
+name: Code check
+on:
+  push:
+    paths-ignore: [index.xml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: windows-2022 # fixed version, as in reapack-index.yml; Windows PowerShell 5.1 as on the developer's computer
+    steps:
+      - uses: actions/checkout@v4
+      # Lua 5.4 (luac) built from source; on Windows it needs the MSVC compiler
+      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: leafo/gh-actions-lua@v10
+        with:
+          luaVersion: "5.4"
+      - name: Code checker
+        shell: powershell
+        run: |
+          luac -v
+          .\tools\check.ps1 -All -Force
