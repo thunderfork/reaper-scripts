@@ -17,10 +17,14 @@
   shorter and "-" longer (as Guitar Pro); the dots right of the stem (over the beams, right of flags); bolder rests,
   beams and flags; the Loop icon as REAPER's 2 arrows.
 - Committed, not released, not tested by the user yet (Open now 20): Tab Viewer's songs (decided 26 November 2026:
-  the bottom bar, not a top line; a song = a region, else a bass item; between songs the last list stays; older
-  Detection lists are lost, no migration; segments 1 and 2 at once, no checkup first: the user's choice). Not built
-  (the user's choice): a mark over the active song in REAPER, a warning before a list is replaced. Next: the
-  user's manual test, then the next topic. All of it goes into the next Tab Viewer release (1.3: a new feature).
+  a song = a region, else a bass item; 1 Detection list and 1 tempo per song; between songs the last stays; older
+  Detection lists are lost, no migration). After a UI/UX review the user chose "A" (26 November 2026): a song header
+  at the top of the Tab and Detection tabs (< name >, the song list, a flash when it follows the cursor), each
+  section's button at the right of its heading, "Song" section renamed "Bass", Settings > Detection > Follow the
+  song (on); the bottom bar was removed. Claude's choice: Write stays in the bottom row of the list (with its
+  dropdown and More...). Not built (the user's choice): a mark over the active song in REAPER, a warning before a
+  list is replaced; later maybe the songs overview ("B"). Next: the user's manual test. All of it goes into the next
+  Tab Viewer release (1.3: a new feature).
 - Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
   what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
@@ -58,8 +62,9 @@ skipped or failed test stays here; remove it when it passed.
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
 20. Manual test (Tab Viewer, songs, 26 November 2026): in a project with 2-3 songs (regions, or bass items in a
-    row): the bottom bar names the song at the edit cursor; a click goes to its start; Find notes in each song
-    keeps the lists of the others; the Song dropdown; Write in song 2 leaves song 1's markers and Notes items.
+    row): the song header names the song at the edit cursor (and flashes when it changes); its arrows and list go
+    to a song; Find tempo / Set tempo and Find notes from the headings; each song keeps its own tempo status and
+    list; Write in song 2 leaves song 1's markers and Notes items; Follow the song off.
 
 ## Later
 
