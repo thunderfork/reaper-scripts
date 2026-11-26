@@ -3603,12 +3603,13 @@ function UI.tab_rhythm(dl, b, lx, y, ym)
       elseif k > 1 and rh[k - 1].join and n > (BEAMS[rh[k - 1].v.base] or 0) then -- (the last of a group: stubs back)
         for l = BEAMS[rh[k - 1].v.base], n - 1 do ImGui.DrawList_AddRectFilled(dl, x - fl, ye - bh - l * bs, x, ye - l * bs, col) end
       end
-      -- (the dot right of the stem, as Guitar Pro: over the beams of a note with beams, else at the stem's end,
-      -- under its flags)
+      -- (the dot right of the stem, as Guitar Pro: over the beams of a note with beams, else at the stem's end; with
+      -- flags right of them: under them it was hidden, the user's screenshot, 26 November 2026)
       if v.dot then
         local beamed = e.join or (k > 1 and rh[k - 1].join)
         local yd = beamed and ye - bh - (n - 1) * bs - 2.5 * z or ye - 0.5 * z
-        ImGui.DrawList_AddCircleFilled(dl, x + 3.5 * z, yd, 1.6 * z, col)
+        local xd = (e.flag and not beamed) and x + fl + 3 * z or x + 3.5 * z
+        ImGui.DrawList_AddCircleFilled(dl, xd, yd, 1.6 * z, col)
       end
     end
     if e.t3 then -- (a triplet group, as Guitar Pro draws it: a bracket from its first to its last note, "3" in a gap
