@@ -8,18 +8,16 @@ Songs (with Songs > Tools), Lanes, Presets; Settings sections Devices, Editing, 
 
 - The MIDI is normal REAPER MIDI on the device tracks; the show never needs the window.
 - A preparation tool: no live features (no automatic sending during playback, no stage actions, no MIDI clock;
-  live chase was removed for this reason, decided 8 November 2026). Suggest only editing, checking, viewing and
+  live chase was removed for this reason). Suggest only editing, checking, viewing and
   export features.
 - Changes to the Quad Cortex controls stay Quad Cortex only, unless I say otherwise.
 - Every visible text (labels, menus, buttons, headings, Help, tooltips, messages, undo names) writes "Preset",
   "Presets", "Scene", "Scenes" with a capital, also mid-sentence ("Clear all Scenes..."); not in code comments or
-  internal ids (decided 10 November 2026: the unit's own terms).
+  internal ids (the unit's own terms).
 
 ## Files
 
-- `MIDI Pilot.lua`. Version: `@version` and `CFG.VERSION` together. Release: tag
-  `midipilot-vX.Y`, title "MIDI Pilot X.Y" (the `release` skill).
-- Roadmap (version 2): PLAN.md, "Later". The history: the git log and the `@changelog` lines.
+- `MIDI Pilot.lua`. Roadmap (version 2): "Later" below.
 - Not checked: the full-size Quad Cortex's USB port name (no unit; it contains "Cortex").
 
 ## Architecture and data
@@ -36,14 +34,21 @@ Songs (with Songs > Tools), Lanes, Presets; Settings sections Devices, Editing, 
   MIDI file export), `UI` (tabs: Songs, Lanes, Presets, Settings, Help).
 - Only the MIDI that REAPER plays is read (no muted items or events); a muted item is never written.
 
-## Deployment and tests
-
-- `.\tools\deploy.ps1` copies it to `Scripts\Thunderfork Scripts\MIDI Pilot\` (ReaPack), else `Scripts\MIDI Pilot\`.
-- Tests: `tests\midipilot.lua` (`.\tools\test.ps1 -Script "MIDI Pilot"`; result in `tests\result_midipilot.txt`).
-
-## Later (ideas, moved from PLAN.md 24 November 2026)
+## Later (ideas)
 
 - MIDI Pilot version 2: Record (a real pedal move into Lanes, from the unit's Preset MIDI Out expression messages)
   and Learn, copy Scenes between songs, a check report, a cue sheet, import / export of the names, Looper X
   (CC#48-61) in its own section. Only if a user asks: "Scenes like..." (copy another song's Scenes). The Line 6
   profiles are untested (no units).
+
+## Open findings (from a checkup; not decided: ask before a fix)
+
+- Bugs: `Project.update` does not see File > Open in the same tab (only the pointer; use the file name / saved text
+  check as FX Link and Segue). `Midi.take_at` extends the first item over all later items (use the nearest item
+  before t). `Util.reset_settings` undocks and jumps to Songs (keep S.dock, S.tab, R.dock_req). A track mode change:
+  `Dev.apply_latency` with latency 0 wipes the user's playback offset (guard `d.latency > 0` as in
+  `Dev.use_selected_track`); the Channel combo in Settings > Devices does not clear `R.pcs`. Empty undo points
+  (`Midi.fill_item_starts` in scene_edit, fill_starts, match_* with n == 0).
+- Per-frame costs: the scene strip blocks, the scene list rows and their sort, the Preset list UI.trunc.
+- Ideas: "Check new MIDI items" changes the device channel, the Help says the reverse; no empty / taken check for
+  device, folder and Preset names and control CCs (rule `saved-data`); Help text errors.

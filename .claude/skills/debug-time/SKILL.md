@@ -14,7 +14,7 @@ folder CLAUDE.md). The user does not read code: report in plain words, with what
   around each change (the callers, the data it reads and writes). Read those parts, not the whole file.
 - Full round: the whole file, in parts. Only before a major release (x.0) or when the user asks for "full".
 - The passes: a small change (a fix, a text, 1 control): 1 combined pass with the points of passes 1-4 that the
-  change touches. A release, a large change (CLAUDE.md) or "full": the 4 passes. In a `checkup`: only pass 1
+  change touches. A release, a large change (CLAUDE.md) or "full": all the passes. In a `checkup`: only pass 1
   (the bugs); the checkup's `review` step does the UI/UX part.
 - Segue and Chart Cue share `Setlist` and `UI.draw_now_view`: a change there, check the other script too.
 - `.\tools\check.ps1` and `.\tools\test.ps1 -Script "<name>"` (quiet: they show only problems).
@@ -37,17 +37,11 @@ folder CLAUDE.md). The user does not read code: report in plain words, with what
 - Behaviour: every optional feature can be turned off; dangerous actions have an undo or a question; the same
   look as Chart Cue.
 
-## 4. Pass 3: pro musician, pass 4: studio / live engineer (by script)
+## 4. Passes 3 and 4: the users of the script
 
-- Chart Cue and Segue (used on stage): what goes wrong under stress (a wrong click, a hidden warning, a step that
-  needs reading), what the player must see at a glance.
-- MIDI Pilot (a preparation tool, never live): the speed of preparation, things left in a show project by mistake
-  (Scene tests, muted items), MIDI timing and order, routing (outputs, channels), what REAPER really plays, undo
-  steps and side effects on the user's own MIDI and tracks.
-- FX Link and Session Prep (studio tools): what REAPER really does to the tracks (routing, sends, folders, gain,
-  pans, polarity), undo steps, a client's project that is already mixed, and side effects on the user's own tracks.
-- SFX Drop (a preparation tool): does the hit point land on the beat, the FX folder and its outputs, the copies
-  in the project folder (size, Clean up), tails into the next song, the Soundcheck track, undo steps.
+1 pass for each user of the script in CLAUDE.md "Users" (stage, preparation, learning): what goes wrong for that
+person in that situation. Also what REAPER really does to the tracks and MIDI, undo steps, and side effects on the
+user's own tracks.
 
 ## 5. Cross-review and feedback
 

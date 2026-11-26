@@ -8,8 +8,7 @@ label column (`UI.form_label`, `UI.form_toggle`), as in Session Prep.
 
 ## Files
 
-- `SFX Drop.lua` only. Version: `@version` and `CFG.VERSION` together. Release: tag `sfxdrop-vX.Y`,
-  title "SFX Drop X.Y" (the `release` skill).
+- `SFX Drop.lua` only.
 
 ## Architecture and data
 
@@ -111,16 +110,28 @@ label column (`UI.form_label`, `UI.form_toggle`), as in Session Prep.
   sorts as len) and `S.sort_desc`; `Lib.sort` in `Lib.view` (the cache follows the sort). A Riser length other than
   Off sets the sort to Length, short to long; the fitting risers stay first.
 - Known limit: a very long file can pause the window for a moment in the first scan (REAPER builds its peaks).
-- Saved data approved by the user (13 November 2026): the ExtState "SFX Drop" keys, `Data\SFX Drop\library.txt`,
+- Saved data approved by the user: the ExtState "SFX Drop" keys, `Data\SFX Drop\library.txt`,
   ProjExtState "SFX Drop"/"soundcheck".
 
-## Deployment and tests
+## Tests
 
-- `.\tools\deploy.ps1` copies it to `Scripts\Thunderfork Scripts\SFX Drop\` (ReaPack), else `Scripts\SFX Drop\`.
-- Tests: `tests\sfxdrop.lua` (`.\tools\test.ps1 -Script "SFX Drop"`; result in `tests\result_sfxdrop.txt`). They
-  write 2 WAV files in the test REAPER's resource folder.
+- `tests\sfxdrop.lua` writes 2 WAV files in the test REAPER's resource folder.
 
-## Later (ideas, moved from PLAN.md 24 November 2026)
+## Later (ideas)
 
 - SFX Drop: templates, key match, tags, mono check, sub limit, a pink noise / sweep step, cue markers, Move with
   region.
+
+## Open findings (from a checkup; not decided: ask before a fix)
+
+- Bugs: the loop's spots and a running Find compare only the project pointer (use proj + file name); `R.check` is
+  not cleared on a project switch. `Drop.targets` / `Spots.find_begin`: the Soundcheck region counts as a song (and
+  its tracks). `UI.draw_sc`: the Source combo is enabled during Build; `Sc.build` uses the new source (use `sc.tr`).
+  `Chk.run`: Soundcheck items not checked for library files; `Drop.copy_target` reuses a copy by name + size only.
+  `Drop.find_folder` needs depth 1 (the FX folder is made twice); `UI.keys` Enter repeats
+  (`IsKeyPressed(..., false)`); Sort by Hit not updated (`Lib.changed()` in `UI.sound_menu` / `Drop.learn`);
+  `UI.sort_header` 2-value call not wrapped; `Spots.analyse` labels a region before the selection "Bar 1".
+- Per-frame costs: `Drop.find_folder` in Settings > Insert; tables at the chips, headers and copies.
+  Tidy: `R.sc_scan.tr/proj`.
+- Ideas: a new library folder drops the favourites and own hit points without a question; the Soundcheck copy has
+  no sends (in-ears); Help text errors.

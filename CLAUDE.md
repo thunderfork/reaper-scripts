@@ -107,8 +107,8 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
 - `reaper.array` and the audio accessor give silence inside a Lua coroutine: read the audio outside of it.
 - Call End / EndChild / EndPopup only when its Begin returned true; keep pushes and pops paired; keep ReaImGui
   calls in their UI / deferred-loop context.
-- Do not move state between `CFG`, `S`, `R` and `P` without asking (`CFG` constants, `COL` colours, `S` settings
-  of this computer, `R` runtime, `P` project data: the same in the scripts with a window (Mono Merge has none of them; Tab Viewer's Notes.lua has its own `S`, `R`, `P` for the list); Session Prep has no `P`, only its track mark).
+- The state tables (`CFG` constants, `COL` colours, `S` settings of this computer, `R` runtime, `P` project data;
+  moving a value between `S` and `P` changes saved data): the same in the scripts with a window (Mono Merge has none of them; Tab Viewer's Notes.lua has its own `S`, `R`, `P` for the list); Session Prep has no `P`, only its track mark).
 
 ## Performance
 
@@ -123,11 +123,7 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
 - Tests: `.\tools\test.ps1 -Script "<the changed script>"` (all scripts only before a release) must end with
   "0 failed". They run in the portable test REAPER `C:\REAPERtest`, in the background; never use, close or save my
   normal REAPER.
-- An escaped bug (found by me in REAPER, or by `debug-time`): the `lessons` skill.
 - For UI code that the tests do not reach: the UI test (`ui-test` skill; Chart Cue only), after asking.
-- State the manual test when a change affects rendering, scrolling, MIDI, caching or project state.
-- The pre-commit hook runs the checker and the tests of the staged scripts; a run that already passed on the same
-  files is skipped.
 
 ## Git and releases
 
@@ -135,15 +131,13 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
   byte-order mark), ending with the `Co-Authored-By` line.
 - Every time I ask to commit and push: follow the `release` skill without asking again (a changed script gets a
   new version and a GitHub Release; only other files changed: no version). Never edit `index.xml` by hand.
-- A new script starts on its own branch (`script/<name>`), with its docs and its line in `tools\scripts.psd1`; it
-  merges into main at its first release. (SFX Drop is the exception: it was on main before this rule.)
+- A new script starts on its own branch (`script/<name>`; its setup: the `new-feature` skill); it merges into main at
+  its first release. (SFX Drop is the exception: it was on main before this rule.)
 
 ## Other files
 
-- `PLAN.md`: Handoff (with "Last checkup"), Open now (numbered; the open manual tests too), Later (ideas and the
-  roadmap of each script). No done work: git records it.
+- `PLAN.md` (the global sections); the ideas and roadmap of each script: "Later" in its folder CLAUDE.md.
 - `LESSONS.md`: the escaped bugs and their cause tags (`lessons` skill). `LESSONS-RULES.md`: the rules that came
   from them (loaded above). `README.md`: for users.
 - `tools\scripts.psd1`: the 1 list of the scripts (name, test file, tag, released, shared files); every tool reads
   it. Each tool in `tools\` describes its use in its first lines. A script's extra test files: its folder CLAUDE.md.
-- Temporary files (test logs, helper scripts): in the scratchpad folder, never in the repository.

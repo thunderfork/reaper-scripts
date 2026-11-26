@@ -9,8 +9,6 @@ Close with project: S `close_proj`, default on), Window, Backup.
 ## Files
 
 - `Segue.lua` and the action `Segue - Next song.lua` (`@provides`).
-- Version: `@version` and `CFG.VERSION` together; its own `@changelog`. Release: tag `segue-vX.Y`, title
-  "Segue X.Y" (the `release` skill).
 
 ## Architecture and data
 
@@ -23,13 +21,16 @@ Close with project: S `close_proj`, default on), Window, Backup.
 - `Setlist` and `UI.draw_now_view` are the same in Chart Cue: a fix or a change in one, list it for the other
   script and ask me before you make it there.
 
-## Deployment and tests
-
-- `.\tools\deploy.ps1` copies Segue to `Scripts\Thunderfork Scripts\Segue\` (ReaPack), else `Scripts\Segue\`.
-- Tests: `tests\segue.lua` (`.\tools\test.ps1 -Script "Segue"`; result in `tests\result_segue.txt`).
-
-## Later (ideas, moved from PLAN.md 24 November 2026)
+## Later (ideas)
 
 - Segue: a thin countdown bar, a UI test for Segue. From the ReaSet changelog: repeat a song N times; region colours
   in the list; a note per song; the next marker / section in the now playing area, with a 2nd thinner progress bar;
   an option that forces an immediate jump when REAPER's smooth seek is on.
+
+## Open findings (from a checkup; not decided: ask before a fix)
+
+- Bugs: `Setlist.read_cmds`: old `cmd_q` presses run at the start (clear `cmd_q` at the start and in on_exit, as
+  Chart Cue does). The pause bar and `Setlist.length`, and `Setlist.next_cmd` on a REAPER pause: as in Chart Cue
+  (its folder CLAUDE.md).
+- Per-frame costs: the row names are cut every frame. Tidy: `UI.draw_ask` OK branch.
+- Ideas: no pcall guard around the loop; no "move only by title bar" option.

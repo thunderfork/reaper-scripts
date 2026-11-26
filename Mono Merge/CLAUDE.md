@@ -6,8 +6,7 @@ right. No window and no ReaImGui: 2 actions. A ReaImGui version (drop areas) is 
 ## Files
 
 - `Mono Merge.lua`: the action "make stereo (with edits)" and all the logic. `Mono Merge - Make stereo (raw
-  files).lua`: sets `MonoMergeMode = "raw"` and runs `Mono Merge.lua`. Version: `@version` and `CFG.VERSION`
-  together. Release: tag `monomerge-vX.Y`, title "Mono Merge X.Y" (the `release` skill).
+  files).lua`: sets `MonoMergeMode = "raw"` and runs `Mono Merge.lua`.
 
 ## Behaviour and data
 
@@ -28,11 +27,11 @@ right. No window and no ReaImGui: 2 actions. A ReaImGui version (drop areas) is 
   envelope is turned off on them (else no glue, or mixed sides). A missing file (not on the disk) stops it.
 - Modules: `Util` (the common name), `Merge` (check, order, name, run).
 
-## Deployment and tests
-
-- `.\tools\deploy.ps1` copies it to `Scripts\Thunderfork Scripts\Mono Merge\` (ReaPack), else `Scripts\Mono Merge\`.
-- Tests: `tests\monomerge.lua` (`.\tools\test.ps1 -Script "Mono Merge"`; result in `tests\result_monomerge.txt`).
-
-## Later (ideas, moved from PLAN.md 24 November 2026)
+## Later (ideas)
 
 - Mono Merge: a drop window (REAPER gfx, no ReaImGui) for 2 files from Explorer.
+
+## Open findings (from a checkup; not decided: ask before a fix)
+
+- Bugs: `Merge.run`: a failed glue leaves the folder depth moved (put it back before DeleteTrack); the undo point is
+  made also on a failure; raw path `"\\Mono Merge.lua"`; the raw `place_copy` length can be <= 0.

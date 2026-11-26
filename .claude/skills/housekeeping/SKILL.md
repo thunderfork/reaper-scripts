@@ -13,9 +13,8 @@ report, after the approval). This project adds:
 - In scope (may be changed after approval): README.md, PLAN.md, LESSONS.md, LESSONS-RULES.md, the root and folder CLAUDE.md files,
   `.claude/skills/`, `tests/*.lua`, `tools/ui-test.lua`, `tools/known-warnings.txt`, `.luarc.json`, `.gitignore`.
   A change to a test, ui-test.lua or .luarc.json: run check.ps1 and the tests after it.
-- Change only after an explicit yes for each file: the scripts (`Chart Cue/*.lua`, `Segue/*.lua`, `MIDI Pilot/*.lua`, `FX Link/*.lua`,
-  `Session Prep/*.lua`, `SFX Drop/*.lua`, `Mono Merge/*.lua`, `Tab Viewer/*.lua`
-  with the shared `Guitar Pro.lua` and `Tempo.lua`; the list: `tools\scripts.psd1`), `tools/*.ps1`,
+- Change only after an explicit yes for each file: the scripts (every `.lua` file in a script folder, also
+  the shared files; the list: `tools\scripts.psd1`), `tools/*.ps1`,
   `.github/workflows/`, and Claude's memory folder. A script change follows CLAUDE.md (check, tests, deploy).
 - Never change: `index.xml` (generated) and anything outside the repository (the deployed copies in
   `%APPDATA%\REAPER\Scripts\`, Chart Cue's data folder, the user's REAPER).
@@ -28,7 +27,6 @@ report, after the approval). This project adds:
   Git-ignored files (`release/`, `tests/result*.txt`) are generated, not unused.
 - Release safety (highest risk): an unreleased script without `@noindex` in its header; the README describing a
   script that is not released.
-- The docs check: every doc, skill and folder CLAUDE.md is in the list of `tools\docs-check.ps1`.
 - A rule written in 2 places also counts across the folder CLAUDE.md files.
 - PLAN.md: the "Versions" line and "Last checkup" are current.
 

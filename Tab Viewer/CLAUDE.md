@@ -7,8 +7,7 @@ notes as markers to learn the part; read `Tab Viewer/NOTES.md` before work on it
 
 ## Files
 
-- `Tab Viewer.lua` (no actions). Version: `@version` and `CFG.VERSION` together. Release: tag `tabviewer-vX.Y`, title
-  "Tab Viewer X.Y" (the `release` skill). Not released: `@noindex`.
+- `Tab Viewer.lua` (no actions).
 - `Guitar Pro.lua` (`GP`): reads .gp (Guitar Pro 7 / 8), .gpx (6), .gp5, .gp4, .gp3, and writes .gp5
   (`GP.write_gp5`). Plain Lua 5.4, no REAPER calls (a plain `lua` runs it). Another script can use it with
   `[nomain] ../Tab Viewer/Guitar Pro.lua > Guitar Pro.lua` in its `@provides` (each package needs its own target name:
@@ -27,12 +26,12 @@ notes as markers to learn the part; read `Tab Viewer/NOTES.md` before work on it
   saved; `PAGE_NAMES`, `UI.PAGE_NOTES`, `UI.PAGE_SETTINGS`, `UI.PAGE_HELP`); icons when narrow; right-click a text tab
   > Hide this tab (Settings > Look > Tabs). The tab keys work only in the Tab tab, the list keys only in the Note
   Detection tab.
-- The toolbar (25 November 2026, inspired by Guitar Pro's): `UI.draw_toolbar`, 3 groups placed by
+- The toolbar (inspired by Guitar Pro's): `UI.draw_toolbar`, 3 groups placed by
   `Tabs.toolbar_rows` (a group without room goes to the next row): left Undo / Redo (`UI.undo`: the open tab's steps
   first, the tab fixes `Tabs.undo` or the list `Notes.undo`, then REAPER's; Ctrl+Z too), the size, Find tempo; center
   |<, <, play / stop, > (`UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Note Detection tab by
   lines, `Notes.go`); right the speed with a note icon. Icons: `UI.tb_icon`, `ICON` (drawn, as Chart Cue's). Next:
-  loop, metronome and count-in, transpose (PLAN.md).
+  loop, metronome and count-in, transpose (PLAN.md, Later).
 - The tab size: -, the percent (a click: the list `ZOOMS`), + (only in the Tab tab; right-click: 100%), `S.zoom`,
   10% steps (`Tabs.zoom_step`, `CFG.ZOOM_MIN` .. `CFG.ZOOM_MAX`). **Rule:** the sizes of the tab are read from
   `TZ.<name>` (= `CFG.TAB_<name>` x zoom, `Tabs.set_zoom`, the list `TAB_SIZES`), never `CFG.TAB_<name>`; small fixed
@@ -67,7 +66,7 @@ notes as markers to learn the part; read `Tab Viewer/NOTES.md` before work on it
 - Checked on real files (the user's, never in git; the `file-format` rule): .gp (3 tabs; a 2 MB score in 0.29 s),
   1 real .gp5 (5.10), tremolo `1/4` = 16ths. Only made-up files: .gpx, .gp3, .gp4, chord names in the file, section
   markers of the old formats, the .gp tempo unit, the playing marks. The first real file of each is the check.
-- `GP.write_gp5(song)` (25 November 2026): Guitar Pro 5.10 in the layout `GP.read_old` reads, with real values (track
+- `GP.write_gp5(song)`: Guitar Pro 5.10 in the layout `GP.read_old` reads, with real values (track
   visible, tab and notation shown, channel volume); `GP.values` splits a length into tied note values. A trial file
   opened right in the user's Guitar Pro.
 
@@ -122,12 +121,10 @@ notes as markers to learn the part; read `Tab Viewer/NOTES.md` before work on it
   tremolo picking (slashes, or written out as notes with `S.tremnotes`), dead notes "x". Chord names: from the file,
   else `GP.chord_name` for notes that ring at least 1 beat (a row under the bar numbers; `S.chords`).
 
-## Tests and deployment
+## Tests
 
-- `.\tools\test.ps1 -Script "Tab Viewer"`: `tests\tabviewer.lua` (the reader: deflate, zip, .gpx, a .gp3 / .gp4 /
+- `tests\tabviewer.lua` (the reader: deflate, zip, .gpx, a .gp3 / .gp4 /
   .gp5 that `old_file` writes, the .gp5 writer read back; Tab Viewer: the list, open, copies, another project, a
   missing file, Save as, the tab, fixes, repeats, rhythm, the toolbar), then `tests\notes.lua`. The data is made up
   (`tests\tabviewer_data.lua`, never a real song). The tests load the UI with a stand-in for ReaImGui
   (`TabViewerTest.ImGui`: nothing is clicked); every test file and track is drawn.
-- `.\tools\deploy.ps1` copies `Tab Viewer.lua`, `Guitar Pro.lua`, `Tempo.lua` and `Notes.lua` to
-  `Scripts\Thunderfork Scripts\Tab Viewer\` (ReaPack), else `Scripts\Tab Viewer\`.

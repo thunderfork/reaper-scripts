@@ -10,8 +10,7 @@ collapsing sections (Appearance, Prep with Tracks / Routing / Checks, Gain stagi
 
 ## Files
 
-- `Session Prep.lua` only. Version: `@version` and `CFG.VERSION` together. Release: tag `sessionprep-vX.Y`,
-  title "Session Prep X.Y" (the `release` skill).
+- `Session Prep.lua` only.
 
 ## Architecture and data
 
@@ -99,11 +98,20 @@ collapsing sections (Appearance, Prep with Tracks / Routing / Checks, Gain stagi
 - Prep table: Pan button per row (`row.pan` "L" / "C" / "R" / nil = leave; the name sets the start when `S.pairs`),
   M / S = the track's real mute / solo at once (`CSurf_On...ChangeEx`, own undo point), not at Apply.
 
-## Deployment and tests
-
-- `.\tools\deploy.ps1` copies it to `Scripts\Thunderfork Scripts\Session Prep\` (ReaPack), else `Scripts\Session Prep\`.
-- Tests: `tests\sessionprep.lua` (`.\tools\test.ps1 -Script "Session Prep"`; result in `tests\result_sessionprep.txt`).
-
-## Later (ideas, moved from PLAN.md 24 November 2026)
+## Later (ideas)
 
 - Session Prep version 2: time alignment of close mics, a measured polarity check, routing / bus templates.
+
+## Open findings (from a checkup; not decided: ask before a fix)
+
+- Bugs: `Prep.add_chain`: `^%s*<FXCHAIN` also matches `<FXCHAIN_REC` (use `^%s*<FXCHAIN%s*$`). `Rules.undo`: no
+  `Rules.update_dirty(p)`; undo of a rule rename does not restore tfx / bus members / return Out.
+  `UI.draw_returns`: a rename moves `p.sends` on every key (move once at deactivation). `Prep.apply_rows`: Delete
+  without `row.on`; a Delete row is still renamed, put in a folder and routed (an empty folder stays). Equal final
+  names in `Prep.plan` (add each row's final name to the used set); the "send skipped" count counts rows
+  (`R.loops`); the Pan L / R switch does not call `Rules.changed()`. A deleted bus leaves returns with Out
+  "b:<name>" (set them to "m"); a bus named like a folder shares `p.fx`.
+- Saved data (ask): the prep mark is the same on client tracks and made tracks, so `Prep.find_track` can reuse a
+  client's "Delay" (a "made:" mark).
+- Per-frame costs: `r.file_exists` per return per frame. Tidy: `t.guid`, `CFG.PEAK_MARGIN`.
+- Ideas: Help text error (orange vs teal Mono button).

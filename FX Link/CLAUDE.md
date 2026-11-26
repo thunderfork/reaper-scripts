@@ -8,8 +8,7 @@ Look, Automatic open and close, Window, Backup.
 ## Files
 
 - `FX Link.lua`; the actions `FX Link - Show plugins.lua`, `FX Link - Toggle group.lua` and
-  `FX Link - Group focused plugin on selected tracks.lua` (ExtState "cmd_q": show, toggle, quick). Version: `@version` and `CFG.VERSION` together. Release: tag
-  `fxlink-vX.Y`, title "FX Link X.Y" (the `release` skill).
+  `FX Link - Group focused plugin on selected tracks.lua` (ExtState "cmd_q": show, toggle, quick).
 
 ## Architecture and data
 
@@ -34,7 +33,14 @@ Look, Automatic open and close, Window, Backup.
 - Known limit (as Chart Cue): File > New project in the same tab over a never-saved project is not seen.
 - To watch: plugins that show meters as parameters would link and show "differ"; the workaround is All except.
 
-## Deployment and tests
+## Open findings (from a checkup; not decided: ask before a fix)
 
-- `.\tools\deploy.ps1` copies it to `Scripts\Thunderfork Scripts\FX Link\` (ReaPack), else `Scripts\FX Link\`.
-- Tests: `tests\fxlink.lua` (`.\tools\test.ps1 -Script "FX Link"`; result in `tests\result_fxlink.txt`).
+- Bugs: `Link.read_cmds`: old `cmd_q` presses run at the start (clear `cmd_q` at the start, as Chart Cue does).
+  `Link.learn` / `Link.tick`: the knob touched last before Learn is never added (store its value).
+  `UI.draw_picker`: R.pnames of the old group after a group change (keep R.pick_g); changes in the 0.75 s after a
+  snapshot recall are lost (`Link.snap_tick` calls group_changed).
+- Saved data (ask): `Project.save` writes "version=1" for an empty project, so Open automatically still opens it.
+- Per-frame costs: picker labels, "Missing" strings, the A/B table; the UI.trunc_c key without the font, never
+  cleared. Tidy: `UI.draw_ask` OK branch, `R.picked_cache`.
+- Ideas: no empty / taken check for group names; a group click changes the track selection and marks the project
+  changed; Help text errors.

@@ -2,7 +2,7 @@
 
 Finds the notes of a separated bass item (or takes them from the tab: Import to list), shows them in a list to check,
 and writes them as markers, as text items on a "Notes" track, or both. For a player who learns the part in REAPER.
-It was the script Note Detective (never released; moved into Tab Viewer 24 November 2026; its old keys are not read).
+It was the script Note Detective (never released; now inside Tab Viewer; its old keys are not read).
 The history of every decision: git.
 
 ## Files and the host
@@ -29,8 +29,8 @@ The history of every decision: git.
   Done: clean up removes all of it. `P_EXT:TabViewer` = 1 on the Notes track and its items ("midi": the Bass MIDI track).
 - `S` (ExtState "Tab Viewer"; keys that do not meet Tab Viewer's): `out` ("markers", "track", "both"), `frets`
   (String for high notes, on), `finger` (Fingering for runs, on), `strings` ("letters" / "numbers"), `splits` (Split
-  repeated notes, OFF by default, decided 25 November 2026), `export_dir` ("" = the project folder).
-- 1 mode (decided 25 November 2026): no Simple mode, no beat count, no slide mark.
+  repeated notes, OFF by default), `export_dir` ("" = the project folder).
+- 1 mode: no Simple mode, no beat count, no slide mark.
 - `R` (runtime): the selection, the edit box, `undo` / `redo` (`List.step`: the list text, or `{ reaper = the undo
   name, list }` for Write, Clear and Export: their undo is REAPER's undo too, when that step is REAPER's next one), the
   view cache `R.view` (`UI.view`), the loop of a line `R.loop`, the running `R.find`.
@@ -46,10 +46,10 @@ The history of every decision: git.
   sum `Det.harm_pc` checks it: they disagree = doubtful); it ends before a gap (`CFG.END_GAP`); `CFG.START_COMP`
   moves the starts 30 ms earlier. The octave: `Det.odd_even` (odd against even harmonics of the low octave) with a
   limit per song (`Det.octave_limit`). `Det.glitches` removes a short 5th glitch; `Det.slides` finds a glide into a
-  note (no mark since 25 November 2026; a slide into the same note is still its own note). `Det.repeats` (only with
+  note (no mark; a slide into the same note is still its own note). `Det.repeats` (only with
   `S.splits` and a tempo marker: `Find.grid`) splits a held note at a pluck on its 16ths. `n.why` -> `List.why` (the
   tip of a yellow line). A new Tuning: `Find.retune` hears only the notes that can now be an octave lower.
-- What the trials showed (23-24 November 2026, the user's songs, never in git; most rules tuned on 1 song, song 2,
+- What the trials showed (the user's songs, never in git; most rules tuned on 1 song, song 2,
   steady 160 BPM 8ths): isolated bass far better than the mix (95.8% against 90% with a harmonic sum, 62.5% YIN);
   pitch right about 96%, the octave 96-99% (depends on the song); starts within half a 16th about 80%, with the 16th
   grid 86%; held notes and repeated plucks look the same in a Moises stem (the limit of the method); the separated
@@ -63,7 +63,7 @@ The history of every decision: git.
 ## Lines (`Group`, `List`)
 
 - Lines (`P.mode`): "1 per bar" (`Group.project_bars`), "Every note change", "About 2 seconds" (no steady tempo).
-- Strict bars (decided 25 November 2026): a note is in the bar where it starts; a start up to `CFG.BAR_TOL` (30 ms)
+- Strict bars: a note is in the bar where it starts; a start up to `CFG.BAR_TOL` (30 ms)
   before a bar line is the 1 of that bar. A note of an earlier bar that rings `CFG.HELD_MIN` (0.15 s) into a bar is
   its first note too, a plain name ("(G)" was tried and removed: repeated 8ths heard as 1 long note). A bar with the
   same notes as the bar before gets no line (a long C stays 1 marker), except at the start of a section
@@ -87,11 +87,10 @@ The history of every decision: git.
   1 undo step) and Done: clean up... (`Out.finish`: the song region "Artist - Title (Key)", removes plugins and
   metronome tracks you tick; the list leaves the project).
 - More... > Export...: a MIDI item on a "Bass MIDI" track, a .mid file (`Export.smf`, written by hand; the tempo and
-  time signatures of `Export.tempos`), and a Guitar Pro file (.gp5, decided 25 November 2026: `GP.write_gp5` with
+  time signatures of `Export.tempos`), and a Guitar Pro file (.gp5: `GP.write_gp5` with
   `Tabs.found_song`: the found tab as the Tab tab shows it, your time signatures and fixes, notes over a bar line
   tied, the tempo of the project at each bar; an edited bar has no ties into the next bar). The MIDI: `Export.notes`
-  (on the grid of the Rhythm dropdown; `Export.delay` takes the common delay of the found starts away first, lessons
-  23 November 2026). The files: `Export.path` (the project folder or `S.export_dir`; the same name, .mid / .gp5).
+  (on the grid of the Rhythm dropdown; `Export.delay` takes the common delay of the found starts away first, a lesson). The files: `Export.path` (the project folder or `S.export_dir`; the same name, .mid / .gp5).
   The export uses the notes, not the typed texts.
 
 ## The found notes as a tab (Tab Viewer's Tab tab)
@@ -105,7 +104,7 @@ The history of every decision: git.
   `Imp.apply` (the notes with `man`, the strings of the tab, the tuning); it bakes the found tab's fixes into the
   notes (`P.tab` goes). Find notes and Clear start a new tab.
 
-## The screen (the UI/UX review of 25 November 2026)
+## The screen
 
 - Song: Track with Find notes (blue only without a list; while it listens: Cancel, the progress under the Notes
   heading), Key and Tuning on 1 row (`CFG.KEY_W`, `CFG.TUNE_LABEL_W`; narrower than `CFG.TUNE_MIN_W`: 2 rows), Lines
@@ -128,7 +127,7 @@ The history of every decision: git.
 
 - The detection decision (PLAN.md): a measuring tool on 5-8 stems with tabs, "Use a MIDI item" (Melodyne / Basic
   Pitch), or stop.
-- From the bass player review (23 November 2026): ghost notes as "x", "C (8ths)" for pumping notes; no answer yet:
+- From the bass player review: ghost notes as "x", "C (8ths)" for pumping notes; no answer yet:
   hammer-on / pull-off, a single note keeps the hand position of the run, velocity from the level.
 - Chord detection; the complete song as the source (doubtful lines); a large "Now / Next" view; larger text in the
   Notes track items; the 40 ms of a separated file; MusicXML.

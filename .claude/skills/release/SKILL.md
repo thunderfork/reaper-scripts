@@ -5,10 +5,9 @@ description: Commit, push and release the scripts of this repository (tools\scri
 
 # Release
 
-This skill and the folder CLAUDE.md files (the tag and title of each script) are the release rules. A script that
-is not released yet (`Released = $false`): the pre-push hook (`tools\publish-check.ps1`) stops a push that would
-publish it. Use Bash for git and gh (PowerShell quoting breaks `gh --jq`); PowerShell only for the `.ps1` tools. Stop and report at the
-first failure; never skip a step silently.
+This skill and `tools\scripts.psd1` (the tag of each script) are the release rules. A script that is not released
+yet (`Released = $false`): the pre-push hook (`tools\publish-check.ps1`) stops a push that would publish it. Stop
+and report at the first failure; never skip a step silently.
 
 `gh` (GitHub CLI) is on the system PATH. If a shell says "gh: not found" (the editor started before
 PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user that a restart of VS Code fixes it.
@@ -45,7 +44,7 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
   scripts, "0 failed"),
   after the version change (step 1), so the pre-commit hook finds them passed on these files and does not run them
   again (`tools\stamp.ps1`).
-- This step replaces the global `checkup` before a push:
+- The rounds before a push:
   - every release with script changes: a normal `debug-time` round on the changes since the last release, unless
     one already ran after the last script change;
   - a major release (x.0): the full `checkup` instead (step 1 = a full `debug-time` round; step 2 = `simplify`
@@ -60,8 +59,8 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
 
 ## 3. Commit and push
 
-- `git add -A`, `git commit -m "<Name> X.Y: <short>" -m "<details>" -m "Co-Authored-By: ..."`
-  (several scripts: "Chart Cue X.Y and Segue X.Y: ...") (never a message file: BOM). Several finished changes since
+- `git add -A`, the message "<Name> X.Y: <short>" (several scripts: "Chart Cue X.Y and Segue X.Y: ...";
+  the format: CLAUDE.md "Git and releases"). Several finished changes since
   the last commit: 1 commit for each change group (CLAUDE.md "Git"), the version change in the last one.
 - `git push`.
 

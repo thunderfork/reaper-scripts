@@ -22,7 +22,7 @@ Read and follow the global skill first: `%USERPROFILE%\.claude\skills\help-sync\
   (UI.tip), the notices (UI.notice). `Tab Viewer/Notes.lua` (the Note Detection tab): its notices (UI.notice), the
   questions (UI.ask) and the undo names (CFG.UNDO_NAME .. ": ...").
 - `Mono Merge/Mono Merge.lua`: the messages and questions (`r.MB`) and the undo names (`Undo_EndBlock`).
-- The action scripts' comments, the root and folder CLAUDE.md files (also the Chart Cue release checklist), the
+- The action scripts' comments, the root and folder CLAUDE.md files, `Tab Viewer/NOTES.md`, the
   skills, PLAN.md, LESSONS-RULES.md, README.md.
 - The "Settings > A > B" paths: `grep -o 'Settings > [A-Z][A-Za-z]*\( > [A-Z][A-Za-z ]*\)\?'`, then compare
   with SETTINGS_SECTIONS and the UI.heading names (`tools\docs-check.ps1` checks the paths in the docs).

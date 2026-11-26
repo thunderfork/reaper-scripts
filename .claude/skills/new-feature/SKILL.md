@@ -7,8 +7,6 @@ description: Turn a new idea for a script of this repository (tools\scripts.psd1
 
 Read and follow the global skill first: `%USERPROFILE%\.claude\skills\new-feature\SKILL.md`. This project adds:
 
-- More than 3 open manual tests of this script in PLAN.md: no new feature until they are tested; say so and offer
-  the tests first.
 
 ## Fit it into what exists (step 1 of the global skill)
 
@@ -31,6 +29,19 @@ Read and follow the global skill first: `%USERPROFILE%\.claude\skills\new-featur
 ## Build (step 4 of the global skill)
 
 - `help-sync` for every new or changed name; tests for the logic; deploy (no commit: CLAUDE.md).
-- A new script: first its own branch (`script/<name>`, CLAUDE.md "Git and releases") and its line in
-  `tools\scripts.psd1` (`Released = $false`, `@noindex` in its header); its texts in "Where to search" of the
-  project `help-sync` skill.
+- A new or changed click or key rule (what a click, double-click, drag or key does): a plain function with a test,
+  not inside the drawing code (LESSONS-RULES.md, `imgui-input`).
+
+## A new script (before its first code)
+
+1. Its own branch `script/<name>` (CLAUDE.md "Git and releases").
+2. Its line in `tools\scripts.psd1` (`Released = $false`); `@noindex` in the header of each of its `.lua` files.
+3. Its folder CLAUDE.md: what it does, Files, its data, its screens, Later (copy the headings of a similar script;
+   no version, tag, deploy or test-command lines: `scripts.psd1` and the tools have them).
+4. Its test file in `tests\` (the name from `scripts.psd1`) with the first test.
+5. The root CLAUDE.md: its line in the list of scripts; its user in "Users" when it is a new role; its keys in
+   "Saved data".
+6. README.md: its part inside `<!-- -->` until its first release (the publish check).
+7. Its texts in "Where to search" of the project `help-sync` skill.
+
+The first release: the `release` skill.
