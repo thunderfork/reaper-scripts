@@ -39,14 +39,16 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   > Hide this tab (Settings > Look > Tabs). The tab keys work only in the Tab tab, the list keys only in the
   Detection tab.
 - The toolbar (inspired by Guitar Pro's): `UI.draw_toolbar`, its places from `Tabs.toolbar_rows` (a part without
-  room goes to the next row): left (`UI.draw_left`, the order of Guitar Pro: the user's choice) Loop, the speed,
-  Count-in (an hourglass) and Metronome (REAPER's own switches `CFG.CMD`: Pre-roll: Toggle pre-roll on play =
-  REAPER's count-in, Options: Toggle metronome; blue while on), Transpose; center the size, |<, <, play / stop, >, >|
-  (play in the middle of the window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Detection
-  tab by lines, `Notes.go`); right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes `Tabs.undo` or
-  the list `Notes.undo`, then REAPER's; Ctrl+Z too). Icons: `UI.tb_icon`, `ICON` (drawn, as Chart Cue's; plain icons,
-  not Chart Cue's framed transport buttons: the user's choice). The vertical half buttons + / - (`UI.stepper`, as Guitar
-  Pro's) of the size and Transpose.
+  room goes to the next row; the order: the user's choice): left (`UI.draw_left`) the size, Transpose; center |<, <,
+  play / stop, >, >| (play in the middle of the window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the
+  line; in the Detection tab by lines, `Notes.go`), then (`UI.draw_speed_group`) the speed, Metronome and Count-in (an
+  hourglass) (REAPER's own switches `CFG.CMD`: Options: Toggle metronome, Pre-roll: Toggle pre-roll on play = REAPER's
+  count-in; blue while on), Loop; right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes `Tabs.undo`
+  or the list `Notes.undo`, then REAPER's; Ctrl+Z too). Icons: `UI.tb_icon`, `ICON` (drawn, as Chart Cue's; plain
+  icons, not Chart Cue's framed transport buttons: the user's choice). The size, Transpose and the speed are fields
+  with their icon inside at the left (`UI.icon_field`: a magnifying glass, a tuning fork, a note; a click on the size
+  or the speed: its list below it). The vertical half buttons + / - (`UI.stepper`, as Guitar Pro's, 1 pixel inside
+  the row at the top and the bottom) of the size and Transpose.
 - Transpose (`UI.draw_transpose`, `Tabs.set_transpose`): -12 .. 12 half steps, the tab's frets (`Tabs.transpose`:
   below fret 0 the next lower string, above 24 the next higher, past the last string an octave, yellow `nt.oct`) and
   the Detection list's names (`List.opt().tp`, `Key.shift`, `N.transposed`: your corrected lines stay), not the audio.
@@ -140,10 +142,10 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
 - The selection and the loop (as in Guitar Pro): a drag over the tab (`UI.tab_mouse`, `Tabs.is_drag`) or Shift+click
   selects from note to note (`Tabs.range`: to the end of the last note's column, `Tabs.col_end`); a light blue band in
   front of the tab with round handles that move its ends (`UI.tab_range`, `UI.handle_at`). It is REAPER's time
-  selection (`Tabs.select_range`, `R.loop.rg`); the Loop button at the toolbar's left (`UI.draw_loop`,
-  `Tabs.loop_toggle`; blue while on: the user's exception to "blue is for actions") repeats it, or the bar at the
+  selection (`Tabs.select_range`, `R.loop.rg`); the Loop button right of the transport
+  (`UI.draw_speed_group`, `Tabs.loop_toggle`; blue while on: the user's exception to "blue is for actions") repeats it, or the bar at the
   edit cursor. A click without a drag ends the selection unless it loops; Escape ends both. `Tabs.loop_off` gives back
-  REAPER's repeat and time selection from before; 1 loop at a time with the Detection tab. The speed dropdown = `Tabs.speed` (the master play rate, preserve pitch on while slower; yellow below 100%).
+  REAPER's repeat and time selection from before; 1 loop at a time with the Detection tab. The speed (a field and its list) = `Tabs.speed` (the master play rate, preserve pitch on while slower; yellow below 100%).
 - Playing marks (`GP.fx`): hammer-on / pull-off, slides, bends, vibrato, palm mute (the P.M. row), harmonics,
   tremolo picking (slashes, or written out as notes with `S.tremnotes`), dead notes "x". Chord names: from the file,
   else `GP.chord_name` for notes that ring at least 1 beat (a row under the bar numbers; `S.chords`).

@@ -76,6 +76,7 @@ CFG.CMD = { METRO = 40364, COUNT_IN = 41818 } -- Options: Toggle metronome; Pre-
 CFG.TRANSPOSE_MAX = 12        -- half steps up or down (the toolbar's Transpose)
 CFG.TP_NO_FIX = "Fixes need Transpose at 0 (the toolbar): a fret you type would not be the one in the file."
 CFG.STEP_W = 18               -- the vertical half buttons + / - (the size, Transpose; as in Guitar Pro)
+CFG.FIELD_ICON = 24           -- the icon at the left inside a toolbar field (the size, Transpose, the speed)
 CFG.TIME_EPS = 1e-6         -- s (or quarter notes): a time this close before a start (rounding) still counts as in it
 CFG.DRAG_PX = 4              -- px the mouse moves with the button held: a drag (a selection), not a click
 CFG.TEMPO_BEFORE = 5          -- s: a tempo marker this far before the song item still counts as the song's (Tabs.has_song_tempo)
@@ -1893,7 +1894,7 @@ function Project.update()
     Project.load(Project.read())
     local rate = r.Master_GetPlayRate(proj) -- (a project saved slow, or left so after a crash: say it)
     if math.abs(rate - 1) > 1e-3 then
-      UI.notice(string.format("The song plays at %d%% (REAPER's play rate). The speed dropdown at the top sets 100%% again.",
+      UI.notice(string.format("The song plays at %d%% (REAPER's play rate). The speed at the top sets 100%% again.",
         math.floor(rate * 100 + 0.5)), true)
     end
     return
@@ -2041,9 +2042,9 @@ Want to hear a part? Click it: the song plays from there. While it plays, a blue
 
 Does the tab start later than the song (an intro, a count-in)? Set Start (the bar of the song where bar 1 of the tab plays) with < and > (hold for faster). The bar numbers above the tab are then the song's. A tab in a region counts the bars from the first bar of its region ("bar ... of the region"). From that bar on, the tab follows the beats of your project, so set the tempo of the song first.
 
-Want to practise a hard part? Drag over the tab from its first note to its last (or click the first note, then Shift+click the last): a light blue band selects it (REAPER's time selection). Drag a round handle at its ends to make it shorter or longer. Then click the Loop button at the top left (blue while it loops; no selection: it loops the bar at the edit cursor). Escape: no selection, no loop. Want a click to play along? Count-in (the hourglass) switches REAPER's pre-roll (a count before the song starts), and Metronome switches REAPER's metronome; both are blue while on.
+Want to practise a hard part? Drag over the tab from its first note to its last (or click the first note, then Shift+click the last): a light blue band selects it (REAPER's time selection). Drag a round handle at its ends to make it shorter or longer. Then click the Loop button at the top, right of the play buttons (blue while it loops; no selection: it loops the bar at the edit cursor). Escape: no selection, no loop. Want a click to play along? Metronome switches REAPER's metronome, and Count-in (the hourglass) switches REAPER's pre-roll (a count before the song starts); both are blue while on.
 
-Your bass tuned lower or higher than the tab? Transpose (the tuning fork, at the top left) moves the tab's frets and the note names of the Detection list by half steps with + and - (the audio stays; saved in the project; a click on the number: 0). A note that has no string left goes an octave up or down and turns yellow. Fixes of the tab need Transpose at 0. Too fast? The speed dropdown at the top left (next to Loop) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
+Your bass tuned lower or higher than the tab? Transpose (the tuning fork, at the top left) moves the tab's frets and the note names of the Detection list by half steps with + and - (the audio stays; saved in the project; a click on the number: 0). A note that has no string left goes an octave up or down and turns yellow. Fixes of the tab need Transpose at 0. Too fast? The speed (the note, right of the play buttons) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
 
 A drum track? Drums come in a later version (a drum grid).]] },
   { title = "Find tempo", text = [[
@@ -2404,6 +2405,15 @@ function ICON.fork(dl, cx, cy, col) -- a tuning fork, at a slant (Transpose, as 
   ImGui.DrawList_AddLine(dl, cx, cy + 4, cx + 7, cy - 3, col, 1.6)
   ImGui.DrawList_AddLine(dl, cx - 3, cy + 1, cx, cy + 4, col, 1.6)
 end
+function ICON.zoom(dl, cx, cy, col) -- a magnifying glass (the size of the tab)
+  ImGui.DrawList_AddCircle(dl, cx - 1.5, cy - 1.5, 4.5, col, 0, 1.6)
+  ImGui.DrawList_AddLine(dl, cx + 1.8, cy + 1.8, cx + 6, cy + 6, col, 2)
+end
+function ICON.note(dl, cx, cy, col) -- an 8th note (the speed)
+  ImGui.DrawList_AddCircleFilled(dl, cx - 2, cy + 4, 3, col)
+  ImGui.DrawList_AddLine(dl, cx + 0.5, cy + 4, cx + 0.5, cy - 7, col, 1.5)
+  ImGui.DrawList_AddLine(dl, cx + 0.5, cy - 7, cx + 5, cy - 2, col, 1.5)
+end
 
 -- A toolbar icon (Chart Cue's look: a plain icon, a grey background on hover; grey while off). tip: a text, or a
 -- function that gives it (made only on hover). active: a switch that is on (Loop, Metronome, Count-in): blue with a
@@ -2425,6 +2435,27 @@ function UI.tb_icon(id, kind, w, H, on, tip, active)
   ICON[kind](dl, math.floor(ix + w / 2) + 0.5, math.floor(iy + H / 2) + 0.5,
     not on and COL.TEXT_DIM or active and COL.WHITE or hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN)
   return hit and on
+end
+-- A toolbar field with its icon inside at the left (the size, Transpose, the speed): a grey frame, the icon, then txt
+-- (a fixed text, no "##"). col: the colour of the text and the icon (nil: the normal one; off: grey). Returns hit (a
+-- click while on), and the field's left / bottom (for its list below it).
+function UI.icon_field_w(widest) return CFG.FIELD_ICON + UI.btn_w(widest) - 8 end
+function UI.icon_field(id, icon, txt, w, H, on, col)
+  ImGui.BeginDisabled(ctx, not on)
+  local hit = ImGui.InvisibleButton(ctx, id, w, H)
+  ImGui.EndDisabled(ctx)
+  local hov = on and ImGui.IsItemHovered(ctx)
+  local x, y = ImGui.GetItemRectMin(ctx)
+  local dl = ImGui.GetWindowDrawList(ctx)
+  ImGui.DrawList_AddRectFilled(dl, x, y, x + w, y + H,
+    hov and (ImGui.IsItemActive(ctx) and COL.BTN_ACTIVE or COL.BTN_HOVER) or COL.BTN, 6)
+  if hov then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand()) end
+  col = not on and COL.TEXT_DIM or col or COL.TEXT_MAIN
+  local IC = CFG.FIELD_ICON
+  ICON[icon](dl, math.floor(x + IC / 2 + 2) + 0.5, math.floor(y + H / 2) + 0.5, col)
+  local tw = UI.btn_w(txt) - 22 -- (the text's width, measured once)
+  ImGui.DrawList_AddText(dl, x + IC + math.floor((w - IC - tw) / 2), y + math.floor((H - ImGui.GetTextLineHeight(ctx)) / 2), col, txt)
+  return hit and on, x, y + H
 end
 
 -- Undo / Redo (dir -1 / 1; the toolbar arrows, Ctrl+Z / Ctrl+Shift+Z): the steps of the open tab first (the tab
@@ -2499,24 +2530,23 @@ function UI.draw_transport(H)
   end
 end
 
--- The speed dropdown (the master play rate; yellow below 100%).
-function UI.speed_w(H) return UI.btn_w("100%") + H end
-function UI.draw_speed(w)
+-- The speed (the note, the percent; a click: the list; the master play rate; yellow below 100%).
+function UI.speed_w() return UI.icon_field_w("100%") end
+function UI.draw_speed(H)
   local rate, sk = r.Master_GetPlayRate(R.proj), 1
   for i, v in ipairs(SPEEDS) do if math.abs(v - rate) < 1e-3 then sk = i end end
   local cur = math.abs(SPEEDS[sk] - rate) < 1e-3 and SPEED_TXT[sk] or string.format("%d%%", math.floor(rate * 100 + 0.5))
   local slow = math.abs(rate - 1) > 1e-3 -- (not 100%: yellow, so you see it at a glance)
-  if slow then ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.YELLOW) end
-  ImGui.SetNextItemWidth(ctx, w)
-  local open = ImGui.BeginCombo(ctx, "##speed", cur)
-  if slow then ImGui.PopStyleColor(ctx) end
-  if open then
+  local hit, lx, ly = UI.icon_field("##speed", "note", cur, UI.speed_w(), H, true, slow and COL.YELLOW or nil)
+  if hit then ImGui.OpenPopup(ctx, "##speedlist") end
+  UI.tip("Too fast to play along? Slow the song down (the pitch stays); yellow while it is not 100%. Back to 100% when Tab Viewer closes.")
+  ImGui.SetNextWindowPos(ctx, lx, ly + 2, ImGui.Cond_Appearing())
+  if ImGui.BeginPopup(ctx, "##speedlist") then
     for i, v in ipairs(SPEEDS) do
       if ImGui.Selectable(ctx, SPEED_TXT[i], i == sk) then Tabs.speed(v) end
     end
-    ImGui.EndCombo(ctx)
+    ImGui.EndPopup(ctx)
   end
-  UI.tip("Too fast to play along? Slow the song down (the pitch stays); yellow while it is not 100%. Back to 100% when Tab Viewer closes.")
 end
 
 -- The sizes of the percent's list (70% .. 200%).
@@ -2524,23 +2554,24 @@ local ZOOMS = {}
 for n = math.floor(CFG.ZOOM_MIN / CFG.ZOOM_STEP + 0.5), math.floor(CFG.ZOOM_MAX / CFG.ZOOM_STEP + 0.5) do
   local z = n * CFG.ZOOM_STEP
   local txt = string.format("%d%%", math.floor(z * 100 + 0.5))
-  ZOOMS[#ZOOMS + 1] = { z = z, txt = txt, lbl = txt .. "##zoompct" }
+  ZOOMS[#ZOOMS + 1] = { z = z, txt = txt }
 end
--- The label of the percent button at zoom z (one of ZOOMS).
-local function zoom_lbl(z)
-  for _, e in ipairs(ZOOMS) do if math.abs(e.z - z) < 1e-6 then return e.lbl end end
-  return "100%##zoompct"
+-- The text of the percent at zoom z (one of ZOOMS).
+local function zoom_txt(z)
+  for _, e in ipairs(ZOOMS) do if math.abs(e.z - z) < 1e-6 then return e.txt end end
+  return "100%"
 end
--- Vertical half buttons, as in Guitar Pro: + on top, - below, CFG.STEP_W wide, H high in all. up / down: each can be
+-- Vertical half buttons, as in Guitar Pro: + on top, - below, CFG.STEP_W wide, 1 pixel inside the row's H at the top
+-- and the bottom (a full-height pair looks taller than the fields), a 1 pixel gap between them. up / down: each can be
 -- clicked; tips: { up, down } (or the tip of both when off). Returns 1 (+), -1 (-) or nil; right-click on them: 0.
 function UI.stepper(id, H, up, down, tips)
   local x, y = ImGui.GetCursorPos(ctx)
-  local W, hh = CFG.STEP_W, math.floor(H / 2)
+  local W, hh = CFG.STEP_W, math.floor((H - 3) / 2)
   local dl = ImGui.GetWindowDrawList(ctx)
   local out
   for k = 1, 2 do -- (1: + on top, 2: - below)
     local on = k == 1 and up or k == 2 and down
-    ImGui.SetCursorPos(ctx, x, y + (k - 1) * (H - hh))
+    ImGui.SetCursorPos(ctx, x, k == 1 and y + 1 or y + H - 1 - hh)
     ImGui.BeginDisabled(ctx, not on)
     local hit = ImGui.InvisibleButton(ctx, id .. k, W, hh)
     ImGui.EndDisabled(ctx)
@@ -2562,16 +2593,15 @@ function UI.stepper(id, H, up, down, tips)
   return out
 end
 
--- The tab size: the percent (a click: the list of sizes) and + / - (S.zoom, saved on this computer; right-click on
--- any of them: 100%). Only the Tab tab has a tab: grey in the other tabs.
-function UI.zoom_w(H) return UI.btn_w("200%") + 2 + CFG.STEP_W end
+-- The tab size: the magnifying glass and the percent (a click: the list of sizes), + / - (S.zoom, saved on this
+-- computer; right-click on any of them: 100%). Only the Tab tab has a tab: grey in the other tabs.
+function UI.zoom_w() return UI.icon_field_w("200%") + 2 + CFG.STEP_W end
 local ZOOM_TIPS = { "The tab larger. Right-click: 100%.", "The tab smaller. Right-click: 100%." }
 local ZOOM_OFF = { "The size of the tab: in the Tab tab.", "The size of the tab: in the Tab tab." }
 function UI.draw_zoom(H)
   local off = R.page ~= 1
-  ImGui.BeginDisabled(ctx, off)
-  if UI.button(zoom_lbl(S.zoom), UI.btn_w("200%"), H) then ImGui.OpenPopup(ctx, "##zoomlist") end
-  ImGui.EndDisabled(ctx)
+  local hit, lx, ly = UI.icon_field("##zoompct", "zoom", zoom_txt(S.zoom), UI.icon_field_w("200%"), H, not off)
+  if hit then ImGui.OpenPopup(ctx, "##zoomlist") end
   if not off and ImGui.IsItemClicked(ctx, 1) and S.zoom ~= 1 then S.zoom = 1; R.sdirty = true end
   UI.tip_disabled(off and ZOOM_OFF[1] or "The size of the tab: click for the list of sizes. Right-click: 100%.")
   ImGui.SameLine(ctx, 0, 2)
@@ -2580,6 +2610,7 @@ function UI.draw_zoom(H)
   if d == 1 then S.zoom = zin; R.sdirty = true
   elseif d == -1 then S.zoom = zout; R.sdirty = true
   elseif d == 0 and not off and S.zoom ~= 1 then S.zoom = 1; R.sdirty = true end
+  ImGui.SetNextWindowPos(ctx, lx, ly + 2, ImGui.Cond_Appearing())
   if ImGui.BeginPopup(ctx, "##zoomlist") then
     for _, e in ipairs(ZOOMS) do
       if ImGui.Selectable(ctx, e.txt, math.abs(e.z - S.zoom) < 1e-6) then S.zoom = e.z; R.sdirty = true end
@@ -2588,29 +2619,30 @@ function UI.draw_zoom(H)
   end
 end
 
--- Where the parts of the toolbar go (a plain function; from x0, aw wide). w: the widths L (the left group: Loop to
--- Transpose), Z (the size), T (the transport), U (Undo / Redo, right); PC: the middle of play from the transport's left
--- end; GG: the least gap between groups, NG: the gap of the size to the transport. The left group at x0 and Undo /
--- Redo at the right end on row 0 (no room for both: Undo / Redo on row 1). The center (the size, the transport) with
--- play in the middle of the window, on row 0 when it has room between them; else on the next row, centred on play as
--- far as the window lets it; narrower than the center: the transport alone, the size on the row after it (decided 26
--- November 2026). Fills p (a new table without it) with zx, zrow, tx, trow, ux, urow, and returns it.
+-- Where the parts of the toolbar go (a plain function; from x0, aw wide). w: the widths L (the left group: the size,
+-- Transpose), T (the transport), S (the speed group: the speed to Loop), U (Undo / Redo, right); PC: the middle of play
+-- from the transport's left end; GG: the least gap between groups, NG: the gap of the speed group to the transport.
+-- The left group at x0 and Undo / Redo at the right end on row 0 (no room for both: Undo / Redo on row 1). The center
+-- (the transport, the speed group) with play in the middle of the window, on row 0 when it has room between them; else
+-- on the next row, centred on play as far as the window lets it; narrower than the center: the transport alone, the
+-- speed group on the row after it (decided 26 November 2026). Fills p (a new table without it) with sx, srow, tx,
+-- trow, ux, urow, and returns it.
 function Tabs.toolbar_rows(x0, aw, w, PC, GG, NG, p)
   p = p or {}
   local right, mid = x0 + aw, x0 + math.floor(aw / 2)
   p.urow, p.ux = 0, math.max(x0, right - w.U)
   if x0 + w.L + GG > p.ux then p.urow = 1 end
-  local CW = w.Z + NG + w.T
-  local cx = mid - PC - NG - w.Z
+  local CW = w.T + NG + w.S
+  local cx = mid - PC
   local row = p.urow + 1
   if p.urow == 0 and cx >= x0 + w.L + GG and cx + CW + GG <= p.ux then row = 0
-  elseif CW > aw then -- (the transport alone; the size on the row after it)
+  elseif CW > aw then -- (the transport alone; the speed group on the row after it)
     p.tx, p.trow = math.max(x0, math.min(mid - PC, right - w.T)), row
-    p.zx, p.zrow = x0, row + 1
+    p.sx, p.srow = x0, row + 1
     return p
   else cx = math.max(x0, math.min(cx, right - CW)) end
-  p.zx, p.tx = cx, cx + w.Z + NG
-  p.zrow, p.trow = row, row
+  p.tx, p.sx = cx, cx + w.T + NG
+  p.trow, p.srow = row, row
   return p
 end
 local TB_W, TB_POS = {}, {} -- (the toolbar's widths and places: filled every frame, not made)
@@ -2619,77 +2651,75 @@ local LOOP_TIPS = {
   off = "Loop: the selection repeats (no selection: the bar at the edit cursor). Select by dragging over the tab, or Shift+click a note.",
   notes = "In the Detection tab, click a line to loop it.", none = "No tab here.",
 }
-local SWITCHES = { -- (the Count-in and Metronome buttons: REAPER's own switches, in both tabs)
-  { "##countin", "countin", CFG.CMD.COUNT_IN, "Count-in: REAPER plays its pre-roll before the song starts (with the metronome on, you hear the count). On: blue.",
-    "Count-in on (REAPER's pre-roll on play). Click: off." },
+local SWITCHES = { -- (the Metronome and Count-in buttons: REAPER's own switches, in both tabs)
   { "##metro", "metro", CFG.CMD.METRO, "Metronome: REAPER's click while the song plays. On: blue.",
     "Metronome on (REAPER's). Click: off." },
+  { "##countin", "countin", CFG.CMD.COUNT_IN, "Count-in: REAPER plays its pre-roll before the song starts (with the metronome on, you hear the count). On: blue.",
+    "Count-in on (REAPER's pre-roll on play). Click: off." },
 }
 -- The texts of Transpose: "0", "+2", "-3" (made once).
 local TP_TXT = {}
-for v = -CFG.TRANSPOSE_MAX, CFG.TRANSPOSE_MAX do TP_TXT[v] = (v > 0 and "+" or "") .. v .. "##tpval" end
+for v = -CFG.TRANSPOSE_MAX, CFG.TRANSPOSE_MAX do TP_TXT[v] = (v > 0 and "+" or "") .. v end
 local TP_TIPS = { "Transpose: the tab and the note names 1 half step higher (not the audio). Right-click: 0.",
   "Transpose: 1 half step lower. Right-click: 0." }
-function UI.transpose_w(IW) return IW + UI.btn_w("-12") + 2 + CFG.STEP_W end
--- Transpose (the tuning fork, the value, + / -; saved in the project; yellow when not 0). The value: a click or a
+function UI.transpose_w() return UI.icon_field_w("-12") + 2 + CFG.STEP_W end
+-- Transpose (the tuning fork and the value, + / -; saved in the project; yellow when not 0). The value: a click or a
 -- right-click sets 0.
-function UI.draw_transpose(IW, H)
+function UI.draw_transpose(H)
   local v = P.transpose or 0
-  local x, y = ImGui.GetCursorScreenPos(ctx)
-  ICON.fork(ImGui.GetWindowDrawList(ctx), math.floor(x + IW / 2) + 0.5, math.floor(y + H / 2) + 0.5, v ~= 0 and COL.YELLOW or COL.TEXT_MAIN)
-  ImGui.Dummy(ctx, IW, H)
-  UI.tip("Transpose: the tab's frets and the Detection list's note names, in half steps (the audio stays). Saved in the project.")
-  ImGui.SameLine(ctx, 0, 0)
-  if v ~= 0 then ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.YELLOW) end
-  local hit = UI.button(TP_TXT[v], UI.btn_w("-12"), H)
-  if v ~= 0 then ImGui.PopStyleColor(ctx) end
+  local hit = UI.icon_field("##tpval", "fork", TP_TXT[v], UI.icon_field_w("-12"), H, true, v ~= 0 and COL.YELLOW or nil)
   if (hit or ImGui.IsItemClicked(ctx, 1)) and v ~= 0 then Tabs.set_transpose(0) end
-  UI.tip(v ~= 0 and "Transposed: yellow notes went an octave up or down (no string for them). Click: back to 0. Fixes of the tab need 0."
-    or "Not transposed. + / -: half steps up or down.")
+  UI.tip(v ~= 0 and "Transposed: the tab's frets and the Detection list's note names (the audio stays; saved in the project). Yellow notes went an octave up or down (no string for them). Click: back to 0. Fixes of the tab need 0."
+    or "Transpose: the tab's frets and the Detection list's note names, in half steps (the audio stays; saved in the project). + / -: half steps up or down.")
   ImGui.SameLine(ctx, 0, 2)
   local d = UI.stepper("##tp", H, v < CFG.TRANSPOSE_MAX, v > -CFG.TRANSPOSE_MAX, TP_TIPS)
   if d then Tabs.set_transpose(d == 0 and 0 or v + d) end
 end
--- The left group of the toolbar (decided 26 November 2026, as in Guitar Pro): Loop (the Tab tab: Tabs.loop_toggle;
--- blue while it loops), the speed, Count-in, Metronome, Transpose.
-function UI.left_w(IW, H) return IW + 2 + UI.speed_w(H) + 2 + 2 * (IW + 2) + CFG.CTRL_GAP + UI.transpose_w(IW) end
-function UI.draw_left(IW, H)
-  local tab_page = R.page ~= UI.PAGE_NOTES
-  local on = tab_page and R.tab ~= nil
-  local active = on and Tabs.looping()
-  local tip = not tab_page and LOOP_TIPS.notes or not on and LOOP_TIPS.none or active and LOOP_TIPS.on or LOOP_TIPS.off
-  if UI.tb_icon("##loop", "loop", IW, H, on, tip, active) then Tabs.loop_toggle() end
-  ImGui.SameLine(ctx, 0, 2)
-  UI.draw_speed(UI.speed_w(H))
+-- The left group of the toolbar: the tab size, Transpose.
+function UI.left_w() return UI.zoom_w() + CFG.CTRL_GAP + UI.transpose_w() end
+function UI.draw_left(H)
+  UI.draw_zoom(H)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  UI.draw_transpose(H)
+end
+-- The speed group, right of the transport: the speed, Metronome, Count-in, Loop (the Tab tab: Tabs.loop_toggle; blue
+-- while it loops).
+function UI.speed_group_w(IW) return UI.speed_w() + 3 * (2 + IW) end
+function UI.draw_speed_group(IW, H)
+  UI.draw_speed(H)
   for _, s in ipairs(SWITCHES) do
     ImGui.SameLine(ctx, 0, 2)
     local st = r.GetToggleCommandStateEx(0, s[3]) == 1
     if UI.tb_icon(s[1], s[2], IW, H, true, st and s[5] or s[4], st) then r.Main_OnCommand(s[3], 0) end
   end
-  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  UI.draw_transpose(IW, H)
+  ImGui.SameLine(ctx, 0, 2)
+  local tab_page = R.page ~= UI.PAGE_NOTES
+  local on = tab_page and R.tab ~= nil
+  local active = on and Tabs.looping()
+  local tip = not tab_page and LOOP_TIPS.notes or not on and LOOP_TIPS.none or active and LOOP_TIPS.on or LOOP_TIPS.off
+  if UI.tb_icon("##loop", "loop", IW, H, on, tip, active) then Tabs.loop_toggle() end
 end
--- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): at the left Loop, the speed, Count-in, Metronome,
--- Transpose; in the middle the tab size, |<, <, play / stop, >, >| (play in the middle of the window); at the right
--- Undo / Redo (Find tempo: the Detection tab). A narrow window: 2 or 3 rows. The controls work in both tabs.
+-- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): at the left the tab size, Transpose; in the middle
+-- |<, <, play / stop, >, >| (play in the middle of the window), then the speed, Metronome, Count-in, Loop; at the
+-- right Undo / Redo (Find tempo: the Detection tab). A narrow window: 2 or 3 rows. The controls work in both tabs.
 function UI.draw_toolbar()
   UI.vgap(CFG.SP_EDGE)
   local x0, y0 = ImGui.GetCursorPosX(ctx), ImGui.GetCursorPosY(ctx)
   local aw = ImGui.GetContentRegionAvail(ctx)
   local IW, H = CFG.TB_ICON_W, ImGui.GetFrameHeight(ctx)
   local w = TB_W
-  w.L, w.Z, w.T, w.U = UI.left_w(IW, H), UI.zoom_w(H), UI.transport_w(), 2 * IW + 2
+  w.L, w.T, w.S, w.U = UI.left_w(), UI.transport_w(), UI.speed_group_w(IW), 2 * IW + 2
   local p = Tabs.toolbar_rows(x0, aw, w, UI.transport_mid(), CFG.TB_GROUP_GAP, CFG.TB_NEAR_GAP, TB_POS)
   local RH = H + CFG.TB_ROW_GAP
   ImGui.SetCursorPos(ctx, x0, y0)
-  UI.draw_left(IW, H)
+  UI.draw_left(H)
   ImGui.SetCursorPos(ctx, p.ux, y0 + p.urow * RH)
   UI.draw_undo(IW, H)
-  ImGui.SetCursorPos(ctx, p.zx, y0 + p.zrow * RH)
-  UI.draw_zoom(H)
   ImGui.SetCursorPos(ctx, p.tx, y0 + p.trow * RH)
   UI.draw_transport(H) -- (a click on the window takes the focus from REAPER: Space here is the window's)
-  ImGui.SetCursorPos(ctx, x0, y0 + math.max(p.urow, p.zrow) * RH + H)
+  ImGui.SetCursorPos(ctx, p.sx, y0 + p.srow * RH)
+  UI.draw_speed_group(IW, H)
+  ImGui.SetCursorPos(ctx, x0, y0 + math.max(p.urow, p.srow) * RH + H)
   UI.vgap(CFG.SP_EDGE)
 end
 
