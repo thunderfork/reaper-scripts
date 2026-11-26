@@ -2044,7 +2044,7 @@ Does the tab start later than the song (an intro, a count-in)? Set Start (the ba
 
 Want to practise a hard part? Drag over the tab from its first note to its last (or click the first note, then Shift+click the last): a light blue band selects it (REAPER's time selection). Drag a round handle at its ends to make it shorter or longer. Then click the Loop button at the top, right of the play buttons (blue while it loops; no selection: it loops the bar at the edit cursor). Escape: no selection, no loop. Want a click to play along? Metronome switches REAPER's metronome, and Count-in (the hourglass) switches REAPER's pre-roll (a count before the song starts); both are blue while on.
 
-Your bass tuned lower or higher than the tab? Transpose (the tuning fork, at the top left) moves the tab's frets and the note names of the Detection list by half steps with + and - (the audio stays; saved in the project; a click on the number: 0). A note that has no string left goes an octave up or down and turns yellow. Fixes of the tab need Transpose at 0. Too fast? The speed (the note, right of the play buttons) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
+Your bass tuned lower or higher than the tab? Transpose (the tuning fork, left of the play buttons) moves the tab's frets and the note names of the Detection list by half steps with + and - (the audio stays; saved in the project; a click on the number: 0). A note that has no string left goes an octave up or down and turns yellow. Fixes of the tab need Transpose at 0. Too fast? The speed (the note, right of the play buttons) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
 
 A drum track? Drums come in a later version (a drum grid).]] },
   { title = "Find tempo", text = [[
@@ -2619,30 +2619,35 @@ function UI.draw_zoom(H)
   end
 end
 
--- Where the parts of the toolbar go (a plain function; from x0, aw wide). w: the widths L (the left group: the size,
+-- Where the parts of the toolbar go (a plain function; from x0, aw wide). w: the widths L (the size group: the size,
 -- Transpose), T (the transport), S (the speed group: the speed to Loop), U (Undo / Redo, right); PC: the middle of play
--- from the transport's left end; GG: the least gap between groups, NG: the gap of the speed group to the transport.
--- The left group at x0 and Undo / Redo at the right end on row 0 (no room for both: Undo / Redo on row 1). The center
--- (the transport, the speed group) with play in the middle of the window, on row 0 when it has room between them; else
--- on the next row, centred on play as far as the window lets it; narrower than the center: the transport alone, the
--- speed group on the row after it (decided 26 November 2026). Fills p (a new table without it) with sx, srow, tx,
--- trow, ux, urow, and returns it.
+-- from the transport's left end; GG: the least gap between groups, NG: the gap of the size and speed groups to the
+-- transport. Undo / Redo at the right end. With room: 1 row, the size group, the transport and the speed group side by
+-- side, play in the middle of the window. Else the size group at x0 and Undo / Redo on row 0 (no room for both: Undo /
+-- Redo on row 1), the transport and the speed group on the next row, centred on play as far as the window lets them;
+-- narrower than those 2: the transport alone, the speed group on the row after it (decided 26 November 2026). Fills p
+-- (a new table without it) with lx, lrow, tx, trow, sx, srow, ux, urow, and returns it.
 function Tabs.toolbar_rows(x0, aw, w, PC, GG, NG, p)
   p = p or {}
   local right, mid = x0 + aw, x0 + math.floor(aw / 2)
-  p.urow, p.ux = 0, math.max(x0, right - w.U)
-  if x0 + w.L + GG > p.ux then p.urow = 1 end
-  local CW = w.T + NG + w.S
-  local cx = mid - PC
-  local row = p.urow + 1
-  if p.urow == 0 and cx >= x0 + w.L + GG and cx + CW + GG <= p.ux then row = 0
-  elseif CW > aw then -- (the transport alone; the speed group on the row after it)
+  p.ux = math.max(x0, right - w.U)
+  local lx = mid - PC - NG - w.L
+  if lx >= x0 and lx + w.L + NG + w.T + NG + w.S + GG <= p.ux then
+    p.lx, p.tx = lx, lx + w.L + NG
+    p.sx = p.tx + w.T + NG
+    p.lrow, p.trow, p.srow, p.urow = 0, 0, 0, 0
+    return p
+  end
+  p.lx, p.lrow = x0, 0
+  p.urow = x0 + w.L + GG > p.ux and 1 or 0
+  local row, CW = p.urow + 1, w.T + NG + w.S
+  if CW > aw then -- (the transport alone; the speed group on the row after it)
     p.tx, p.trow = math.max(x0, math.min(mid - PC, right - w.T)), row
     p.sx, p.srow = x0, row + 1
-    return p
-  else cx = math.max(x0, math.min(cx, right - CW)) end
-  p.tx, p.sx = cx, cx + w.T + NG
-  p.trow, p.srow = row, row
+  else
+    p.tx = math.max(x0, math.min(mid - PC, right - CW))
+    p.sx, p.trow, p.srow = p.tx + w.T + NG, row, row
+  end
   return p
 end
 local TB_W, TB_POS = {}, {} -- (the toolbar's widths and places: filled every frame, not made)
@@ -2675,7 +2680,7 @@ function UI.draw_transpose(H)
   local d = UI.stepper("##tp", H, v < CFG.TRANSPOSE_MAX, v > -CFG.TRANSPOSE_MAX, TP_TIPS)
   if d then Tabs.set_transpose(d == 0 and 0 or v + d) end
 end
--- The left group of the toolbar: the tab size, Transpose.
+-- The size group, left of the transport: the tab size, Transpose.
 function UI.left_w() return UI.zoom_w() + CFG.CTRL_GAP + UI.transpose_w() end
 function UI.draw_left(H)
   UI.draw_zoom(H)
@@ -2699,9 +2704,9 @@ function UI.draw_speed_group(IW, H)
   local tip = not tab_page and LOOP_TIPS.notes or not on and LOOP_TIPS.none or active and LOOP_TIPS.on or LOOP_TIPS.off
   if UI.tb_icon("##loop", "loop", IW, H, on, tip, active) then Tabs.loop_toggle() end
 end
--- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): at the left the tab size, Transpose; in the middle
--- |<, <, play / stop, >, >| (play in the middle of the window), then the speed, Metronome, Count-in, Loop; at the
--- right Undo / Redo (Find tempo: the Detection tab). A narrow window: 2 or 3 rows. The controls work in both tabs.
+-- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): in the middle the tab size, Transpose, then |<, <,
+-- play / stop, >, >| (play in the middle of the window), then the speed, Metronome, Count-in, Loop; at the right Undo /
+-- Redo (Find tempo: the Detection tab). A narrow window: 2 to 4 rows. The controls work in both tabs.
 function UI.draw_toolbar()
   UI.vgap(CFG.SP_EDGE)
   local x0, y0 = ImGui.GetCursorPosX(ctx), ImGui.GetCursorPosY(ctx)
@@ -2711,7 +2716,7 @@ function UI.draw_toolbar()
   w.L, w.T, w.S, w.U = UI.left_w(), UI.transport_w(), UI.speed_group_w(IW), 2 * IW + 2
   local p = Tabs.toolbar_rows(x0, aw, w, UI.transport_mid(), CFG.TB_GROUP_GAP, CFG.TB_NEAR_GAP, TB_POS)
   local RH = H + CFG.TB_ROW_GAP
-  ImGui.SetCursorPos(ctx, x0, y0)
+  ImGui.SetCursorPos(ctx, p.lx, y0 + p.lrow * RH)
   UI.draw_left(H)
   ImGui.SetCursorPos(ctx, p.ux, y0 + p.urow * RH)
   UI.draw_undo(IW, H)

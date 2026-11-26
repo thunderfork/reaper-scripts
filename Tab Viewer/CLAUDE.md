@@ -39,7 +39,7 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   > Hide this tab (Settings > Look > Tabs). The tab keys work only in the Tab tab, the list keys only in the
   Detection tab.
 - The toolbar (inspired by Guitar Pro's): `UI.draw_toolbar`, its places from `Tabs.toolbar_rows` (a part without
-  room goes to the next row; the order: the user's choice): left (`UI.draw_left`) the size, Transpose; center |<, <,
+  room goes to the next row; the order: the user's choice): center (`UI.draw_left`) the size, Transpose, then |<, <,
   play / stop, >, >| (play in the middle of the window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the
   line; in the Detection tab by lines, `Notes.go`), then (`UI.draw_speed_group`) the speed, Metronome and Count-in (an
   hourglass) (REAPER's own switches `CFG.CMD`: Options: Toggle metronome, Pre-roll: Toggle pre-roll on play = REAPER's

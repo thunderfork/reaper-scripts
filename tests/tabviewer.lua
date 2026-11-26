@@ -1606,14 +1606,16 @@ test("the toolbar (26 November 2026): |<, <, > and >| go to the bars; play in th
   -- Find tempo's Listen to (the Detection tab, 26 November 2026): From the tab with a Guitar Pro tab, until you pick a track
   eq(Tabs.tempo_from_tab(true, nil), true, "a tab: From the tab first"); eq(Tabs.tempo_from_tab(true, false), false, "a track picked")
   eq(Tabs.tempo_from_tab(true, true), true); eq(Tabs.tempo_from_tab(false, true), false, "no tab (or found notes): a track")
-  -- the places: the left group (size, Transpose) 100, transport 252 (play's middle at 126), the speed group 120, Undo /
-  -- Redo 66 (26 November 2026: the speed group right of the transport)
+  -- the places: the size group (size, Transpose) 100, transport 252 (play's middle at 126), the speed group 120, Undo /
+  -- Redo 66 (26 November 2026: the size group left and the speed group right of the transport)
   local w = { L = 100, T = 252, S = 120, U = 66 }
   local p = Tabs.toolbar_rows(0, 1000, w, 126, 25, 16)
   eq(p.urow, 0); eq(p.ux, 934, "wide: Undo / Redo at the right end"); eq(p.trow, 0, "wide: 1 row")
   eq(p.tx + 126, 500, "play in the middle"); eq(p.sx, 642, "the speed group right of the transport"); eq(p.srow, 0)
+  eq(p.lx, 258, "the size group left of the transport"); eq(p.lrow, 0)
   p = Tabs.toolbar_rows(0, 700, w, 126, 25, 16, p) -- (the same table again, as the toolbar does)
-  eq(p.urow, 0); eq(p.trow, 1, "no room before Undo / Redo: the center on row 2"); eq(p.tx + 126, 350, "play still in the middle")
+  eq(p.urow, 0); eq(p.lx, 0, "no room: the size group at the left"); eq(p.lrow, 0)
+  eq(p.trow, 1, "the transport on row 2"); eq(p.tx + 126, 350, "play still in the middle")
   eq(p.srow, 1); eq(p.sx, 492)
   p = Tabs.toolbar_rows(0, 400, w, 126, 25, 16)
   eq(p.trow, 1); eq(p.sx, 280, "narrow: the center as far left as it must go"); eq(p.tx, 12)
