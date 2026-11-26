@@ -678,7 +678,7 @@ test("loop: a line loops from its start to the next line; the last one to the en
   eq(List.row_span(4), nil, "no such line")
 end)
 
-test("find: the Bass audio row: the selected audio item on the track, else its longest; your choice of track", function()
+test("find: the Track row: the selected audio item on the track, else its longest; your choice of track", function()
   eq(Find.pick({}), nil, "no audio item")
   eq(Find.pick({ { len = 2 }, { len = 9 }, { len = 4 } }), 2, "the longest")
   eq(Find.pick({ { len = 2 }, { len = 9 }, { len = 4, sel = true } }), 3, "the selected one")
