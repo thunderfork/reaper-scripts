@@ -20,6 +20,7 @@ failed manual test, or a `debug-time` finding in committed code. Newest first.
 - `file-format`: a part of an outside file format (a mark, a sign, a version) that the script does not read.
 - `edge-case`: a case of the input that the code does not handle (1 or 2 items, a repeat, the end of a line).
 - `refactor`: a moved, renamed or removed name (a constant, a function, a field) that other code still reads.
+- `imgui-value`: a ReaImGui call that gets a wrong kind of value (nil where its default is not what the code means).
 
 The rules that came from these entries are in `LESSONS-RULES.md` (loaded in every session).
 
@@ -37,6 +38,16 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-26 | Tab Viewer | imgui-value | Find notes was grey (off) with no reason until Find tempo was clicked once
+  Cause: ImGui.BeginDisabled(ctx, busy) with busy = nil (no Find tempo state yet: `R.tempo and ...` gives nil);
+  ReaImGui takes a missing value as "disabled = true". After Find tempo the value was false, so the button worked.
+  Why the tests missed it: the ReaImGui stand-in of the tests accepted any value in BeginDisabled.
+  Test: the stand-in now fails when BeginDisabled gets anything but true or false (the whole pattern, every drawn
+  control); "the tab draws (the UI/UX review of 25 November 2026)" (tests\notes.lua) draws before and after Find
+  tempo, failed before the fix.
+  Other scripts: searched every BeginDisabled call: all others get true or false.
+  Status: fixed, not confirmed
+
 2026-11-25 | Tab Viewer | edge-case | (debug-time) Undo in the Note Detection tab after Write did nothing, with no message
   Cause: List.undo takes back a Write, Clear or Export only while it is REAPER's last step (Undo_CanUndo2); with a
   newer REAPER step (an item moved after Write) it skipped it silently.

@@ -46,6 +46,8 @@ local ImGuiStub = setmetatable({}, { __index = function(t, k)
   elseif k == "PopFont" then f = function() IG.pop = IG.pop + 1 end
   elseif k == "DrawList_AddText" then f = function(_, _, _, _, s) assert(type(s) == "string", "a text"); IG.texts = IG.texts + 1 end
   elseif k == "GetContentRegionAvail" then f = function() return 900, 600 end
+  elseif k == "BeginDisabled" then -- (ReaImGui: a missing value (nil) is "disabled": only true or false)
+    f = function(_, v) assert(type(v) == "boolean", "BeginDisabled needs true or false, not " .. tostring(v)) end
   elseif k == "BeginPopup" or k == "ListClipper_Step" or k:match("^Is") or k:match("Button$") or k == "Selectable"
     or k == "MenuItem" then f = function() return false end -- (nothing is clicked)
   elseif k:match("^Begin") then f = function() return true end

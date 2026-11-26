@@ -391,6 +391,16 @@ test("the tab draws (the UI/UX review of 25 November 2026): empty, and a list wi
   set_rows({ { 1, "C" } })
   R.view = nil
   eq(C.UI.view().status, "1 line", "none unsure: only the count")
+  -- before and after Find tempo (26 November 2026: Find notes was off until then), with and without a tab (Import
+  -- from tab): the stand-in fails when BeginDisabled gets nil
+  local tm0, tab0 = TR.tempo, TR.tab
+  TR.tempo = nil
+  C.draw(500)
+  TR.tab = tab0 or { bars = {} }
+  C.draw(500)
+  TR.tempo = { song = {} }
+  C.draw(500)
+  TR.tempo, TR.tab = tm0, tab0
   R.view = nil
 end)
 

@@ -100,7 +100,8 @@ The history of every decision: git.
   `Imp.grid` and `Imp.legato`, with the places of the list; `over` = the part after the bar line). `R.found_e` =
   `P.tab`: the fixes, line breaks and start bar of that tab are saved with the list (`N.touch`), so the list's Undo
   brings them back too. The list or the tempo changed: `host.notes_changed` -> `Tabs.notes_step` makes it again.
-- Import to list (the Tab tab, next to Track): `Tabs.notes_of_tab` -> `N.import` (asks when the list has lines) ->
+- Import to list (the Tab tab, next to Track; the same as Import from tab on the Note Detection tab's Track row, shown
+  only with a tab): `Tabs.notes_of_tab` -> `N.import` (asks when the list has lines) ->
   `Imp.apply` (the notes with `man`, the strings of the tab, the tuning); it bakes the found tab's fixes into the
   notes (`P.tab` goes). Find notes and Clear start a new tab.
 

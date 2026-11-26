@@ -2292,7 +2292,7 @@ N.HELP_TOPICS = {
   { title = "Note Detection: markers to learn the part", text = [[
 Want the bass notes as markers, to learn the part in REAPER? That is the Note Detection tab.
 
-1. Got a Guitar Pro tab of the song? Open it (Open tab...), set the tempo (Find tempo), then click "Import to list" in the Tab tab: the list gets the exact notes, strings and frets of the tab.
+1. Got a Guitar Pro tab of the song? Open it (Open tab...), set the tempo (Find tempo), then click "Import to list" in the Tab tab (or "Import from tab" here): the list gets the exact notes, strings and frets of the tab.
 2. No tab? Separate the song and put the bass file on a track. Click Find tempo (at the top), then in the Note Detection tab: pick that track (Track), then click "Find notes": Tab Viewer listens to it.
 3. Check the list. Yellow lines are not sure: click one to hear it in a loop, point at it to see why.
 4. Click "Write". One Ctrl+Z takes it all away again.
@@ -2712,6 +2712,7 @@ end
 
 local FIND_TIP = "Tab Viewer listens to the bass track (Track) and fills the list. Nothing is written to the project yet."
 local FIND_AGAIN_TIP = "Listen again: the new list replaces this one (it asks first; Undo brings it back)."
+local IMPORT_TIP = "Have the Guitar Pro tab of the song? Its notes become the list (the track picked in the Tab tab, with your fixes, the repeats played out). It asks first when the list has notes; Undo brings the old list back."
 -- The rows of the Note Detection tab (the UI/UX review of 25 November 2026, in the order of the work): Track with
 -- Find notes (blue only without a list; while it listens: Cancel), Key and Tuning on 1 row (2 rows when narrow),
 -- Lines. Find tempo: the toolbar only.
@@ -2724,8 +2725,10 @@ function UI.draw_song()
   if R.trk_for ~= tr then R.trk_for, R.trk_lbl = tr, nil end
   R.trk_lbl = R.trk_lbl or (tr and Find.track_label(tr) or "Pick the bass track")
   local bw = UI.btn_w(R.find and "Cancel" or "Find notes")
+  local iw = host.R.tab and UI.btn_w("Import from tab") -- (only with a tab: decided 26 November 2026)
+  local rw = bw + (iw and iw + CFG.CTRL_GAP or 0)
   ImGui.BeginDisabled(ctx, R.find ~= nil)
-  ImGui.SetNextItemWidth(ctx, math.max(80, math.min(fw, (ImGui.GetContentRegionAvail(ctx)) - bw - CFG.CTRL_GAP)))
+  ImGui.SetNextItemWidth(ctx, math.max(80, math.min(fw, (ImGui.GetContentRegionAvail(ctx)) - rw - CFG.CTRL_GAP)))
   if ImGui.BeginCombo(ctx, "##ndtrack", R.trk_lbl) then
     local list = Find.tracks()
     if not list[1] then ImGui.TextDisabled(ctx, "No tracks with audio yet.") end
@@ -2741,11 +2744,18 @@ function UI.draw_song()
     if UI.button("Cancel", bw) then Find.cancel() end
     UI.tip("Stop. The list stays as it was.")
   else
-    local busy = host.R.tempo and host.R.tempo.run ~= nil
+    local busy = host.R.tempo ~= nil and host.R.tempo.run ~= nil -- (true or false: BeginDisabled takes nil as true)
     ImGui.BeginDisabled(ctx, busy)
     if UI.button("Find notes", bw, nil, #P.rows == 0 and "primary" or nil) then UI.find() end
     ImGui.EndDisabled(ctx)
     UI.tip_disabled(busy and "Wait for Find tempo." or #P.rows == 0 and FIND_TIP or FIND_AGAIN_TIP)
+  end
+  if iw then -- Import from tab: as Import to list in the Tab tab (the track picked there)
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+    ImGui.BeginDisabled(ctx, R.find ~= nil)
+    if UI.button("Import from tab", iw) then UI.import_to_list() end
+    ImGui.EndDisabled(ctx)
+    UI.tip_disabled(IMPORT_TIP)
   end
   -- Key and Tuning: 1 row, the Tuning dropdown ends where the others end; no room: 2 rows
   UI.field("Key")
@@ -2813,7 +2823,7 @@ function UI.draw_list(v, h)
   if #P.rows == 0 then -- (Find notes is on the Track row above, blue)
     ImGui.Dummy(ctx, 0, 4)
     ImGui.PushTextWrapPos(ctx, 0)
-    ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the bass..." or "No notes yet. Pick the bass track above, then click Find notes. Works with bass only (for now): guitar or other audio gives wrong notes. Have a Guitar Pro tab? Tab tab > Import to list.")
+    ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the bass..." or "No notes yet. Pick the bass track above, then click Find notes. Works with bass only (for now): guitar or other audio gives wrong notes. Have a Guitar Pro tab? Open it in the Tab tab, then click Import from tab.")
     ImGui.PopTextWrapPos(ctx)
     return
   end
