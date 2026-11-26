@@ -32,4 +32,5 @@ Read and follow the global skill first: `%USERPROFILE%\.claude\skills\new-featur
 
 - `help-sync` for every new or changed name; tests for the logic; deploy (no commit: CLAUDE.md).
 - A new script: first its own branch (`script/<name>`, CLAUDE.md "Git and releases") and its line in
-  `tools\scripts.psd1` (`Released = $false`, `@noindex` in its header).
+  `tools\scripts.psd1` (`Released = $false`, `@noindex` in its header); its texts in "Where to search" of the
+  project `help-sync` skill.

@@ -18,6 +18,9 @@ Read and follow the global skill first: `%USERPROFILE%\.claude\skills\help-sync\
 - `SFX Drop/SFX Drop.lua`: HELP_INTRO and HELP_TOPICS, INSERT_HELP, PLACE_TIP, tooltips, notices
 - `Session Prep/Session Prep.lua`: HELP_INTRO and HELP_TOPICS, the HELP_* and PREP_HELP_* "?" texts, tooltips
   (UI.tip / UI.tipf), the notices (UI.notice) and questions (UI.ask), the notice of Apply.
+- `Tab Viewer/Tab Viewer.lua`: HELP_INTRO and HELP_TOPICS, the "?" texts of the headings (UI.heading), tooltips
+  (UI.tip), the notices (UI.notice). `Tab Viewer/Notes.lua` (the Note Detection tab): its notices (UI.notice), the
+  questions (UI.ask) and the undo names (CFG.UNDO_NAME .. ": ...").
 - `Mono Merge/Mono Merge.lua`: the messages and questions (`r.MB`) and the undo names (`Undo_EndBlock`).
 - The action scripts' comments, the root and folder CLAUDE.md files (also the Chart Cue release checklist), the
   skills, PLAN.md, LESSONS-RULES.md, README.md.
