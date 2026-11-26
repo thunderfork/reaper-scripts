@@ -1,5 +1,5 @@
 -- @noindex
--- Tab Viewer's Note Detection tab (it was the script Note Detective, decided 24 November 2026): finds the notes of a
+-- Tab Viewer's Detection tab (it was the script Note Detective, decided 24 November 2026): finds the notes of a
 -- separated bass track (or takes them from the tab) and writes them as markers, as text items on a "Notes" track, or
 -- both. For a player who learns the part in REAPER. Tab Viewer loads this file: `dofile(...)(host)` gives the Notes
 -- module (its functions below: N). The host hands over what the 2 share: the window (ImGui, COL, the UI helpers with
@@ -110,7 +110,7 @@ CFG.FINGER = { move = 0.5, shift = 3, str = 0.3, same = 5, high = 0.2, open = 1,
 CFG.BAR_TOL = 0.03             -- s: a note that starts this much before a bar line is the "1" of that bar (strict bars)
 CFG.HELD_MIN = 0.15            -- s: a note that rings this long into the next bar is that bar's first note too
 CFG.SPAN_GAP = 0.15           -- the same note again within this time is the same part
-CFG.SEC_LEN = 2               -- "About 2 seconds": a new marker at the first note after this time
+CFG.SEC_LEN = 2               -- "Every note change": a silence this long starts a new line
 CFG.SECTION_BARS = 8           -- a repeat of this many bars starts a new section
 CFG.STEP = TP.CFG.STEP         -- s of work per frame while Find notes runs (as Find tempo)
 
@@ -122,7 +122,7 @@ local Util, Key, Det, Group, List, Project, Find, Out, Export, Imp = {}, {}, {},
 local UI = setmetatable({}, { __index = host.UI }) -- (the helpers of Tab Viewer: button, toggle, notice ...)
 local N = {}                   -- what Tab Viewer calls (the end of this file)
 
--- R: runtime state of the Note Detection tab (not saved). P: the list (the project data). S: its settings (this computer).
+-- R: runtime state of the Detection tab (not saved). P: the list (the project data). S: its settings (this computer).
 local R = {
   proj = nil, projfn = "", state_cc = -1, plast_txt = "", pdirty = false, sdirty = false,
   find = nil,        -- the running Find notes: { item, take, proj, rd (the reader), co (the detection), done 0-1 }
@@ -144,11 +144,11 @@ local R = {
 local P
 local S = {
   out = "markers",   -- what Write makes: "markers", "track" (the Notes track) or "both"
-  frets = true,      -- Settings > Note Detection > String for high notes
-  finger = true,     -- Settings > Note Detection > Fingering for runs
-  strings = "letters", -- Settings > Note Detection > String names: "letters" (E A D G) or "numbers" (4 3 2 1)
+  frets = true,      -- Settings > Detection > String for high notes
+  finger = true,     -- Settings > Detection > Fingering for runs
+  strings = "letters", -- Settings > Detection > String names: "letters" (E A D G) or "numbers" (4 3 2 1)
   export_dir = "",   -- the folder of the .mid files ("": the project folder)
-  splits = false,    -- Settings > Note Detection > Split repeated notes (after Set tempo; off by default, decided 25 November 2026)
+  splits = false,    -- Settings > Detection > Split repeated notes (after Set tempo; off by default, decided 25 November 2026)
 }
 
 ---------------------------------------------------------------------------
@@ -882,18 +882,6 @@ function Group.bar_text(proj, t)
   local beat, m = r.TimeMap2_timeToBeats(proj, r.TimeMap2_QNToTime(proj, q))
   return string.format("%d.%d", m + 1, math.floor(beat + 0.001) + 1)
 end
--- "About 2 seconds": a bar starts at the first note after that time (for songs without a steady tempo).
-function Group.second_bars(notes)
-  local bars = {}
-  for _, n in ipairs(notes) do
-    local b = bars[#bars]
-    if not b or n.t - b.t0 >= CFG.SEC_LEN then
-      if b then b.t1 = n.t end
-      bars[#bars + 1] = { t0 = n.t, t1 = math.huge, tol = 0.01 }
-    end
-  end
-  return bars
-end
 -- "Every note change": each new note has its own bar (octave: also the same name in another octave). A long silence
 -- also starts a new one.
 function Group.change_bars(notes, octave)
@@ -1025,8 +1013,7 @@ end
 function Group.make(notes, mode, key, proj, t_end, opt)
   if #notes == 0 then return {} end
   local bars
-  if mode == "sec" then bars = Group.second_bars(notes)
-  elseif mode == "change" then bars = Group.change_bars(notes, opt ~= nil and (opt.high or opt.runs))
+  if mode == "change" then bars = Group.change_bars(notes, opt ~= nil and (opt.high or opt.runs))
   else bars = Group.project_bars(proj, notes[1].t, t_end) end
   return Group.rows(notes, bars, key, opt)
 end
@@ -1034,7 +1021,7 @@ end
 ---------------------------------------------------------------------------
 -- LIST (the rows and their corrections; the project data P)
 ---------------------------------------------------------------------------
--- P: { key = "C minor" ("" = unknown), mode = "bar" | "sec" | "change", tuning = an id of CFG.TUNINGS,
+-- P: { key = "C minor" ("" = unknown), mode = "bar" | "change", tuning = an id of CFG.TUNINGS,
 --   src = the GUID of the bass item, rows = { { t, text, doubt, ts = { the time of each note } or nil }, ... },
 --   keys = { { t, key } } (a key change from that line on), mk = { the GUIDs of the written markers (also of older
 --   writes: Ctrl+Z brings them back) }, notes = { the found notes { t, t1, pc, midi, doubt } (to group them again,
@@ -1055,7 +1042,7 @@ function List.places(notes, tun)
   R.places = { src = notes, tun = tun, n = #notes, list = list }
   return list
 end
--- Settings > Note Detection as they apply (the texts of Group.rows, the split repeated notes). 1 mode (decided
+-- Settings > Detection as they apply (the texts of Group.rows, the split repeated notes). 1 mode (decided
 -- 25 November 2026: no Simple mode, no beat count, no slide mark).
 function List.opt()
   local tun = Key.tuning(P.tuning)
@@ -1072,7 +1059,7 @@ function List.parse(txt)
       p.tab = p.tab or {}
       host.entry_line(p.tab, tk, tv)
     elseif k == "key" then p.key = v
-    elseif k == "mode" then p.mode = (v == "sec" or v == "change") and v or "bar"
+    elseif k == "mode" then p.mode = v == "change" and v or "bar"
     elseif k == "tuning" then p.tuning = Key.tuning(v).id
     elseif k == "src" then p.src = v
     elseif k == "mk" then p.mk[#p.mk + 1] = v
@@ -1610,7 +1597,7 @@ end
 function Find.notes(x, pos, tick)
   local notes, tune = Det.analyse(x, tick, Key.tuning(P.tuning).open[1])
   for _, n in ipairs(notes) do n.t, n.t1 = n.t + pos, n.t1 + pos end
-  local grid = List.opt().splits and Find.grid(pos, pos + #x / CFG.SR) -- (Settings > Note Detection > Split repeated notes)
+  local grid = List.opt().splits and Find.grid(pos, pos + #x / CFG.SR) -- (Settings > Detection > Split repeated notes)
   if grid then notes = Det.repeats(x, notes, grid, pos) end
   return notes, tune
 end
@@ -1717,7 +1704,7 @@ function Out.add_markers()
   while #P.mk > CFG.MK_MAX do table.remove(P.mk, 1) end
 end
 
--- The track with the mark of the Note Detection tab: "1" = the Notes track (the default), "midi" = the Bass MIDI track.
+-- The track with the mark of the Detection tab: "1" = the Notes track (the default), "midi" = the Bass MIDI track.
 function Out.find_track(mark)
   for i = 0, r.CountTracks(R.proj) - 1 do
     local tr = r.GetTrack(R.proj, i)
@@ -1725,7 +1712,7 @@ function Out.find_track(mark)
     if v == (mark or "1") then return tr end
   end
 end
--- A new track with the mark of the Note Detection tab next to the track of the bass item: above it (the Notes track) or below it
+-- A new track with the mark of the Detection tab next to the track of the bass item: above it (the Notes track) or below it
 -- (below: the Bass MIDI track).
 function Out.make_track(name, mark, below)
   local item = Find.item()
@@ -1738,7 +1725,7 @@ function Out.make_track(name, mark, below)
   r.GetSetMediaTrackInfo_String(tr, CFG.TAG, mark, true)
   return tr
 end
--- Deletes the items of a track that the Note Detection tab made (other items stay).
+-- Deletes the items of a track that the Detection tab made (other items stay).
 function Out.delete_marked(tr)
   for i = r.CountTrackMediaItems(tr) - 1, 0, -1 do
     local it = r.GetTrackMediaItem(tr, i)
@@ -1746,7 +1733,7 @@ function Out.delete_marked(tr)
     if v == "1" then r.DeleteTrackMediaItem(tr, it) end
   end
 end
--- Removes the text items of the Note Detection tab (other items on the track stay), and the track when nothing is on it.
+-- Removes the text items of the Detection tab (other items on the track stay), and the track when nothing is on it.
 function Out.delete_items(keep_track)
   local tr = Out.find_track()
   if not tr then return end
@@ -1794,7 +1781,7 @@ function Out.add_items(markers)
   end
 end
 
--- Clear: what the Note Detection tab wrote goes (its markers, the Notes track items, the Bass MIDI item; 1 undo step), and the
+-- Clear: what the Detection tab wrote goes (its markers, the Notes track items, the Bass MIDI item; 1 undo step), and the
 -- list (with its key changes and the found notes; the Undo button brings it back). The key, the Lines choice, the
 -- tuning and the marker IDs stay (Ctrl+Z brings the markers back, and a new Write then replaces them).
 function Out.clear()
@@ -1817,7 +1804,7 @@ function Out.clear()
   Util.mark_pdirty()
 end
 
--- Writes the list: "markers", "track" or "both". Only the own markers and text items of the Note Detection tab are replaced.
+-- Writes the list: "markers", "track" or "both". Only the own markers and text items of the Detection tab are replaced.
 function Out.write(what)
   if #P.rows == 0 then return end
   r.Undo_BeginBlock2(R.proj)
@@ -2067,7 +2054,7 @@ local function write_file(path, text)
   f:close()
 end
 
--- The MIDI item on the Bass MIDI track (below the bass; an older export of the Note Detection tab there is replaced).
+-- The MIDI item on the Bass MIDI track (below the bass; an older export of the Detection tab there is replaced).
 function Export.item(list, q_start)
   local proj = R.proj
   local tr = Out.find_track("midi") or Out.make_track(CFG.MIDI_TRACK, "midi", true)
@@ -2282,18 +2269,18 @@ N.test = { CFG = CFG, S = S, R = R, Util = Util, Key = Key, Det = Det, Group = G
   get_P = function() return P end, set_P = function(p) P = p end, draw = function(h) N.draw(h) end }
 
 ---------------------------------------------------------------------------
--- UI (the Note Detection tab of Tab Viewer's window)
+-- UI (the Detection tab of Tab Viewer's window)
 ---------------------------------------------------------------------------
 -- The window of Tab Viewer (its ImGui context), before the first frame.
 function N.attach(c) ctx = c end
 
--- The Help topics of the Note Detection tab (Tab Viewer's Help shows them after its own).
+-- The Help topics of the Detection tab (Tab Viewer's Help shows them after its own).
 N.HELP_TOPICS = {
-  { title = "Note Detection: markers to learn the part", text = [[
-Want the bass notes as markers, to learn the part in REAPER? That is the Note Detection tab.
+  { title = "Detection: markers to learn the part", text = [[
+Want the bass notes as markers, to learn the part in REAPER? That is the Detection tab.
 
 1. Got a Guitar Pro tab of the song? Open it (Open tab...), set the tempo (Find tempo), then click "Import to list" in the Tab tab (or "Import from tab" here): the list gets the exact notes, strings and frets of the tab.
-2. No tab? Separate the song and put the bass file on a track. Click Find tempo (at the top), then in the Note Detection tab: pick that track (Track), then click "Find notes": Tab Viewer listens to it.
+2. No tab? Separate the song and put the bass file on a track. Click Find tempo (at the top), then in the Detection tab: pick that track (Track), then click "Find notes": Tab Viewer listens to it.
 3. Check the list. Yellow lines are not sure: click one to hear it in a loop, point at it to see why.
 4. Click "Write". One Ctrl+Z takes it all away again.
 
@@ -2309,21 +2296,19 @@ Join puts a line together with the next one. Split cuts a line at the edit curso
 
 Made a mistake? The Undo arrow at the top (or Ctrl+Z in this tab) takes back the last step: a change of the list, or Write, Clear or Export. The Redo arrow (Ctrl+Shift+Z) does it again.
 
-Want to start again? More... > Clear... removes the list and what the Note Detection tab wrote (its markers, the Notes track items, the Bass MIDI item). It asks first; Ctrl+Z (or the Undo arrow) brings it all back.
+Want to start again? More... > Clear... removes the list and what the Detection tab wrote (its markers, the Notes track items, the Bass MIDI item). It asks first; Ctrl+Z (or the Undo arrow) brings it all back.
 
 Keys: Up / Down = previous / next line, N = next line that is not sure, Space = play / stop, F2 = type the notes, Delete = delete the line.]] },
   { title = "The found notes as a tab", text = [[
 No Guitar Pro tab for the song? After Find notes, the Tab tab shows the found notes as bass tab, with the strings and frets of the list. It works as a Guitar Pro tab: click to play from a note, fix a note while the song is stopped, see the note lengths, loop a bar.
 
-Fixed the tab? Click "Import to list": the list is made again from your tab (Undo in the Note Detection tab brings the old list back). Your fixes are saved with the list. Find notes again starts a new tab (Undo brings the old one back).]] },
+Fixed the tab? Click "Import to list": the list is made again from your tab (Undo in the Detection tab brings the old list back). Your fixes are saved with the list. Find notes again starts a new tab (Undo brings the old one back).]] },
   { title = "How the notes become markers", text = [[
 Lines (under Key) decides how the notes are split into lines; Write makes 1 marker of each line.
 
 1 per bar: each bar gets a marker with its notes. A bar with the same notes as the bar before it gets none, so a long C stays 1 marker. A long part that comes back starts with a marker of its own.
 
 Every note change: each new note gets its own marker.
-
-About 2 seconds: for songs without a steady tempo. It does not use REAPER's bars.
 
 Each note is in the bar where it starts, as in the tab (a note played up to 30 ms early still counts as the "1" of its bar). A note that still sounds in the next bar is the first note of that line too (often it is played again there, and the detection heard 1 long note). A bar with the same notes as the bar before it gets no line, so a long C stays 1 marker.]] },
   { title = "Key and note names", text = [[
@@ -2335,15 +2320,15 @@ Which E is it? A note in the lowest octave of the bass has its plain name ("E" =
 
 A fast run (4 notes or more in a bar)? Every note gets its string and fret, chosen for the fewest hand moves: "F (D 3) - Eb (D 1) - C (A 3) - Bb (A 1)".
 
-The same note played again and again (8ths, 16ths)? Tab Viewer listens for each pluck, so the tab and the export get them as separate notes (the markers stay short). Plucks still missed? Set the tempo first, then turn on Settings > Note Detection > Split repeated notes (off by default): it also checks every 16th of a long note for a pluck it missed.
+The same note played again and again (8ths, 16ths)? Tab Viewer listens for each pluck, so the tab and the export get them as separate notes (the markers stay short). Plucks still missed? Set the tempo first, then turn on Settings > Detection > Split repeated notes (off by default): it also checks every 16th of a long note for a pluck it missed.
 
-Rather string numbers, as in tab books ("E (3 7)")? Settings > Note Detection > String names.
+Rather string numbers, as in tab books ("E (3 7)")? Settings > Detection > String names.
 
-Pick the "Tuning" of the bass for the song (Standard, Half step down, Drop D, Drop C, 5-string). Changed it after Find notes? The list follows at once: the strings and frets, and the low notes that can now be an octave lower are heard again (your corrections stay). Only the names, no frets? Turn off Settings > Note Detection > String for high notes, and Settings > Note Detection > Fingering for runs.]] },
+Pick the "Tuning" of the bass for the song (Standard, Half step down, Drop D, Drop C, 5-string). Changed it after Find notes? The list follows at once: the strings and frets, and the low notes that can now be an octave lower are heard again (your corrections stay). Only the names, no frets? Turn off Settings > Detection > String for high notes, and Settings > Detection > Fingering for runs.]] },
   { title = "Markers or a Notes track", text = [[
 The dropdown next to "Write" decides what it makes: markers, text items on a "Notes" track above the bass, or both. The text items have more room than the marker names, so long lines stay readable.
 
-Write again as often as you like: only the markers and text items of the Note Detection tab are replaced.]] },
+Write again as often as you like: only the markers and text items of the Detection tab are replaced.]] },
   { title = "Export (Guitar Pro, MIDI)", text = [[
 Want the part in Guitar Pro, or want to hear the notes? Click More... > Export... after Find notes.
 
@@ -2363,9 +2348,9 @@ Fast fills, slides, and drums or guitars that stayed in the bass file. 2 methods
 
 A note that fades out can turn into its own overtone (a 5th higher). These lines are yellow too.]] },
 }
-local MODES = { { "bar", "1 per bar" }, { "change", "Every note change" }, { "sec", "About 2 seconds" } }
+local MODES = { { "bar", "1 per bar" }, { "change", "Every note change" } }
 -- An example of each Lines choice (the grey line under it).
-local MODE_EXAMPLE = { bar = "For example: Bar 5: C - G", change = "For example: C, then G, then F", sec = "For example: 0:12 C - G" }
+local MODE_EXAMPLE = { bar = "For example: Bar 5: C - G", change = "For example: C, then G, then F" }
 local OUTS = { { "markers", "Markers" }, { "track", "Notes track" }, { "both", "Markers and Notes track" } }
 
 -- UI.trunc, kept per text until the width changes (the rows of the list: not cut again every frame).
@@ -2557,10 +2542,10 @@ function UI.draw_top(v)
 end
 
 local STRING_STYLES = { { "letters", "Letters (E A D G)" }, { "numbers", "Numbers (4 3 2 1)" } }
--- Settings > Note Detection (Tab Viewer's Settings tab draws its heading). 1 mode (decided 25 November 2026).
+-- Settings > Detection (Tab Viewer's Settings tab draws its heading). 1 mode (decided 25 November 2026).
 function N.draw_settings()
   local ch, pick
-  local function dirty(c) if c then R.sdirty = true end end -- (the Note Detection settings: saved by Notes.lua)
+  local function dirty(c) if c then R.sdirty = true end end -- (the Detection settings: saved by Notes.lua)
   ch, S.frets = UI.set_toggle("String for high notes", S.frets,
     "On (the default): a note above the lowest octave gets its string and fret, for example \"E (A 7)\". Off: only the note names. For the next Find notes.")
   dirty(ch)
@@ -2713,7 +2698,7 @@ end
 local FIND_TIP = "Tab Viewer listens to the bass track (Track) and fills the list. Nothing is written to the project yet."
 local FIND_AGAIN_TIP = "Listen again: the new list replaces this one (it asks first; Undo brings it back)."
 local IMPORT_TIP = "Have the Guitar Pro tab of the song? Its notes become the list (the track picked in the Tab tab, with your fixes, the repeats played out). It asks first when the list has notes; Undo brings the old list back."
--- The rows of the Note Detection tab (the UI/UX review of 25 November 2026, in the order of the work): Track with
+-- The rows of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work): Track with
 -- Find notes (blue only without a list; while it listens: Cancel), Key and Tuning on 1 row (2 rows when narrow),
 -- Lines. Find tempo: the toolbar only.
 function UI.draw_song()
@@ -2814,7 +2799,7 @@ function UI.draw_song()
     ImGui.EndCombo(ctx)
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled(locked and "Click Find notes again to change this." or "How the notes are split into lines (each line becomes 1 marker at Write). No steady tempo? Use \"About 2 seconds\".")
+  UI.tip_disabled(locked and "Click Find notes again to change this." or "How the notes are split into lines (each line becomes 1 marker at Write).")
   ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + host.CFG.LABEL_W) -- (under the dropdown)
   ImGui.TextColored(ctx, COL.TEXT_DIM, MODE_EXAMPLE[P.mode] or "")
 end
@@ -2995,7 +2980,7 @@ function UI.draw_foot()
   end
 end
 
--- The Note Detection tab (in Tab Viewer's panel; h: the height it has): the Song rows (Track, Key, Tuning,
+-- The Detection tab (in Tab Viewer's panel; h: the height it has): the Song rows (Track, Key, Tuning,
 -- Markers), the Notes heading with Find notes, the list, then the foot (Join ... Undo, Write, More...).
 function N.draw(h)
   local v = UI.view()
@@ -3011,14 +2996,14 @@ function N.draw(h)
   ImGui.SetCursorPosY(ctx, y + lh + CFG.SP_ROW)
   UI.draw_foot()
 end
--- The windows of the Note Detection tab (the question, Done: clean up, Export): every frame, inside Tab Viewer's window.
+-- The windows of the Detection tab (the question, Done: clean up, Export): every frame, inside Tab Viewer's window.
 function N.draw_popups()
   UI.draw_ask()
   UI.draw_finish()
   UI.draw_export()
 end
 
--- The keys of the Note Detection tab (while it is open, the window has the focus and no field is typed in).
+-- The keys of the Detection tab (while it is open, the window has the focus and no field is typed in).
 function N.keys()
   if not ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows()) or ImGui.IsAnyItemActive(ctx)
     or R.edit or R.ask or R.finish or R.export or ImGui.IsPopupOpen(ctx, "", ImGui.PopupFlags_AnyPopup()) then return end
@@ -3095,11 +3080,11 @@ function N.busy() return R.find ~= nil end -- (Find notes listens)
 function N.import(list, open, done)
   local function go()
     local n = Imp.apply(list, open)
-    UI.notice(string.format("Imported %d notes into the Notes list. Changed your mind? Undo in the Note Detection tab brings the old list back.", n))
+    UI.notice(string.format("Imported %d notes into the Notes list. Changed your mind? Undo in the Detection tab brings the old list back.", n))
     if done then done(n) end
   end
   if #P.rows > 0 then
-    UI.ask("Replace the Notes list with the notes of this tab? Your list and its corrections go (Undo in the Note Detection tab brings them back).",
+    UI.ask("Replace the Notes list with the notes of this tab? Your list and its corrections go (Undo in the Detection tab brings them back).",
       "Replace", go)
   else
     go()

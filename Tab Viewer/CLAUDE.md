@@ -2,7 +2,7 @@
 
 Guitar Pro tabs in the project: Open tab... (a tab per region), the Track dropdown, the tab on the bars of the song
 (Find tempo, Start), chord names, playing marks, note lengths, fixes of the tab (saved in the project), loop and speed.
-Chart Cue look, 1 window. Drums: later. The Note Detection tab (`Notes.lua`): the bass notes as markers to learn
+Chart Cue look, 1 window. Drums: later. The Detection tab (`Notes.lua`): the bass notes as markers to learn
 the part; read `Tab Viewer/NOTES.md` before work on it.
 
 ## Rules
@@ -26,19 +26,19 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   tempo, 1/2 x2, bar 1, short bars, Play with click, Set tempo with `hold` / `map` / `align`). What the host gives:
   the comment at `TP.new`; Tab Viewer gives it in `Tempo = TP.new({...})`, the Notes list adds `first_note`,
   `shift` and `set_extra`.
-- `Notes.lua`: the Note Detection tab (NOTES.md).
+- `Notes.lua`: the Detection tab (NOTES.md).
 - `tools\scripts.psd1` `Uses`: `deploy.ps1` and `release.ps1` copy the 3 files next to the script (`[nomain]` in its
   `@provides`); Tab Viewer loads them from its own folder (`debug.getinfo`).
 
 ## The window
 
-- The tab strip (`UI.draw_tabs`, as MIDI Pilot): Tab, Note Detection, Settings (gear), Help ("?") (`R.page`, not
+- The tab strip (`UI.draw_tabs`, as MIDI Pilot): Tab, Detection, Settings (gear), Help ("?") (`R.page`, not
   saved; `PAGE_NAMES`, `UI.PAGE_NOTES`, `UI.PAGE_SETTINGS`, `UI.PAGE_HELP`); icons when narrow; right-click a text tab
-  > Hide this tab (Settings > Look > Tabs). The tab keys work only in the Tab tab, the list keys only in the Note
+  > Hide this tab (Settings > Look > Tabs). The tab keys work only in the Tab tab, the list keys only in the
   Detection tab.
 - The toolbar (inspired by Guitar Pro's): `UI.draw_toolbar`, its places from `Tabs.toolbar_rows` (a part without
   room goes to the next row): left Find tempo; center the size, |<, <, play / stop, >, >| (play in the middle of the
-  window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Note Detection tab by lines,
+  window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Detection tab by lines,
   `Notes.go`), the speed with a note icon; right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes
   `Tabs.undo` or the list `Notes.undo`, then REAPER's; Ctrl+Z too). Icons: `UI.tb_icon`, `ICON` (drawn, as Chart
   Cue's; plain icons, not Chart Cue's framed transport buttons: the user's choice). Next: loop, metronome and count-in, transpose ("Later" below).
@@ -95,8 +95,8 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   " (2)"); the 1st save and Save as copy it into the new folder (`Tabs.moved`). A missing file: a grey line; a file
   that can not be read at Open tab...: an orange notice, nothing changes.
 - `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks`, `lengths`, `written`,
-  `tremnotes`, `tab_hide`, `zoom` (only when not 100%), `closed` (the folded Settings sections: Tab, Note Detection,
-  Look, Window). The Note Detection tab keeps its own keys in the same section (NOTES.md).
+  `tremnotes`, `tab_hide`, `zoom` (only when not 100%), `closed` (the folded Settings sections: Tab, Detection,
+  Look, Window). The Detection tab keeps its own keys in the same section (NOTES.md).
 - Not saved: the loop and the speed (100% again at close), the selection, `R.page`.
 
 ## The tab
@@ -123,7 +123,7 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   breaks), Space. Each fix is 1 step of `R.undo` (`Tabs.edit`, `Tabs.undo`; this session only, because REAPER's undo
   is thought not to restore ProjExtState: not checked yet, a trial in "Later"). `nt.mine` (green, Mark my fixes). Right-click a bar > Time signature... (`UI.draw_meter`).
 - Loop and speed: Shift+click a bar = `Tabs.loop` (REAPER's time selection from the selected note or the edit cursor
-  to the bar end, repeat on; `Tabs.loop_off` gives back the old ones; 1 loop at a time with the Note Detection tab);
+  to the bar end, repeat on; `Tabs.loop_off` gives back the old ones; 1 loop at a time with the Detection tab);
   the speed dropdown = `Tabs.speed` (the master play rate, preserve pitch on while slower; yellow below 100%).
 - Playing marks (`GP.fx`): hammer-on / pull-off, slides, bends, vibrato, palm mute (the P.M. row), harmonics,
   tremolo picking (slashes, or written out as notes with `S.tremnotes`), dead notes "x". Chord names: from the file,
@@ -149,10 +149,10 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
 - Time signature, "Keep their time (move bar lines)": the notes keep their place in the song and the bar lines move;
   needs new bars that the file does not have (repeats, fixes, line breaks, bar numbers). "Fit into the bar" is built.
 - 1 small trial: does REAPER's undo bring back the project data (ProjExtState) written inside an undo block? If yes,
-  the tab fixes and the Note Detection list use REAPER's undo (also after a close; the Undo buttons stay).
+  the tab fixes and the Detection list use REAPER's undo (also after a close; the Undo buttons stay).
 - The tab logic (layout, repeats, rhythm, fixes) into its own file, as Tempo.lua: only when the tab view in Chart Cue
   starts.
-- 1 project watcher: Tab Viewer's `Project.update` tells the Note Detection tab, so the order (its list first, then
+- 1 project watcher: Tab Viewer's `Project.update` tells the Detection tab, so the order (its list first, then
   the tab) is in code, not in a comment (`stale-state`). With it: Notes' `Project.save` does not update its
   `R.state_cc`.
 - Small tidying: "play from" 3 times (`UI.play_at`, `UI.play_from`, `Tempo.try`), "is it an audio take" 5 times, the

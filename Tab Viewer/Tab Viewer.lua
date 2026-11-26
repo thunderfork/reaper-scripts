@@ -36,7 +36,7 @@
 
 local r = reaper
 
--- The files next to this script: the Guitar Pro reader (Guitar Pro.lua), Find tempo (Tempo.lua) and the Note Detection tab
+-- The files next to this script: the Guitar Pro reader (Guitar Pro.lua), Find tempo (Tempo.lua) and the Detection tab
 -- (Notes.lua: a function that makes the Notes module, NotesNew, below).
 local GP, TP, NotesNew
 do
@@ -145,7 +145,7 @@ end
 
 local Util, Project, Tabs, UI = {}, {}, {}, {}
 local Tempo -- Find tempo (TP.new, below)
-local Notes -- the Note Detection tab (Notes.lua, made after ImGui, below)
+local Notes -- the Detection tab (Notes.lua, made after ImGui, below)
 
 -- R: runtime state (not saved). P: the project data. S: settings of this computer.
 local R = {
@@ -172,7 +172,7 @@ local R = {
   rgns = nil,        -- the regions of the project: { by = { [guid] = region }, list } (Tabs.regions)
   tab_labels = nil,  -- the Tab dropdown: { txt, sel } per tab (Tabs.relist)
   follow_last = nil, -- the tab at the play or edit cursor in the frame before (0: a region without a tab; Tabs.follow)
-  page = 1,          -- the open tab of the window (1 Tab, 2 Note Detection: UI.PAGE_NOTES, UI.PAGE_SETTINGS, UI.PAGE_HELP; not saved)
+  page = 1,          -- the open tab of the window (1 Tab, 2 Detection: UI.PAGE_NOTES, UI.PAGE_SETTINGS, UI.PAGE_HELP; not saved)
 }
 -- tabs: the tabs of the project, each { file, rgn, track, bar }. file: the tab (relative to the project folder:
 -- "Tabs/song.gp"; else a full path); rgn: the GUID of its region (nil: no region, it starts from the song's bar 1);
@@ -191,7 +191,7 @@ local S = {
   tremnotes = true,  -- Settings > Tab > Tremolo as notes (each picked note written out; off: slashes above the note)
   written = true,    -- Settings > Tab > Repeats as written (|: :|, 1. 2. as in Guitar Pro; off: played out)
   zoom = 1,          -- the size of the tab (the toolbar's - / +; CFG.ZOOM_MIN .. CFG.ZOOM_MAX)
-  tab_hide = {},     -- Settings > Look > Tabs: the hidden text tabs ({ [1] Tab, [2] Note Detection = true }; Settings and Help always show)
+  tab_hide = {},     -- Settings > Look > Tabs: the hidden text tabs ({ [1] Tab, [2] Detection = true }; Settings and Help always show)
   closed = {},       -- the folded Settings sections ({ [i] = true }, i in SETTINGS_SECTIONS)
 }
 
@@ -239,7 +239,7 @@ if not TESTING then
   end
 end
 
--- The Note Detection tab (Notes.lua, decided 24 November 2026): it gets what the 2 share (the window: ImGui, COL, CFG and the UI
+-- The Detection tab (Notes.lua, decided 24 November 2026): it gets what the 2 share (the window: ImGui, COL, CFG and the UI
 -- helpers; GP, TP; R for a running Find tempo), and saves the tab of the found notes as Tab Viewer saves a tab
 -- (Project.entry_line, Project.entry_text). Its list changed: R.notes_dirty (the tab of the found notes again).
 Notes = NotesNew({ GP = GP, TP = TP, CFG = CFG, COL = COL, ImGui = ImGui, UI = UI, R = R,
@@ -269,7 +269,7 @@ function Util.load_settings()
   local v = r.GetExtState(CFG.EXT, "dock")
   if v ~= "" then S.dock = math.floor(tonumber(v) or 0) end
   R.dock_req = S.dock -- the window opens where it was (floating or in its docker)
-  S.tab_hide = Util.load_set("tab_hide", 2) -- (the hidden text tabs: "2" = Note Detection)
+  S.tab_hide = Util.load_set("tab_hide", 2) -- (the hidden text tabs: "2" = Detection)
   S.closed = Util.load_set("closed", 4)     -- (the folded Settings sections: "1" = Tab ... "4" = Window)
   S.zoom = Tabs.zoom_step(tonumber(r.GetExtState(CFG.EXT, "zoom")) or 1, 0)
 end
@@ -1011,7 +1011,7 @@ function Tabs.loop(bi)
   local sel = R.tsel
   if sel and tab.bars[sel.bi] then sbi, sq = sel.bi, sel.q else sbi, sq = Tabs.place_of(r.GetCursorPositionEx(R.proj)) end
   sbi, sq = Tabs.loop_start(bi, sbi, sq)
-  Notes.loop_off() -- (the loop of a row of the Note Detection tab ends first: 1 loop at a time)
+  Notes.loop_off() -- (the loop of a row of the Detection tab ends first: 1 loop at a time)
   local old = R.loop or { rep = r.GetSetRepeatEx(R.proj, -1), ts = { r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false) } }
   local t0, t1 = Tabs.time_of(sbi, sq), Tabs.time_of(bi, tab.bars[bi].len)
   R.loop = { bi = bi, sbi = sbi, sq = sq, rep = old.rep, ts = old.ts, t0 = t0, t1 = t1 }
@@ -1906,7 +1906,7 @@ function UI.zoom_fonts()
 end
 
 local HELP_INTRO = "Tab Viewer shows a Guitar Pro tab in your project: pick a track, read its tab, and click to hear "
-  .. "the song from there. The Note Detection tab turns the bass notes (from the tab, or found in a bass stem) into markers."
+  .. "the song from there. The Detection tab turns the bass notes (from the tab, or found in a bass stem) into markers."
 local HELP_TOPICS = {
   { title = "Open a tab", text = [[
 Got a Guitar Pro tab of the song? Click "Open tab..." and pick the file: .gp (Guitar Pro 7 and 8), .gpx (Guitar Pro 6), .gp5, .gp4 or .gp3 (Guitar Pro 5, 4 and 3).
@@ -1945,7 +1945,7 @@ In the project: its tabs, the region of each one, the track you picked, the bar 
 
 In the project, also: the Notes list until you click More... > Done: clean up (the found notes, the tuning, the key changes, and your fixes of the found notes' tab). Save the project to keep it.
 
-On this computer: the Light theme, the hidden tabs, the folded Settings sections, Follow playback, Chord names, Mark my fixes, Playing marks, Note lengths, Tremolo as notes, Repeats as written, the window dock, Settings > Note Detection, the Write choice and the export folder.
+On this computer: the Light theme, the hidden tabs, the folded Settings sections, Follow playback, Chord names, Mark my fixes, Playing marks, Note lengths, Tremolo as notes, Repeats as written, the window dock, Settings > Detection, the Write choice and the export folder.
 
 Not saved: the loop and the speed (back to 100% when Tab Viewer closes).]] },
 }
@@ -2287,13 +2287,13 @@ function UI.tb_icon(id, kind, w, H, on, tip)
 end
 
 -- Undo / Redo (dir -1 / 1; the toolbar arrows, Ctrl+Z / Ctrl+Shift+Z): the steps of the open tab first (the tab
--- fixes, or the Note Detection list), then REAPER's.
+-- fixes, or the Detection list), then REAPER's.
 function UI.undo(dir)
   local done
   if R.page == UI.PAGE_NOTES then done = Notes.undo(dir) else done = Tabs.undo(dir) end
   if not done then r.Main_OnCommand(dir < 0 and 40029 or 40030, 0) end -- Edit: Undo / Redo
 end
--- Has the open tab (the tab fixes, or the Note Detection list) an Undo (dir -1) or Redo (dir 1) step?
+-- Has the open tab (the tab fixes, or the Detection list) an Undo (dir -1) or Redo (dir 1) step?
 function UI.has_undo(dir)
   if R.page == UI.PAGE_NOTES then return Notes.has_undo(dir) end
   return #(dir < 0 and R.undo or R.redo) > 0
@@ -2318,7 +2318,7 @@ function UI.draw_undo(IW, H)
 end
 
 -- |<, <, > and >| (dir 0, -1, 1, 2): the Tab tab to bar 1 / the bar before / after the one at the cursor / the last
--- bar, the Note Detection
+-- bar, the Detection
 -- tab to its lines. The edit cursor goes there (playing: the song jumps there).
 function UI.go(dir)
   if R.page == UI.PAGE_NOTES then Notes.go(dir); return end
@@ -2470,7 +2470,7 @@ end
 local TB_W, TB_POS = {}, {} -- (the toolbar's widths and places: filled every frame, not made)
 -- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): at the left Find tempo; in the middle the tab
 -- size, |<, <, play / stop, >, >| (play in the middle of the window), the speed; at the right Undo / Redo. A narrow
--- window: 2 or 3 rows. The controls work in the Tab and the Note Detection tab.
+-- window: 2 or 3 rows. The controls work in the Tab and the Detection tab.
 function UI.draw_toolbar()
   UI.vgap(CFG.SP_EDGE)
   local x0, y0 = ImGui.GetCursorPosX(ctx), ImGui.GetCursorPosY(ctx)
@@ -2496,13 +2496,13 @@ end
 
 -- The sections of the Settings menu (tools\docs-check.ps1 reads the names).
 local SETTINGS_SECTIONS = {
-  { "Tab" }, { "Note Detection" }, { "Look" }, { "Window" },
+  { "Tab" }, { "Detection" }, { "Look" }, { "Window" },
 }
 -- The text tabs of the window (UI.draw_tabs), then Settings and Help.
-local PAGE_NAMES = { "Tab", "Note Detection" }
+local PAGE_NAMES = { "Tab", "Detection" }
 UI.PAGE_NOTES, UI.PAGE_SETTINGS, UI.PAGE_HELP = 2, #PAGE_NAMES + 1, #PAGE_NAMES + 2
 function UI.page_shown(i) return not S.tab_hide[i] end
--- The Settings tab (the gear): Tab, Note Detection (Notes.lua), Look (with Tabs: the text tabs shown), Window.
+-- The Settings tab (the gear): Tab, Detection (Notes.lua), Look (with Tabs: the text tabs shown), Window.
 function UI.draw_settings()
   local function head(i)
     local _, open = UI.heading(SETTINGS_SECTIONS[i][1], i == 1, nil, i)
@@ -2821,7 +2821,7 @@ function UI.draw_tracks()
   if not R.rows then
     ImGui.PushTextWrapPos(ctx, 0)
     ImGui.TextColored(ctx, COL.TEXT_DIM, R.err or (P.tabs[1] and "No tab for this region yet. Put the edit cursor in it, then click Open tab..."
-      or "No tab yet. Open a Guitar Pro file (.gp, .gpx, .gp5, .gp4 or .gp3). No tab of the song? Find notes in the Note Detection tab shows the bass notes here."))
+      or "No tab yet. Open a Guitar Pro file (.gp, .gpx, .gp5, .gp4 or .gp3). No tab of the song? Find notes in the Detection tab shows the bass notes here."))
     ImGui.PopTextWrapPos(ctx)
     if not P.tabs[1] then -- (with tabs, Open tab... is on the Tab row)
       UI.vgap(CFG.SP_ROW)
@@ -2848,7 +2848,7 @@ function UI.draw_tracks()
     ImGui.BeginDisabled(ctx, Notes.busy())
     if UI.button("Import to list", iw) then UI.import_to_list() end
     ImGui.EndDisabled(ctx)
-    UI.tip_disabled("The notes of this track (with your fixes, the repeats played out) become the list of the Note Detection tab: markers to learn the part. It asks first when the list has notes; Undo in the Note Detection tab brings the old list back.")
+    UI.tip_disabled("The notes of this track (with your fixes, the repeats played out) become the list of the Detection tab: markers to learn the part. It asks first when the list has notes; Undo in the Detection tab brings the old list back.")
   end
   ImGui.SetCursorPosX(ctx, x0) -- (the bars, time signature and tempo of the file, under Track)
   ImGui.TextColored(ctx, COL.TEXT_DIM, R.info)
@@ -2874,7 +2874,7 @@ function UI.draw_tracks()
   local _, ah = ImGui.GetContentRegionAvail(ctx)
   UI.draw_tab(math.max(40, ah))
 end
--- Import to list: the notes of the tab into the Notes list (it asks when the list has notes), then the Note Detection tab.
+-- Import to list: the notes of the tab into the Notes list (it asks when the list has notes), then the Detection tab.
 function UI.import_to_list()
   local list, open = Tabs.notes_of_tab()
   if not list[1] then UI.notice("This track has no notes to import.", true); return end
@@ -3654,7 +3654,7 @@ function UI.draw_panel_menu()
 end
 
 -- The window: the toolbar, the tab strip, then the panel of the open tab (a rounded area): the Tab tab has the Track
--- dropdown and the tab, the Note Detection tab is Notes.draw; Settings and Help scroll.
+-- dropdown and the tab, the Detection tab is Notes.draw; Settings and Help scroll.
 function UI.draw_main()
   UI.draw_toolbar()
   UI.draw_tabs()

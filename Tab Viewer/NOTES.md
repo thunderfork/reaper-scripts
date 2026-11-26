@@ -1,4 +1,4 @@
-# The Note Detection tab of Tab Viewer (`Notes.lua`)
+# The Detection tab of Tab Viewer (`Notes.lua`)
 
 Finds the notes of a separated bass item (or takes them from the tab: Import to list), shows them in a list to check,
 and writes them as markers, as text items on a "Notes" track, or both. For a player who learns the part in REAPER.
@@ -62,7 +62,8 @@ The history of every decision: git.
 
 ## Lines (`Group`, `List`)
 
-- Lines (`P.mode`): "1 per bar" (`Group.project_bars`), "Every note change", "About 2 seconds" (no steady tempo).
+- Lines (`P.mode`): "1 per bar" (`Group.project_bars`), "Every note change" (`Group.change_bars`). A saved older
+  mode is read as "1 per bar".
 - Strict bars: a note is in the bar where it starts; a start up to `CFG.BAR_TOL` (30 ms)
   before a bar line is the 1 of that bar. A note of an earlier bar that rings `CFG.HELD_MIN` (0.15 s) into a bar is
   its first note too, a plain name ("(G)" was tried and removed: repeated 8ths heard as 1 long note). A bar with the
@@ -100,7 +101,7 @@ The history of every decision: git.
   `Imp.grid` and `Imp.legato`, with the places of the list; `over` = the part after the bar line). `R.found_e` =
   `P.tab`: the fixes, line breaks and start bar of that tab are saved with the list (`N.touch`), so the list's Undo
   brings them back too. The list or the tempo changed: `host.notes_changed` -> `Tabs.notes_step` makes it again.
-- Import to list (the Tab tab, next to Track; the same as Import from tab on the Note Detection tab's Track row, shown
+- Import to list (the Tab tab, next to Track; the same as Import from tab on the Detection tab's Track row, shown
   only with a tab): `Tabs.notes_of_tab` -> `N.import` (asks when the list has lines) ->
   `Imp.apply` (the notes with `man`, the strings of the tab, the tuning); it bakes the found tab's fixes into the
   notes (`P.tab` goes). Find notes and Clear start a new tab.
@@ -111,7 +112,7 @@ The history of every decision: git.
   heading), Key and Tuning on 1 row (`CFG.KEY_W`, `CFG.TUNE_LABEL_W`; narrower than `CFG.TUNE_MIN_W`: 2 rows), Lines
   with an example. Notes heading: the count and Next not sure at its right. Without a list: the grey hint, no bottom
   rows. With a list: Join, Split, + Add, Delete; then the blue Write, its dropdown, More... (Export, Done, Clear).
-- Settings > Note Detection: String for high notes, Fingering for runs, Split repeated notes, String names.
+- Settings > Detection: String for high notes, Fingering for runs, Split repeated notes, String names.
 
 ## REAPER facts
 

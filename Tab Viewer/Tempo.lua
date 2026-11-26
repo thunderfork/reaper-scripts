@@ -1,6 +1,6 @@
 -- @noindex
 -- Tempo: Find tempo (find the tempo of a song from a track or from the tab, put REAPER's bars on it). Used by Tab
--- Viewer (its Find tempo, and the Note Detection tab); ReaPack installs it next to the script (@provides).
+-- Viewer (its Find tempo, and the Detection tab); ReaPack installs it next to the script (@provides).
 --   local TP = dofile(<folder> .. "Tempo.lua")
 --   local Tempo = TP.new(host)  -- host: see TP.new
 -- Moved from Note Detective (23 November 2026, segment 2d; the tab part, Tempo.from_tab / Beat.tab_plan, came with

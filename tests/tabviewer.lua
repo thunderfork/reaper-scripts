@@ -634,7 +634,7 @@ test("the tab of a track: the bars as they play (repeats, 3/4), the notes on the
   end
   eq(table.concat(t, " | "), "0+4/16: 0.00 s2 3 | 4+4/16: 0.00 s3 2, 1.50 s3 x | 8+4/16: 0.00 s3 2, 1.50 s3 x | 12+3/12: 0.00 s4 0",
     "bar 2 twice, the 3/4 bar 12 16ths, the muted note an x")
-  eq(#GP.notes(GP.parse(D.GPIF), 1), 4, "Note Detection: no dead notes (bar 2 plays twice)")
+  eq(#GP.notes(GP.parse(D.GPIF), 1), 4, "Detection: no dead notes (bar 2 plays twice)")
   write(tmp .. "\\src\\guitar.gp5", old_file(510))
   local g = GP.tab(GP.read(tmp .. "\\src\\guitar.gp5"), 1) -- (the guitar of the older file test: Drop D)
   eq(table.concat(g.names, " "), "D A D G B E", "the highest E is not the lowest name: capital")
@@ -1502,9 +1502,9 @@ test("notes tab: no Guitar Pro tab here: the found notes as a tab; a fix is save
   eq(R.doc, nil, "no notes: no tab")
 end)
 
-test("a bar loop (Tab tab) and a line loop (Note Detection tab): 1 at a time; after both, repeat and the time selection as before (debug-time 25 November 2026)", function()
+test("a bar loop (Tab tab) and a line loop (Detection tab): 1 at a time; after both, repeat and the time selection as before (debug-time 25 November 2026)", function()
   local N = C.Notes
-  N.Project.update() -- (the project of the Note Detection tab, as each frame of the window does)
+  N.Project.update() -- (the project of the Detection tab, as each frame of the window does)
   Tabs.open(src)
   local function state()
     local a, b = r.GetSet_LoopTimeRange2(0, false, true, 0, 0, false)
@@ -1731,7 +1731,7 @@ test("Find tempo > From tab, then Set tempo (Dev 2 of the review, 24 November 20
   Project.update()
 end)
 
-local nloaded, nerr = pcall(function() -- (the tests of the Note Detection tab)
+local nloaded, nerr = pcall(function() -- (the tests of the Detection tab)
   dofile(here .. "\\notes.lua")({ test = test, eq = eq, ok = ok, near = near, TV = C })
 end)
 if not nloaded then test("load tests\\notes.lua", function() error(nerr) end) end

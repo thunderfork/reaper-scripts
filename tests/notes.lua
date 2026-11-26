@@ -1,5 +1,5 @@
 -- @noindex
--- The tests of Tab Viewer's Note Detection tab (Tab Viewer\Notes.lua; it was the script Note Detective). tests\tabviewer.lua
+-- The tests of Tab Viewer's Detection tab (Tab Viewer\Notes.lua; it was the script Note Detective). tests\tabviewer.lua
 -- runs them after its own (.\tools\test.ps1 -Script "Tab Viewer"): this file returns a function that adds them to its
 -- list (T: test, eq, ok, near, TV = TabViewerTest). The first one opens their own saved test project.
 return function(T)
@@ -17,7 +17,7 @@ local function empty_project(path)
 end
 local Key, Group, List, Project, Find, Out, R = C.Key, C.Group, C.List, C.Project, C.Find, C.Out, C.R
 
-test("notes: the test project of the Note Detection tab opens", function()
+test("notes: the test project of the Detection tab opens", function()
   r.RecursiveCreateDirectory(tmp, 0)
   empty_project(proj_file)
   r.Main_openProject("noprompt:" .. proj_file)
@@ -287,10 +287,9 @@ test("group: a repeated block starts with a marker of its own", function()
   eq(next(Group.sections({})), nil)
 end)
 
-test("group: every note change, and about 2 seconds", function()
+test("group: every note change", function()
   local n = notes({ { 0, 0, 0.5 }, { 0, 0.5, 1 }, { 3, 1, 1.5 }, { 5, 2.2, 3 }, { 7, 4.5, 5 } })
   eq(texts(Group.make(n, "change", "C minor", 0, 5)), "C | Eb | F | G")
-  eq(texts(Group.make(n, "sec", "C minor", 0, 5)), "C - Eb | F | G")
   eq(#Group.make({}, "bar", "", 0, 5), 0, "no notes")
 end)
 
@@ -303,10 +302,11 @@ end)
 
 test("list: the project data goes out and comes back", function()
   local p = set_rows({ { 1.5, "Ab - Bb", true, { 1.5, 2 } }, { 3, "F (D 3)" } }, "C minor")
-  p.mode, p.src, p.mk = "sec", "{A}", { "{B}", "{C}" }
+  p.mode, p.src, p.mk = "change", "{A}", { "{B}", "{C}" }
   local txt = List.serialize(p)
   local q = List.parse(txt)
   eq(List.serialize(q), txt)
+  eq(List.parse("mode=sec").mode, "bar", "the removed About 2 seconds (26 November 2026): 1 per bar")
   eq(q.rows[1].doubt, true); eq(#q.rows[1].ts, 2); eq(q.rows[2].ts, nil)
   eq(List.serialize(List.default()), "", "nothing to save: no text")
   eq(#List.parse("row=x\nrow=1\t0\t\t\nfoo\nkey=").rows, 0, "broken lines are skipped")

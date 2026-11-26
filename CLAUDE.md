@@ -14,8 +14,8 @@ script's files there). Each folder has its own CLAUDE.md with its modules, data,
   A preparation tool; Chart Cue look with tabs; in the project only its Soundcheck list (its library index is in Data\SFX Drop).
 - **Mono Merge** (`Mono Merge/`): joins 2 mono items into 1 stereo file. 2 actions, no window (no ReaImGui),
   no saved data.
-- **Tab Viewer** (`Tab Viewer/`): Guitar Pro tabs in the project, and its Note Detection tab (the bass notes as
-  markers). Chart Cue look with tabs. Its shared files and the Note Detection notes: its folder CLAUDE.md.
+- **Tab Viewer** (`Tab Viewer/`): Guitar Pro tabs in the project, and its Detection tab (the bass notes as
+  markers). Chart Cue look with tabs. Its shared files and the Detection notes: its folder CLAUDE.md.
 
 The rules below apply to all the scripts ("the script" = the script being changed).
 
@@ -29,7 +29,7 @@ The rules below apply to all the scripts ("the script" = the script being change
   click must not stop the show.
 - A studio or live engineer preparing a session (MIDI Pilot, FX Link, Session Prep, SFX Drop, Mono Merge,
   Tab Viewer): speed of preparation, what REAPER really does to the tracks, undo.
-- A bass player who learns a part in REAPER (Tab Viewer: the tab, and the markers of its Note Detection tab): easy songs, reads
+- A bass player who learns a part in REAPER (Tab Viewer: the tab, and the markers of its Detection tab): easy songs, reads
   the note names on the screen.
 - Experts (besides the senior developer and the UI/UX designer): QA tester (empty projects, playing / stopped,
   project switch), REAPER and ReaImGui specialist, a ReaPack user who installs the scripts for the first time.

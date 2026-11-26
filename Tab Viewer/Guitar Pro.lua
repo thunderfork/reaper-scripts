@@ -1,6 +1,6 @@
 -- @noindex
 -- Guitar Pro: reads Guitar Pro files (the tracks, tunings, bars and notes). Used by Tab Viewer (the Tab tab and the
--- Note Detection tab); ReaPack installs it next to the script (@provides).
+-- Detection tab); ReaPack installs it next to the script (@provides).
 -- Plain Lua 5.4 (no REAPER calls): the tests and a plain Lua can run it.
 --   local GP = dofile(<folder> .. "Guitar Pro.lua")
 --   local doc, why = GP.read(path)
@@ -1026,7 +1026,7 @@ function GP.tuning_text(open, kind, capo)
 end
 
 ---------------------------------------------------------------------------
--- WRITE A GUITAR PRO 5 FILE (.gp5; the Export of the Note Detection tab, decided 25 November 2026)
+-- WRITE A GUITAR PRO 5 FILE (.gp5; the Export of the Detection tab, decided 25 November 2026)
 ---------------------------------------------------------------------------
 -- The plain and dotted note values (quarter notes, the Guitar Pro duration: -2 whole ... 3 32nd), the longest first.
 local GP5_VALUES = {}
