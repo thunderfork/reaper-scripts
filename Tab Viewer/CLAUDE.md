@@ -157,11 +157,6 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
 
 ## Later (ideas)
 
-- The toolbar, segment 2: loop (the selected bar or the bar at the cursor / the selected line; on = the look of a
-  selected toggle, not blue), REAPER's metronome and count-in (2 buttons, REAPER's state; a trial of REAPER's actions
-  first). Segment 3: transpose 0 +/- (the tab's frets and the list's note names, not the audio; saved in the project,
-  1 value, nothing at 0: a new project key; below the open string: the next lower string, on the lowest an octave
-  up, yellow). All work in both tabs; narrow: 2 rows. Ask before each segment.
 - The Guitar Pro tab is the main feature, the detection the second: no more detection work until the user brings it
   up.
 - Not wanted: the song inside a .gp file (its audio and sync points) as the alignment reference.

@@ -25,8 +25,11 @@
   "Detection", Lines without "About 2 seconds", Set tempo with at most 1 decimal place (tested), Find tempo moved to
   the Detection tab (tested), the sections Tempo / Song / Notes (no numbers) that fold, "set" read from REAPER's
   tempo, the Tempo rows as label + dropdown with Set tempo in Find tempo's place, Play with click and Short bars
-  removed (the user's choices, 26 November 2026; manual test Open now 23). Next: Open now 23; then the toolbar segments 2 and 3
-  (`Tab Viewer/CLAUDE.md`, Later), or a Tab Viewer release when the user asks.
+  removed; more tunings in a logical order; the selection by drag / Shift+click with a Guitar Pro style band and
+  handles; the toolbar in Guitar Pro's order (Loop, speed, Count-in, Metronome, Transpose; stacked + / -); Transpose
+  (saved in the project); the bar 1 click bug (confirmed). All manual tests of Tab Viewer passed (26 November 2026);
+  nothing uncommitted; backed up. Next: a Tab Viewer release when the user asks (the `release` skill: version 1.2),
+  or the next topic.
 - Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
   what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
@@ -63,11 +66,6 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-28. Manual test (Tab Viewer, 26 November 2026): the toolbar's left group Loop, speed (no note icon), Count-in (an
-    hourglass), Metronome, Transpose (a tuning fork, the number, + / - stacked); the size: the percent with + / -
-    stacked; Transpose +2: the frets move, a note with no string left goes an octave and turns yellow, the Detection
-    names follow (your corrected lines stay), saved in the project; a fix or Import while transposed: a notice; a
-    click on the number: 0. The tunings in their new order (E to B standard, the drops, 5-string).
 
 ## Later
 
