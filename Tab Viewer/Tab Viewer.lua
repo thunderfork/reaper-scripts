@@ -2057,7 +2057,7 @@ local HELP_TOPICS = {
 # Play
 - Click the tab: the song plays from there.
 - The blue line shows where it plays. The tab scrolls along (Settings > Tab > Follow playback).
-- Tab too small? The magnifying glass: + / - (right-click: 100%).
+- Tab too small? Ctrl+wheel over the tab, or + / - next to the magnifying glass (right-click: 100%).
 # Loop a hard part
 - Drag over the notes (or click 1 note, then Shift+click another).
 - Drag the round handles to change it.
@@ -2655,7 +2655,7 @@ function UI.draw_zoom(H)
   local hit, lx, ly = UI.icon_field("##zoompct", "zoom", zoom_txt(S.zoom), UI.icon_field_w("200%"), H, not off)
   if hit then ImGui.OpenPopup(ctx, "##zoomlist") end
   if not off and ImGui.IsItemClicked(ctx, 1) and S.zoom ~= 1 then S.zoom = 1; R.sdirty = true end
-  UI.tip_disabled(off and ZOOM_OFF[1] or "Tab size. Right-click: 100%.")
+  UI.tip_disabled(off and ZOOM_OFF[1] or "Tab size (or Ctrl+wheel over the tab). Right-click: 100%.")
   ImGui.SameLine(ctx, 0, 2)
   local zin, zout = Tabs.zoom_step(S.zoom, 1), Tabs.zoom_step(S.zoom, -1)
   local d = UI.stepper("##zoom", H, not off and zin ~= S.zoom, not off and zout ~= S.zoom, off and ZOOM_OFF or ZOOM_TIPS)
@@ -3759,10 +3759,16 @@ function UI.draw_tab(h)
   -- (a clear frame around the tab, with room inside it: the user, 24 November 2026)
   ImGui.PushStyleColor(ctx, ImGui.Col_Border(), COL.BTN_ACTIVE)
   ImGui.PushStyleVar(ctx, ImGui.StyleVar_ChildRounding(), 4)
-  local vis = ImGui.BeginChild(ctx, "##tab", 0, h, ImGui.ChildFlags_Border())
+  local ctrl = ImGui.IsKeyDown(ctx, ImGui.Mod_Ctrl()) -- (Ctrl+wheel: the tab size, so the wheel does not scroll then)
+  local vis = ImGui.BeginChild(ctx, "##tab", 0, h, ImGui.ChildFlags_Border(), ctrl and ImGui.WindowFlags_NoScrollWithMouse() or 0)
   ImGui.PopStyleVar(ctx)
   ImGui.PopStyleColor(ctx)
   if not vis then return end
+  if ctrl and ImGui.IsWindowHovered(ctx) then
+    local wheel = ImGui.GetMouseWheel(ctx)
+    local z = wheel ~= 0 and Tabs.zoom_step(S.zoom, wheel > 0 and 1 or -1)
+    if z and z ~= S.zoom then S.zoom = z; R.sdirty = true end
+  end
   local tab = R.tab
   if not tab then
     ImGui.PushTextWrapPos(ctx, 0)
