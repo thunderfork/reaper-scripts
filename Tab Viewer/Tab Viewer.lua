@@ -72,7 +72,12 @@ CFG.ROW_H = 26
 CFG.TB_ICON_W = 32             -- the icons in the toolbar (Undo / Redo, the transport)
 -- REAPER's actions of the Metronome and Count-in buttons (their names: a test; checked 26 November 2026: REAPER's
 -- count-in is its pre-roll on play)
-CFG.CMD = { METRO = 40364, COUNT_IN = 41818 } -- Options: Toggle metronome; Pre-roll: Toggle pre-roll on play
+CFG.CMD = { METRO = 40364, METRO_SET = 40363 } -- Options: Toggle metronome; Options: Show metronome/pre-roll settings
+CFG.COUNT_BIT = 8   -- REAPER's "Count-in before playback": this bit of "projmetroen" (the trial of 26 November 2026)
+CFG.COUNT_GAP = 0.1 -- seconds: the 2nd play position this far ahead of the play position = a count-in or pre-roll
+CFG.COUNT_R = 56    -- the circle of the count number
+CFG.COUNT_FONT = 64 -- the count number
+CFG.FLASH_W = 6     -- the blue outline at each count beat (as Chart Cue's page-turn flash)
 CFG.TRANSPOSE_MAX = 12        -- half steps up or down (the toolbar's Transpose)
 CFG.TP_NO_FIX = "Fixes need Transpose at 0 (the toolbar): a fret you type would not be the one in the file."
 CFG.STEP_W = 18               -- the vertical half buttons + / - (the size, Transpose; as in Guitar Pro)
@@ -159,6 +164,9 @@ local R = {
   proj = nil, projfn = "", state_cc = -1, plast_txt = "", pdirty = false, sdirty = false,
   frames = 0,
   playing = false,   -- the song plays (read once per frame at the start of the loop)
+  wait_at = nil,     -- during a count-in or pre-roll: where the song starts (UI.count_step, every frame)
+  count_n = nil,     -- during REAPER's count-in: the count 1 .. 4 shown, and count_ph how far into its beat (0 .. 1)
+  count_ph = 0,
   err = nil,         -- why the tab of the project could not be read (a line in the window)
   doc = nil,         -- the opened tab (GP.read)
   rows = nil,        -- the tracks of the Track dropdown: { name, what, tun, tip, label } (Tabs.show; with the tab)
@@ -200,6 +208,7 @@ local S = {
   lengths = true,    -- Settings > Tab > Note lengths (the rhythm under the tab)
   tremnotes = true,  -- Settings > Tab > Tremolo as notes (each picked note written out; off: slashes above the note)
   written = true,    -- Settings > Tab > Repeats as written (|: :|, 1. 2. as in Guitar Pro; off: played out)
+  countshow = true,  -- Settings > Tab > Count-in display (the count 1 2 3 4 and the blue outline at each beat)
   zoom = 1,          -- the size of the tab (the toolbar's - / +; CFG.ZOOM_MIN .. CFG.ZOOM_MAX)
   tab_hide = {},     -- Settings > Look > Tabs: the hidden text tabs ({ [1] Tab, [2] Detection = true }; Settings and Help always show)
   closed = {},       -- the folded sections ({ [i] = true }: i in SETTINGS_SECTIONS, then UI.FOLD_TEMPO, UI.FOLD_SONG)
@@ -271,7 +280,7 @@ function Util.grid(x)
   return math.abs(g - x) < 1e-4 and g or x
 end
 
-local ON_OFF = { "light", "follow", "chords", "marks", "pmarks", "lengths", "tremnotes", "written" } -- (the switches of S: "1" / "0")
+local ON_OFF = { "light", "follow", "chords", "marks", "pmarks", "lengths", "tremnotes", "written", "countshow" } -- (the switches of S: "1" / "0")
 function Util.load_settings()
   for _, k in ipairs(ON_OFF) do
     local v = r.GetExtState(CFG.EXT, k)
@@ -1997,7 +2006,9 @@ local font = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE)
 local bold = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE, ImGui.FontFlags_Bold())
 local head_font = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE_BOLD, ImGui.FontFlags_Bold())
 local small_font = ImGui.CreateFont("sans-serif", CFG.FONT_SIZE - 3) -- (the playing marks of the tab)
+local count_font = ImGui.CreateFont("sans-serif", CFG.COUNT_FONT, ImGui.FontFlags_Bold()) -- (the count-in number)
 ImGui.Attach(ctx, font); ImGui.Attach(ctx, bold); ImGui.Attach(ctx, head_font); ImGui.Attach(ctx, small_font)
+ImGui.Attach(ctx, count_font)
 Notes.attach(ctx)
 -- The fonts of the tab at its zoom (TF; 100%: the fonts above). Made when the zoom is first used, and kept: by zoom
 -- step (10 = 100%).
@@ -2042,7 +2053,7 @@ Want to hear a part? Click it: the song plays from there. While it plays, a blue
 
 Does the tab start later than the song (an intro, a count-in)? Set Start (the bar of the song where bar 1 of the tab plays) with < and > (hold for faster). The bar numbers above the tab are then the song's. A tab in a region counts the bars from the first bar of its region ("bar ... of the region"). From that bar on, the tab follows the beats of your project, so set the tempo of the song first.
 
-Want to practise a hard part? Drag over the tab from its first note to its last (or click the first note, then Shift+click the last): a light blue band selects it (REAPER's time selection). Drag a round handle at its ends to make it shorter or longer. Then click the Loop button at the top, right of the play buttons (blue while it loops; no selection: it loops the bar at the edit cursor). Escape: no selection, no loop. Want a click to play along? Metronome switches REAPER's metronome, and Count-in (the hourglass) switches REAPER's pre-roll (a count before the song starts); both are blue while on.
+Want to practise a hard part? Drag over the tab from its first note to its last (or click the first note, then Shift+click the last): a light blue band selects it (REAPER's time selection). Drag a round handle at its ends to make it shorter or longer. Then click the Loop button at the top, right of the play buttons (blue while it loops; no selection: it loops the bar at the edit cursor). Escape: no selection, no loop. Want a click to play along? Metronome switches REAPER's metronome; blue while on. Want a count before the song? Count-in (the hourglass) is REAPER's Count-in before playback: clicks, then the song starts (no audio from before it). Blue while on; during the count a big 1 2 3 4 shows over the tab (off: Settings > Tab > Count-in display). Without the SWS extension, the hourglass opens REAPER's Metronome settings: tick Count-in before playback there.
 
 Your bass tuned lower or higher than the tab? Transpose (the tuning fork, left of the play buttons) moves the tab's frets and the note names of the Detection list by half steps with + and - (the audio stays; saved in the project; a click on the number: 0). A note that has no string left goes an octave up or down and turns yellow. Fixes of the tab need Transpose at 0. Too fast? The speed (the note, right of the play buttons) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
 
@@ -2121,9 +2132,10 @@ end
 function UI.tip_disabled(text)
   if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then ImGui.SetTooltip(ctx, text) end
 end
--- The play position while playing, else the edit cursor (+ Add, the tab that follows, the position line).
+-- The play position while playing (during a count-in or pre-roll: the place where the song starts), else the edit
+-- cursor (+ Add, the tab that follows, the position line).
 function UI.cursor()
-  if R.playing then return r.GetPlayPositionEx(R.proj) end
+  if R.playing then return R.wait_at or r.GetPlayPositionEx(R.proj) end
   return r.GetCursorPositionEx(R.proj)
 end
 
@@ -2661,12 +2673,72 @@ local LOOP_TIPS = {
   off = "Loop: the selection repeats (no selection: the bar at the edit cursor). Select by dragging over the tab, or Shift+click a note.",
   notes = "In the Detection tab, click a line to loop it.", none = "No tab here.",
 }
+-- The count-in (a plain function). pos: REAPER's play position; pos2: its 2nd play position, which waits at the start
+-- of the song while a count-in or pre-roll plays (the trial of 26 November 2026); bl: the length of 1 beat; num: the
+-- beats of a bar. Returns the count (1 .. num, the last beat before the song = num) and how far into its beat (0 .. 1);
+-- nil when the song itself plays.
+function Tabs.count_in(pos, pos2, bl, num)
+  local rem = pos2 - pos
+  if rem <= CFG.COUNT_GAP or not (bl > 0) or not (num >= 1) then return nil end
+  local x = rem / bl
+  local k = math.ceil(x - 1e-9) -- (the beats left, this one too)
+  return num - ((k - 1) % num), k - x
+end
+-- Is REAPER's "Count-in before playback" on? v: the text of "projmetroen".
+function Tabs.countin_on(v) return math.floor(tonumber(v) or 0) & CFG.COUNT_BIT ~= 0 end
+local function countin_state() local _, v = r.get_config_var_string("projmetroen"); return Tabs.countin_on(v) end
+-- The hourglass: with the SWS extension it switches REAPER's count-in; without it, REAPER has no action for it: the
+-- click opens REAPER's Metronome settings.
+function Tabs.countin_toggle()
+  if r.SNM_SetIntConfigVar then
+    local _, v = r.get_config_var_string("projmetroen")
+    r.SNM_SetIntConfigVar("projmetroen", math.floor(tonumber(v) or 0) ~ CFG.COUNT_BIT)
+  else
+    r.Main_OnCommand(CFG.CMD.METRO_SET, 0)
+  end
+end
+-- Every frame: during a count-in or pre-roll the place where the song starts (R.wait_at: the tab waits there), and
+-- during REAPER's count-in the count (R.count_n, R.count_ph).
+function UI.count_step(playing)
+  R.wait_at, R.count_n = nil, nil
+  if not playing then return end
+  local pos, pos2 = r.GetPlayPositionEx(R.proj), r.GetPlayPosition2Ex(R.proj)
+  if pos2 - pos <= CFG.COUNT_GAP then return end
+  R.wait_at = pos2
+  if not countin_state() then return end
+  local num = r.TimeMap_GetTimeSigAtTime(R.proj, pos2)
+  local bpm = r.TimeMap2_GetDividedBpmAtTime(R.proj, pos2)
+  R.count_n, R.count_ph = Tabs.count_in(pos, pos2, bpm > 0 and 60 / bpm or 0, num)
+end
+local COUNT_TXT = {} -- (the count numbers, made once)
+for i = 1, 16 do COUNT_TXT[i] = tostring(i) end
+-- Over the tab during the count-in (Settings > Tab > Count-in display): the count in a grey circle in the middle, and a
+-- blue outline that fades during each beat. x, y, w, h: the visible tab.
+function UI.draw_count(dl, x, y, w, h)
+  if not (R.count_n and S.countshow) then return end
+  local a = math.floor(255 * math.max(0, 1 - R.count_ph))
+  local hw = CFG.FLASH_W / 2
+  ImGui.DrawList_AddRect(dl, x + hw, y + hw, x + w - hw, y + h - hw, (COL.ACCENT & 0xFFFFFF00) | a, 6, 0, CFG.FLASH_W)
+  local cx, cy = x + w / 2, y + h / 2
+  ImGui.DrawList_AddCircleFilled(dl, cx, cy, CFG.COUNT_R, 0x80808099)
+  local txt = COUNT_TXT[R.count_n] or tostring(R.count_n)
+  ImGui.PushFont(ctx, count_font)
+  local tw, th = ImGui.CalcTextSize(ctx, txt)
+  ImGui.DrawList_AddText(dl, cx - tw / 2, cy - th / 2, COL.WHITE, txt)
+  ImGui.PopFont(ctx)
+end
 local SWITCHES = { -- (the Metronome and Count-in buttons: REAPER's own switches, in both tabs)
-  { "##metro", "metro", CFG.CMD.METRO, "Metronome: REAPER's click while the song plays. On: blue.",
-    "Metronome on (REAPER's). Click: off." },
-  { "##countin", "countin", CFG.CMD.COUNT_IN, "Count-in: REAPER plays its pre-roll before the song starts (with the metronome on, you hear the count). On: blue.",
-    "Count-in on (REAPER's pre-roll on play). Click: off." },
+  { "##metro", "metro", function() return r.GetToggleCommandStateEx(0, CFG.CMD.METRO) == 1 end,
+    function() r.Main_OnCommand(CFG.CMD.METRO, 0) end,
+    "Metronome: REAPER's click while the song plays. On: blue.", "Metronome on (REAPER's). Click: off." },
+  { "##countin", "countin", countin_state, Tabs.countin_toggle,
+    "Count-in: REAPER counts 1 2 3 4 in clicks before the song starts (no audio from before it; its length: REAPER's Metronome settings). On: blue.",
+    "Count-in on (REAPER's Count-in before playback). Click: off." },
 }
+if not r.SNM_SetIntConfigVar then -- (without the SWS extension a click opens REAPER's Metronome settings: the tips say so)
+  local s, more = SWITCHES[2], " Click: REAPER's Metronome settings (Count-in before playback; with the SWS extension the click switches it)."
+  s[5], s[6] = s[5] .. more, "Count-in on (REAPER's Count-in before playback)." .. more
+end
 -- The texts of Transpose: "0", "+2", "-3" (made once).
 local TP_TXT = {}
 for v = -CFG.TRANSPOSE_MAX, CFG.TRANSPOSE_MAX do TP_TXT[v] = (v > 0 and "+" or "") .. v end
@@ -2699,8 +2771,8 @@ function UI.draw_speed_group(IW, H)
   UI.draw_speed(H)
   for _, s in ipairs(SWITCHES) do
     ImGui.SameLine(ctx, 0, 2)
-    local st = r.GetToggleCommandStateEx(0, s[3]) == 1
-    if UI.tb_icon(s[1], s[2], IW, H, true, st and s[5] or s[4], st) then r.Main_OnCommand(s[3], 0) end
+    local st = s[3]()
+    if UI.tb_icon(s[1], s[2], IW, H, true, st and s[6] or s[5], st) then s[4]() end
   end
   ImGui.SameLine(ctx, 0, 2)
   local tab_page = R.page ~= UI.PAGE_NOTES
@@ -2753,6 +2825,8 @@ function UI.draw_settings()
   if head(1) then
     ch, S.follow = UI.set_toggle("Follow playback", S.follow,
       "On (the default): while the song plays, the tab scrolls to the line that plays. Off: you scroll yourself (the blue line still shows where it plays).")
+    ch, S.countshow = UI.set_toggle("Count-in display", S.countshow,
+      "On (the default): during REAPER's count-in (the hourglass at the top), a big 1 2 3 4 over the tab and a blue outline at each beat.")
     ch, S.chords = UI.set_toggle("Chord names", S.chords,
       "On (the default): the chord names above the tab, where the chord changes (the tab's own names; else named from its notes).")
     if ch then Tabs.build() end
@@ -3759,6 +3833,11 @@ function UI.draw_tab(h)
   if not playing then R.tab_line = nil end
   ImGui.PopFont(ctx)
   UI.tab_box(ox, oy, playing, sel_bi, sel_i)
+  if R.count_n then
+    local wx, wy = ImGui.GetWindowPos(ctx)
+    local ww, wh = ImGui.GetWindowSize(ctx)
+    UI.draw_count(dl, wx, wy, ww, wh)
+  end
   ImGui.EndChild(ctx)
 end
 -- The selected note of the tab: its bar and index (nil: none, or the song plays; a note that is gone: no selection).
@@ -4082,6 +4161,7 @@ local function loop()
   local playing = R.proj ~= nil and r.GetPlayStateEx(R.proj) & 1 == 1 -- (read once per frame: R.playing)
   if playing and not R.playing then R.tbox = nil end -- (the song starts: the note box closes)
   R.playing = playing
+  UI.count_step(playing)
   Tempo.step()
   UI.zoom_fonts()
   ImGui.SetNextWindowSize(ctx, CFG.DEFAULT_W, CFG.DEFAULT_H, ImGui.Cond_FirstUseEver())

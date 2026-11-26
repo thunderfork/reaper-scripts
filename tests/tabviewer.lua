@@ -1646,6 +1646,9 @@ test("the toolbar (26 November 2026): |<, <, > and >| go to the bars; play in th
   R.page = 1
   Tabs.set_transpose(3) -- (transposed: the yellow value, the tab made again; fixes need 0)
   UI.draw_toolbar(); UI.draw_tab(100000)
+  R.count_n, R.count_ph = 3, 0.4 -- (the count over the tab: no error)
+  UI.draw_tab(100000)
+  R.count_n = nil
   R.notice = nil
   eq(Tabs.set_fret(1, 1, (R.tab.bars[1].notes[1].fret + 1) % 20), false, "transposed: no fix")
   ok(R.notice and R.notice.text == C.CFG.TP_NO_FIX, "it says why")
@@ -1791,20 +1794,28 @@ if not nloaded then test("load tests\\notes.lua", function() error(nerr) end) en
 test("the Metronome and Count-in buttons (26 November 2026): REAPER's own switches", function()
   local CMD = C.CFG.CMD
   eq(r.kbd_getTextFromCmd(CMD.METRO, 0), "Options: Toggle metronome", "the action of the Metronome button")
-  eq(r.kbd_getTextFromCmd(CMD.COUNT_IN, 0), "Pre-roll: Toggle pre-roll on play", "the Count-in button: REAPER's pre-roll")
-  -- (the value that the Metronome / pre-roll settings window writes: the button follows it, both ways)
-  local VAR = { [CMD.METRO] = "projmetroen", [CMD.COUNT_IN] = "preroll" }
-  local function bit1(name) local _, v = r.get_config_var_string(name); return math.floor(tonumber(v) or -1) & 1 end
-  for _, id in ipairs({ CMD.METRO, CMD.COUNT_IN }) do -- (a switch with a state: the button shows it)
-    local before = r.GetToggleCommandStateEx(0, id)
-    eq(bit1(VAR[id]), before, VAR[id] .. ": the setting and the button agree")
-    r.Main_OnCommand(id, 0)
-    eq(r.GetToggleCommandStateEx(0, id), 1 - before, "a click switches it")
-    eq(bit1(VAR[id]), 1 - before, VAR[id] .. ": the setting follows")
-    r.Main_OnCommand(id, 0)
-    eq(r.GetToggleCommandStateEx(0, id), before, "again: back")
-    eq(bit1(VAR[id]), before, VAR[id] .. ": back")
-  end
+  eq(r.kbd_getTextFromCmd(CMD.METRO_SET, 0), "Options: Show metronome/pre-roll settings", "the hourglass without SWS")
+  -- (the value that the Metronome settings window writes: the button follows it, both ways)
+  local function bit1() local _, v = r.get_config_var_string("projmetroen"); return math.floor(tonumber(v) or -1) & 1 end
+  local before = r.GetToggleCommandStateEx(0, CMD.METRO)
+  eq(bit1(), before, "projmetroen: the setting and the button agree")
+  r.Main_OnCommand(CMD.METRO, 0)
+  eq(r.GetToggleCommandStateEx(0, CMD.METRO), 1 - before, "a click switches it")
+  eq(bit1(), 1 - before, "projmetroen: the setting follows")
+  r.Main_OnCommand(CMD.METRO, 0)
+  eq(r.GetToggleCommandStateEx(0, CMD.METRO), before, "again: back")
+  -- Count-in (26 November 2026): REAPER's Count-in before playback = bit 8 of projmetroen (the user's trial: 15 on, 7 off)
+  local T = C.Tabs
+  eq(T.countin_on("15"), true); eq(T.countin_on("7"), false); eq(T.countin_on(""), false, "no value: off")
+  -- the count: 2 bars of 4 at 0.5 s a beat = 4 s before the start; pos2 waits at the start (100)
+  local n, ph = T.count_in(96, 100, 0.5, 4)
+  eq(n, 1, "the first beat: 1"); near(ph, 0, 1e-6, "at its start")
+  n, ph = T.count_in(96.25, 100, 0.5, 4); eq(n, 1); near(ph, 0.5, 1e-6, "half of the beat")
+  eq((T.count_in(97.5, 100, 0.5, 4)), 4, "the 4th beat of bar 1"); eq((T.count_in(98, 100, 0.5, 4)), 1, "bar 2: 1 again")
+  eq((T.count_in(99.9, 100, 0.5, 4)), nil, "less than the latency gap: the song plays")
+  eq((T.count_in(99.7, 100, 0.5, 4)), 4, "the last beat: 4")
+  eq((T.count_in(100.2, 100.23, 0.5, 4)), nil, "the song plays (pos2 just ahead: the latency)")
+  eq((T.count_in(96, 100, 0, 4)), nil, "no tempo: nothing"); eq((T.count_in(97, 100, 1, 3)), 1, "3/4: 1 2 3")
   R.page = 1
   C.UI.draw_toolbar() -- (the 3 buttons at the left: no error)
 end)

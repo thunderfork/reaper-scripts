@@ -41,14 +41,19 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
 - The toolbar (inspired by Guitar Pro's): `UI.draw_toolbar`, its places from `Tabs.toolbar_rows` (a part without
   room goes to the next row; the order: the user's choice): center (`UI.draw_left`) the size, Transpose, then |<, <,
   play / stop, >, >| (play in the middle of the window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the
-  line; in the Detection tab by lines, `Notes.go`), then (`UI.draw_speed_group`) the speed, Metronome and Count-in (an
-  hourglass) (REAPER's own switches `CFG.CMD`: Options: Toggle metronome, Pre-roll: Toggle pre-roll on play = REAPER's
-  count-in; blue while on), Loop; right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes `Tabs.undo`
+  line; in the Detection tab by lines, `Notes.go`), then (`UI.draw_speed_group`) the speed, Metronome (Options: Toggle
+  metronome) and Count-in (an hourglass: REAPER's "Count-in before playback", bit `CFG.COUNT_BIT` of `projmetroen`,
+  found by a trial; REAPER has no action for it: with SWS `SNM_SetIntConfigVar` switches it, without SWS the click
+  opens the Metronome settings, `Tabs.countin_toggle`) (blue while on), Loop; right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes `Tabs.undo`
   or the list `Notes.undo`, then REAPER's; Ctrl+Z too). Icons: `UI.tb_icon`, `ICON` (drawn, as Chart Cue's; plain
   icons, not Chart Cue's framed transport buttons: the user's choice). The size, Transpose and the speed are fields
   with their icon inside at the left (`UI.icon_field`: a magnifying glass, a tuning fork, a note; a click on the size
   or the speed: its list below it). The vertical half buttons + / - (`UI.stepper`, as Guitar Pro's, 1 pixel inside
   the row at the top and the bottom) of the size and Transpose.
+- Count-in and pre-roll (`UI.count_step`, every frame): REAPER's 2nd play position waits at the start of the song
+  while the first runs through the count-in or pre-roll; then `R.wait_at` is that start (`UI.cursor`: the tab and its
+  region wait there). During the count-in `Tabs.count_in` gives the count; `UI.draw_count` draws it over the tab with
+  a blue outline per beat (`S.countshow`, Settings > Tab > Count-in display).
 - Transpose (`UI.draw_transpose`, `Tabs.set_transpose`): -12 .. 12 half steps, the tab's frets (`Tabs.transpose`:
   below fret 0 the next lower string, above 24 the next higher, past the last string an octave, yellow `nt.oct`) and
   the Detection list's names (`List.opt().tp`, `Key.shift`, `N.transposed`: your corrected lines stay), not the audio.
@@ -112,7 +117,7 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   " (2)"); the 1st save and Save as copy it into the new folder (`Tabs.moved`). A missing file: a grey line; a file
   that can not be read at Open tab...: an orange notice, nothing changes.
 - `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks`, `lengths`, `written`,
-  `tremnotes`, `tab_hide`, `zoom` (only when not 100%), `closed` (the folded sections: Tab, Detection,
+  `tremnotes`, `countshow`, `tab_hide`, `zoom` (only when not 100%), `closed` (the folded sections: Tab, Detection,
   Look, Window in Settings; Tempo and Song in the Detection tab). The Detection tab keeps its own keys in the same section (NOTES.md).
 - Not saved: the loop and the speed (100% again at close), the selection, `R.page`.
 
