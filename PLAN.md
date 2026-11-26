@@ -12,7 +12,11 @@
   Metronome, REAPER's Count-in with the count over the tab, Loop; Ctrl+wheel size; short Help and tooltips; the
   Detection changes), and the clean-ups of Chart Cue 1.7.1, FX Link 1.1.2, MIDI Pilot 1.4.1 (the File > Open fix;
   its manual test still Open now 10) and Session Prep 1.0.2. The Ctrl+wheel "keep the line under the mouse" failed
-  twice and was removed (the user's choice; LESSONS.md). Next: the next topic.
+  twice and was removed (the user's choice; LESSONS.md).
+- After the release, committed, not released (tested by the user, 26 November 2026): Tab Viewer's "+" makes a note
+  shorter and "-" longer (as Guitar Pro); the dots right of the stem (over the beams, right of flags); bolder rests,
+  beams and flags; the Loop icon as REAPER's 2 arrows. Next: the next topic (these go into Tab Viewer 1.2.1 at the
+  next release).
 - Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
   what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
