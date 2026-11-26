@@ -2,7 +2,7 @@
 
 ## Handoff (26 November 2026)
 
-- NOT COMMITTED (26 November 2026), all tested: Tab Viewer 1.2 (UI review, toolbar segment 1, Note Detection
+- Committed, NOT PUSHED (26 November 2026), all tested: Tab Viewer 1.2 (UI review, toolbar segment 1, Note Detection
   layout, 1 mode, .gp5 export; manual tests passed 25-26 November 2026); tools (`check.ps1` only the changed scripts,
   pass stamps `tools\stamp.ps1`); process and skills audits; housekeeping (no script counts in the notes, old Note
   Detective entries removed). Next: commit and release Tab Viewer 1.2 when the user asks; then the toolbar segments
