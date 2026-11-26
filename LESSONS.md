@@ -46,7 +46,7 @@ YYYY-MM-DD | Script | tag | what the user saw
   control); "the tab draws (the UI/UX review of 25 November 2026)" (tests\notes.lua) draws before and after Find
   tempo, failed before the fix.
   Other scripts: searched every BeginDisabled call: all others get true or false.
-  Status: fixed, not confirmed
+  Status: confirmed
 
 2026-11-25 | Tab Viewer | edge-case | (debug-time) Undo in the Note Detection tab after Write did nothing, with no message
   Cause: List.undo takes back a Write, Clear or Export only while it is REAPER's last step (Undo_CanUndo2); with a
