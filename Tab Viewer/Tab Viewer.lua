@@ -167,6 +167,7 @@ local R = {
   wait_at = nil,     -- during a count-in or pre-roll: where the song starts (UI.count_step, every frame)
   count_n = nil,     -- during REAPER's count-in: the count 1 .. 4 shown, and count_ph how far into its beat (0 .. 1)
   count_ph = 0,
+  zoom_at = nil,     -- after Ctrl+wheel: { z, ratio, my }, the place under the mouse, scrolled back there at the new size
   err = nil,         -- why the tab of the project could not be read (a line in the window)
   doc = nil,         -- the opened tab (GP.read)
   rows = nil,        -- the tracks of the Track dropdown: { name, what, tun, tip, label } (Tabs.show; with the tab)
@@ -3767,7 +3768,15 @@ function UI.draw_tab(h)
   if ctrl and ImGui.IsWindowHovered(ctx) then
     local wheel = ImGui.GetMouseWheel(ctx)
     local z = wheel ~= 0 and Tabs.zoom_step(S.zoom, wheel > 0 and 1 or -1)
-    if z and z ~= S.zoom then S.zoom = z; R.sdirty = true end
+    if z and z ~= S.zoom then
+      S.zoom = z; R.sdirty = true
+      if R.tab and (R.tab.h or 0) > 0 then -- (the place under the mouse stays there: R.zoom_at, used below at the new size)
+        local _, my = ImGui.GetMousePos(ctx)
+        local _, wy = ImGui.GetWindowPos(ctx)
+        local rel = my - wy
+        R.zoom_at = { z = z, ratio = (ImGui.GetScrollY(ctx) + rel) / R.tab.h, my = rel }
+      end
+    end
   end
   local tab = R.tab
   if not tab then
@@ -3791,9 +3800,14 @@ function UI.draw_tab(h)
   local ox, oy = ImGui.GetCursorScreenPos(ctx)
   local lx = ox + TZ.LEFT -- (the left of the strings)
   ImGui.InvisibleButton(ctx, "##tabarea", math.max(1, w), math.max(1, tab.h))
+  local za = R.zoom_at
+  if za and math.abs(TZ.z - za.z) < 1e-6 then -- (the tab at the new size: scroll so the place under the mouse stays)
+    ImGui.SetScrollY(ctx, math.max(0, za.ratio * tab.h - za.my))
+    R.zoom_at = nil
+  end
   local playing = R.playing
-  UI.tip(playing and "Click: play from there. Drag: select."
-    or "Click: select a note. Double-click: its box. Drag: select. Right-click a bar: time signature.")
+  UI.tip(playing and "Click: play from there.\nDrag: select."
+    or "Click: select a note.\nDouble-click: edit the note.\nDrag: select.\nRight-click a bar: time signature.")
   UI.tab_mouse(tab, ox, oy, playing)
   if ImGui.IsItemClicked(ctx, 1) then -- (right-click a bar: its menu)
     local mx, my = ImGui.GetMousePos(ctx)
