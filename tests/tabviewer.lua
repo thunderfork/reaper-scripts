@@ -1766,6 +1766,21 @@ local nloaded, nerr = pcall(function() -- (the tests of the Detection tab)
 end)
 if not nloaded then test("load tests\\notes.lua", function() error(nerr) end) end
 
+test("the Metronome and Count-in buttons (26 November 2026): REAPER's own switches", function()
+  local CMD = C.CFG.CMD
+  eq(r.kbd_getTextFromCmd(CMD.METRO, 0), "Options: Toggle metronome", "the action of the Metronome button")
+  eq(r.kbd_getTextFromCmd(CMD.COUNT_IN, 0), "Pre-roll: Toggle pre-roll on play", "the Count-in button: REAPER's pre-roll")
+  for _, id in ipairs({ CMD.METRO, CMD.COUNT_IN }) do -- (a switch with a state: the button shows it)
+    local before = r.GetToggleCommandStateEx(0, id)
+    r.Main_OnCommand(id, 0)
+    eq(r.GetToggleCommandStateEx(0, id), 1 - before, "a click switches it")
+    r.Main_OnCommand(id, 0)
+    eq(r.GetToggleCommandStateEx(0, id), before, "again: back")
+  end
+  R.page = 1
+  C.UI.draw_toolbar() -- (the 3 buttons at the left: no error)
+end)
+
 for _, t in ipairs(tests) do
   local pf = io.open(here .. "\\result_tabviewer.txt", "w") -- (so far: shows where a crash or a hang of REAPER stopped)
   if pf then pf:write(table.concat(out, "\n"), "\nRUNNING " .. t[1] .. "\n"); pf:close() end

@@ -70,7 +70,10 @@ CFG.CTRL_GAP = 8               -- between 2 controls side by side
 CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = 7, 8, 4 -- spacing (pixels; the same gaps as Chart Cue)
 CFG.ROW_H = 26
 CFG.TB_ICON_W = 32             -- the icons in the toolbar (Undo / Redo, the transport)
-CFG.TIME_EPS = 1e-6           -- s (or quarter notes): a time this close before a start (rounding) still counts as in it
+-- REAPER's actions of the Metronome and Count-in buttons (their names: a test; checked 26 November 2026: REAPER's
+-- count-in is its pre-roll on play)
+CFG.CMD = { METRO = 40364, COUNT_IN = 41818 } -- Options: Toggle metronome; Pre-roll: Toggle pre-roll on play
+CFG.TIME_EPS = 1e-6          -- s (or quarter notes): a time this close before a start (rounding) still counts as in it
 CFG.DRAG_PX = 4              -- px the mouse moves with the button held: a drag (a selection), not a click
 CFG.TEMPO_BEFORE = 5          -- s: a tempo marker this far before the song item still counts as the song's (Tabs.has_song_tempo)
 CFG.TB_NEAR_GAP = 16           -- between the transport and the size / the speed next to it
@@ -1997,7 +2000,7 @@ Want to hear a part? Click it: the song plays from there. While it plays, a blue
 
 Does the tab start later than the song (an intro, a count-in)? Set Start (the bar of the song where bar 1 of the tab plays) with < and > (hold for faster). The bar numbers above the tab are then the song's. A tab in a region counts the bars from the first bar of its region ("bar ... of the region"). From that bar on, the tab follows the beats of your project, so set the tempo of the song first.
 
-Want to practise a hard part? Drag over the tab from its first note to its last (or click the first note, then Shift+click the last): a light blue band selects it (REAPER's time selection). Drag a round handle at its ends to make it shorter or longer. Then click the Loop button at the top left (blue while it loops; no selection: it loops the bar at the edit cursor). Escape: no selection, no loop. Too fast? The speed dropdown at the top (next to play) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
+Want to practise a hard part? Drag over the tab from its first note to its last (or click the first note, then Shift+click the last): a light blue band selects it (REAPER's time selection). Drag a round handle at its ends to make it shorter or longer. Then click the Loop button at the top left (blue while it loops; no selection: it loops the bar at the edit cursor). Escape: no selection, no loop. Want a click to play along? The Metronome button next to it switches REAPER's metronome, and Count-in switches REAPER's pre-roll (a count before the song starts); both are blue while on. Too fast? The speed dropdown at the top (next to play) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
 
 A drum track? Drums come in a later version (a drum grid).]] },
   { title = "Find tempo", text = [[
@@ -2342,6 +2345,15 @@ function ICON.loop(dl, cx, cy, col) -- a round arrow (the Loop button, as in Gui
   local ex, ey = cx + 6 * math.cos(-0.35 * math.pi), cy + 6 * math.sin(-0.35 * math.pi) -- (the arrow head at its end)
   ImGui.DrawList_AddTriangleFilled(dl, ex - 3, ey - 3, ex + 3, ey - 1, ex - 1, ey + 3, col)
 end
+function ICON.metro(dl, cx, cy, col) -- a metronome: its body and the pendulum
+  ImGui.DrawList_AddQuad(dl, cx - 3, cy - 7, cx + 3, cy - 7, cx + 6, cy + 7, cx - 6, cy + 7, col, 1.5)
+  ImGui.DrawList_AddLine(dl, cx, cy + 4, cx + 5, cy - 6, col, 1.5)
+end
+function ICON.countin(dl, cx, cy, col) -- "1 2 3 4" small, as a count
+  local t = "1234"
+  local w, h = ImGui.CalcTextSize(ctx, t)
+  ImGui.DrawList_AddText(dl, math.floor(cx - w / 2), math.floor(cy - h / 2), col, t)
+end
 function ICON.note(dl, cx, cy, col) -- a quarter note (the speed, as in Guitar Pro)
   ImGui.DrawList_AddCircleFilled(dl, cx - 2, cy + 4, 3, col)
   ImGui.DrawList_AddLine(dl, cx + 0.5, cy + 4, cx + 0.5, cy - 7, col, 1.5)
@@ -2549,13 +2561,24 @@ local LOOP_TIPS = {
   off = "Loop: the selection repeats (no selection: the bar at the edit cursor). Select by dragging over the tab, or Shift+click a note.",
   notes = "In the Detection tab, click a line to loop it.", none = "No tab here.",
 }
--- The Loop button at the left of the toolbar (the Tab tab: Tabs.loop_toggle; blue while it loops).
-function UI.draw_loop(IW, H)
+local SWITCHES = { -- (the Metronome and Count-in buttons: REAPER's own switches, in both tabs)
+  { "##metro", "metro", CFG.CMD.METRO, "Metronome: REAPER's click while the song plays. On: blue.",
+    "Metronome on (REAPER's). Click: off." },
+  { "##countin", "countin", CFG.CMD.COUNT_IN, "Count-in: REAPER plays its pre-roll before the song starts (with the metronome on, you hear the count). On: blue.",
+    "Count-in on (REAPER's pre-roll on play). Click: off." },
+}
+-- The left group of the toolbar: Loop (the Tab tab: Tabs.loop_toggle; blue while it loops), Metronome, Count-in.
+function UI.draw_left(IW, H)
   local tab_page = R.page ~= UI.PAGE_NOTES
   local on = tab_page and R.tab ~= nil
   local active = on and Tabs.looping()
   local tip = not tab_page and LOOP_TIPS.notes or not on and LOOP_TIPS.none or active and LOOP_TIPS.on or LOOP_TIPS.off
   if UI.tb_icon("##loop", "loop", IW, H, on, tip, active) then Tabs.loop_toggle() end
+  for _, s in ipairs(SWITCHES) do
+    ImGui.SameLine(ctx, 0, 2)
+    local st = r.GetToggleCommandStateEx(0, s[3]) == 1
+    if UI.tb_icon(s[1], s[2], IW, H, true, st and s[5] or s[4], st) then r.Main_OnCommand(s[3], 0) end
+  end
 end
 -- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): in the middle the tab size, |<, <, play / stop,
 -- >, >| (play in the middle of the window), the speed; at the right Undo / Redo (Find tempo: the Detection tab). A
@@ -2566,12 +2589,12 @@ function UI.draw_toolbar()
   local aw = ImGui.GetContentRegionAvail(ctx)
   local IW, H = CFG.TB_ICON_W, ImGui.GetFrameHeight(ctx)
   local w = TB_W
-  w.L, w.Z, w.T, w.U = IW, UI.zoom_w(H), UI.transport_w(), 2 * IW + 2
+  w.L, w.Z, w.T, w.U = 3 * IW + 2 * 2, UI.zoom_w(H), UI.transport_w(), 2 * IW + 2
   w.S = UI.btn_w("100%") + H + CFG.TB_NOTE_W + 2
   local p = Tabs.toolbar_rows(x0, aw, w, UI.transport_mid(), CFG.TB_GROUP_GAP, CFG.TB_NEAR_GAP, TB_POS)
   local RH = H + CFG.TB_ROW_GAP
   ImGui.SetCursorPos(ctx, x0, y0)
-  UI.draw_loop(IW, H)
+  UI.draw_left(IW, H)
   ImGui.SetCursorPos(ctx, p.ux, y0 + p.urow * RH)
   UI.draw_undo(IW, H)
   ImGui.SetCursorPos(ctx, p.zx, y0 + p.zrow * RH)

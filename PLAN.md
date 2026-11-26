@@ -68,8 +68,10 @@ skipped or failed test stays here; remove it when it passed.
     then Shift+click a later one: the selection; the Loop button (top left) turns blue and the selection repeats; no
     selection: it loops the bar at the edit cursor; a plain click ends the selection (not while it loops); Escape
     ends both; a click on a note still selects it to fix it.
-26. Tab Viewer toolbar, next segments (decided 26 November 2026): B: Metronome and Count-in buttons (REAPER's own
-    switches, blue while on; a trial of REAPER's actions first). C: Transpose (a tuning-fork icon, 0 and - / +; the
+27. Manual test (Tab Viewer, 26 November 2026): the Metronome and Count-in buttons next to Loop turn blue and switch
+    REAPER's metronome and pre-roll (also when switched in REAPER itself); with both on, Play counts in with clicks.
+    And the bug fix: a click at the empty start of bar 1 stays in this song (LESSONS.md, not confirmed).
+26. Tab Viewer toolbar, next segment (decided 26 November 2026; B, Metronome and Count-in, done): C: Transpose (a tuning-fork icon, 0 and - / +; the
     tab's frets and Detection's note names, not the audio; saved in the project, a new key written only when not 0).
     Ask before each segment.
 24. Manual test (Tab Viewer, 26 November 2026): Detection > Song > Tuning lists the new tunings (D standard, C
