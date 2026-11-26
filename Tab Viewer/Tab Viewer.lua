@@ -93,6 +93,7 @@ CFG.TB_GROUP_GAP = 25          -- the least gap between the toolbar groups (as i
 CFG.STRIP_H, CFG.STRIP_GAP, CFG.STRIP_LIFT = 32, 4, 6 -- the tab strip, as in Chart Cue and MIDI Pilot
 CFG.STRIP_GROUP_GAP = 12       -- between the text tabs and the Settings / Help tabs
 CFG.NOTICE_SEC = 4             -- a notice at the bottom of the window shows this long
+CFG.SONG_FLASH = 0.8           -- s: the song header flashes this long when the list followed the cursor to another song
 CFG.TIP_DELAY = 0.5            -- seconds on an item before its tooltip shows (as in Chart Cue)
 CFG.TIP_WRAP_EM = 32           -- tooltip lines wrap at this many font sizes
 CFG.TRACK_W = 320              -- the Track dropdown
@@ -264,6 +265,10 @@ end
 -- (Project.entry_line, Project.entry_text). Its list changed: R.notes_dirty (the tab of the found notes again).
 Notes = NotesNew({ GP = GP, TP = TP, CFG = CFG, COL = COL, ImGui = ImGui, UI = UI, R = R,
   notes_changed = function() R.notes_dirty = true end,
+  song_changed = function() -- (another song in the song header: a Find tempo run or result was for the song before)
+    if R.tempo then Tempo.cancel(); R.tempo = nil end
+    R.tset = nil
+  end,
   loop_off = function() Tabs.loop_off() end,
   transpose = function() return P and P.transpose or 0 end, -- (the toolbar's Transpose: the names of the list)
   gp_song = function(title) return Tabs.found_song(title) end,
@@ -1679,22 +1684,34 @@ function Tabs.song_item()
     local tk = it and r.GetActiveTake(it)
     return tk and not r.TakeIsMIDI(tk)
   end
-  local g = Tabs.region(Tabs.cur())
+  -- the song: the song of the song header (Notes.song_range: a region, or a bass item), else the tab's region
+  local s0, s1 = Notes.song_range()
+  if not s0 then
+    local g = Tabs.region(Tabs.cur())
+    if g then s0, s1 = g.pos, g.rend end
+  end
+  local function inside(it)
+    if not s0 then return true end
+    local pos = r.GetMediaItemInfo_Value(it, "D_POSITION")
+    return pos < s1 and pos + r.GetMediaItemInfo_Value(it, "D_LENGTH") > s0
+  end
   local sel = r.GetSelectedMediaItem(proj, 0)
-  local best, bl = audio(sel) and sel or nil, -1
+  local best, bl = audio(sel) and inside(sel) and sel or nil, -1
   if not best then
     for i = 0, r.CountMediaItems(proj) - 1 do
       local it = r.GetMediaItem(proj, i)
-      local pos, len = r.GetMediaItemInfo_Value(it, "D_POSITION"), r.GetMediaItemInfo_Value(it, "D_LENGTH")
-      if audio(it) and len > bl and (not g or (pos < g.rend and pos + len > g.pos)) then best, bl = it, len end
+      local len = r.GetMediaItemInfo_Value(it, "D_LENGTH")
+      if audio(it) and len > bl and inside(it) then best, bl = it, len end
     end
   end
   if not best then
-    return nil, g and "Put the song's audio in its region first (or select its item)."
+    return nil, s0 and "Put the song's audio in this song first (or select its item)."
       or "Put the song's audio in the project first (select its item when there are several songs)."
   end
   local pos = r.GetMediaItemInfo_Value(best, "D_POSITION")
-  return best, pos, pos + r.GetMediaItemInfo_Value(best, "D_LENGTH")
+  local e = pos + r.GetMediaItemInfo_Value(best, "D_LENGTH")
+  if s0 then pos, e = math.max(pos, s0), math.min(e, s1) end -- (1 long item for several songs: this song's part)
+  return best, pos, e
 end
 -- Has the song its own tempo (the Tempo section of the Detection tab is done; decided 26 November 2026: from REAPER's tempo, no
 -- saved mark)? times: the times of the tempo markers; the song item from t0 to t1. Set tempo always puts one on bar 1
@@ -1706,9 +1723,9 @@ end
 -- The state of the Tempo section { ok, txt (the heading's "Set: 160 BPM") }, made again only when the project, the selected
 -- item or the tab changes (asked every frame).
 function Tabs.tempo_state()
-  local proj, sel, c = R.proj, r.GetSelectedMediaItem(R.proj, 0), R.tset
-  if c and c.proj == proj and c.cc == R.state_cc and c.sel == sel and c.cur == R.cur then return c end
-  c = { proj = proj, cc = R.state_cc, sel = sel, cur = R.cur, ok = false }
+  local proj, sel, c, song = R.proj, r.GetSelectedMediaItem(R.proj, 0), R.tset, Notes.song_id()
+  if c and c.proj == proj and c.cc == R.state_cc and c.sel == sel and c.cur == R.cur and c.song == song then return c end
+  c = { proj = proj, cc = R.state_cc, sel = sel, cur = R.cur, song = song, ok = false }
   R.tset = c
   local item, t0, t1 = Tabs.song_item()
   if not item then return c end
@@ -2272,10 +2289,11 @@ function UI.toggle_line(label, v, tip)
   return ch, nv
 end
 
--- Section heading, as in Chart Cue: bold, blue, a full-width blue underline. btn: a button at the right end of the
--- heading line (label, kind, disabled, tip); returns true when it was clicked. fold: the index of a section that
--- folds (S.closed); an arrow before the title, a click on it or the title opens / closes it. 2nd return: open.
--- note, note_col: a short text at the right (before the button), for example the count of a list.
+-- Section heading, as in Chart Cue: bold, blue, a full-width blue underline. btn: the action of the section at the
+-- right end of the heading line (label, kind, disabled, tip), or a list of them (left to right; decided 26 November
+-- 2026: the step's button in its heading); returns the clicked one (true, or its index in the list). fold: the index
+-- of a section that folds (S.closed); an arrow before the title, a click on it or the title opens / closes it. 2nd
+-- return: open. note, note_col: a short status after the title (cut when the buttons need the room).
 function UI.heading(text, first, btn, fold, note, note_col)
   if not first then UI.vgap(CFG.SP_ROW + 6) end
   local sx, sy = ImGui.GetCursorScreenPos(ctx)
@@ -2303,25 +2321,28 @@ function UI.heading(text, first, btn, fold, note, note_col)
   end
   ImGui.PopFont(ctx)
   local tx, ty = ImGui.GetItemRectMax(ctx)
-  local hit = false
-  local bw = btn and UI.btn_w(btn[1]) or 0
+  local hit ---@type boolean|integer|nil
+  local list = btn and (type(btn[1]) == "table" and btn or { btn }) or {}
+  local bw = 0
+  for k, b in ipairs(list) do bw = bw + UI.btn_w(b[1]) + (k > 1 and CFG.CTRL_GAP or 0) end
   if note and note ~= "" then
-    local nw = (ImGui.CalcTextSize(ctx, note))
-    local nx = sx + full - bw - (btn and CFG.CTRL_GAP or 0) - nw
-    if nx > tx + CFG.CTRL_GAP then -- (no room: left out)
-      ImGui.SetCursorScreenPos(ctx, nx, sy)
-      UI.row_text(note, note_col or COL.TEXT_DIM)
+    local room = sx + full - bw - (list[1] and CFG.CTRL_GAP or 0) - (tx + 2 * CFG.CTRL_GAP)
+    if room > 30 then -- (no room: left out)
+      ImGui.SetCursorScreenPos(ctx, tx + 2 * CFG.CTRL_GAP, sy)
+      UI.row_text(UI.trunc(note, room), note_col or COL.TEXT_DIM)
     end
   end
-  if btn then
-    local w = bw
-    ImGui.SetCursorScreenPos(ctx, sx + full - w, sy)
-    ImGui.BeginDisabled(ctx, btn[3] == true)
-    hit = UI.button(btn[1], w, nil, btn[2])
+  local bx = sx + full - bw
+  for k, b in ipairs(list) do
+    local w = UI.btn_w(b[1])
+    ImGui.SetCursorScreenPos(ctx, bx, sy)
+    ImGui.BeginDisabled(ctx, b[3] == true)
+    if UI.button(b[1], w, nil, b[2]) then hit = btn == b or k end
     ImGui.EndDisabled(ctx)
-    if btn[4] then UI.tip_disabled(btn[4]) end
+    if b[4] then UI.tip_disabled(b[4]) end
     local _, by = ImGui.GetItemRectMax(ctx)
     ty = math.max(ty, by)
+    bx = bx + w + CFG.CTRL_GAP
   end
   ImGui.DrawList_AddLine(ImGui.GetWindowDrawList(ctx), sx, ty + 3, sx + full, ty + 3, COL.ACCENT, 1.5)
   ImGui.SetCursorScreenPos(ctx, sx, ty + 3)
@@ -3309,6 +3330,13 @@ end
 -- menu). Every row is a label and a dropdown, as in Song. Listen to (From the tab, or a track) with 1 button: Find
 -- tempo (blue while the song has no tempo of its own); with a result the blue Set tempo in its place; while it listens
 -- Cancel, and the progress under it. No tempo of its own and no result: "The tempo is right" under it.
+local FIND_TEMPO_TIP = "Puts REAPER's bars on the song (nothing changes until Set tempo)."
+local TB_CANCEL = { "Cancel", nil, false, "Stop. Nothing changes." } -- (the button of the Tempo heading: made once)
+local TB_SET = { "Set tempo", "primary", false, "Writes the tempo into the project (1 undo step)." }
+local TB_SET_TAB = { "Set tempo", "primary", false, "Writes the tab's tempos into the project (1 undo step)." }
+local TB_FIND = { "Find tempo", "primary", false, FIND_TEMPO_TIP }
+local TB_FIND_DONE = { "Find tempo", nil, false, FIND_TEMPO_TIP }
+local TB_FIND_OFF = { "Find tempo", nil, true, "Open a tab or add the song's tracks first." }
 function UI.draw_tempo_step()
   local tm = R.tempo
   local run = tm and tm.run
@@ -3318,17 +3346,25 @@ function UI.draw_tempo_step()
   if run then note = "Listening..."
   elseif found then note = "Found: not set yet"
   elseif st.ok then note, col = st.txt, COL.GREEN end
-  local _, open = UI.heading("Tempo", true, nil, UI.FOLD_TEMPO, note, col)
-  if not open then return end
   local file = R.doc ~= nil and not R.doc.found
   local from_tab = Tabs.tempo_from_tab(file, R.tsrc_tab)
   local src = not from_tab and Tempo.source() or nil
-  local btn = run and "Cancel" or found and "Set tempo" or "Find tempo"
-  local bw, fw = UI.btn_w(btn), UI.field_w()
+  local can = from_tab or src ~= nil
+  local btn = run and TB_CANCEL or found and (tm and tm.tab and TB_SET_TAB or TB_SET)
+    or (not can and TB_FIND_OFF or st.ok and TB_FIND_DONE or TB_FIND)
+  local hit, open = UI.heading("Tempo", true, btn, UI.FOLD_TEMPO, note, col)
+  if hit then -- (the step's button: Cancel, Set tempo or Find tempo)
+    if run then Tempo.cancel(); R.tempo = nil
+    elseif found then Tabs.set_tempo()
+    else Tabs.find_tempo(src) end
+    return
+  end
+  if not open then return end
+  local fw = UI.field_w()
   UI.field("Listen to")
   local x = ImGui.GetCursorPosX(ctx)
   ImGui.BeginDisabled(ctx, run ~= nil)
-  ImGui.SetNextItemWidth(ctx, math.max(80, math.min(fw, (ImGui.GetContentRegionAvail(ctx)) - bw - CFG.CTRL_GAP)))
+  ImGui.SetNextItemWidth(ctx, fw)
   if ImGui.BeginCombo(ctx, "##tsrc", from_tab and "From the tab" or src and src.label or "No tracks with audio yet") then
     if file then
       if ImGui.Selectable(ctx, "From the tab", from_tab) then tempo_pick(true, nil, from_tab, src) end
@@ -3342,27 +3378,15 @@ function UI.draw_tempo_step()
   end
   ImGui.EndDisabled(ctx)
   UI.tip_disabled(from_tab and FROM_TAB_TIP or TRACK_TIP)
-  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   if run then
-    if UI.button("Cancel", bw) then Tempo.cancel(); R.tempo = nil end
-    UI.tip("Stop. Nothing changes.")
     ImGui.SetCursorPosX(ctx, x)
     ImGui.ProgressBar(ctx, run.done, fw, 0, "Listening...")
     return
   end
-  if tm and tm.beats then -- (R.tempo can go in the click: the rows only with a result left)
-    if UI.button("Set tempo", bw, nil, "primary") then Tabs.set_tempo() end
-    UI.tip(tm.tab and "Writes the tab's tempos into the project (1 undo step)."
-      or "Writes the tempo into the project (1 undo step).")
-    if R.tempo == tm then tempo_rows(tm, x, fw) end
+  if found then -- (the rows of the result)
+    tempo_rows(tm, x, fw)
     return
   end
-  local can = from_tab or src ~= nil
-  ImGui.BeginDisabled(ctx, not can)
-  if UI.button("Find tempo", bw, nil, not st.ok and "primary" or nil) then Tabs.find_tempo(src) end
-  ImGui.EndDisabled(ctx)
-  UI.tip_disabled(can and "Puts REAPER's bars on the song (nothing changes until Set tempo)."
-    or "Open a tab or add the song's tracks first.")
   if not st.ok then -- (the project has the right tempo already: say so, and go on)
     ImGui.SetCursorPosX(ctx, x)
     if UI.button("The tempo is right", UI.btn_w("The tempo is right")) then Tabs.tempo_is_right() end
@@ -4109,27 +4133,66 @@ end
 
 -- The window: the toolbar, the tab strip, then the panel of the open tab (a rounded area): the Tab tab has the Track
 -- dropdown and the tab, the Detection tab is Notes.draw; Settings and Help scroll.
--- The bottom bar (as Chart Cue's status line, decided 26 November 2026): the song, its notes list and the tab
--- (Notes.status); a click goes to the start of the song (stopped only).
-local STATUS_TIP = "Click: go to the start of this song (and select its bass item)."
-function UI.status_text(w)
-  local base, e = Notes.status(), Tabs.file_tab()
-  local file = e and e.file
-  local c = R.status
-  if c and c.base == base and c.file == file and c.w == w then return c.txt end
-  local txt = file and (base .. "  |  Tab: " .. file:match("([^/\\]+)$")) or base
-  R.status = { base = base, file = file, w = w, txt = UI.trunc(txt, w), tip = txt .. "\n\n" .. STATUS_TIP,
-    tip_play = txt .. "\n\nStop first to go to the song." }
-  return R.status.txt
-end
-function UI.draw_status(x, y, w, h)
-  local txt = UI.status_text(w - 16)
+-- The song header (the UI/UX review, decided 26 November 2026): at the top of the Tab and Detection tabs, the song of
+-- the Detection list (Notes.song_head): < "Song 2 of 3: Far Away" > and the song list at the right (a click on the
+-- name too); the arrows and the list go to that song (stopped only). It flashes when the list followed the cursor
+-- into another song. Returns its height with the gap under it (0: the project has no songs).
+local SONG_ARROW_W = 26
+local SONG_TIP = "Each song has its own list and tempo. Click: all songs.\nSettings > Detection > Follow the song: it follows the edit cursor."
+-- An arrow of the song header (dir -1 left, 1 right, 0 down: the list); true when clicked and on.
+function UI.song_arrow(id, dir, on, x, y, h)
   ImGui.SetCursorScreenPos(ctx, x, y)
-  local hit = ImGui.InvisibleButton(ctx, "##status", math.max(1, w), h)
+  local hit = ImGui.InvisibleButton(ctx, id, SONG_ARROW_W, h)
+  local hov = on and ImGui.IsItemHovered(ctx)
+  local col = not on and COL.TOGGLE_OFF or hov and COL.TEXT_MAIN or COL.HEADING
+  local dl, cx, cy = ImGui.GetWindowDrawList(ctx), x + SONG_ARROW_W / 2, y + h / 2
+  if dir < 0 then ImGui.DrawList_AddTriangleFilled(dl, cx + 4, cy - 6, cx + 4, cy + 6, cx - 4, cy, col)
+  elseif dir > 0 then ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 6, cx - 4, cy + 6, cx + 4, cy, col)
+  else ImGui.DrawList_AddTriangleFilled(dl, cx - 6, cy - 3, cx + 6, cy - 3, cx, cy + 4, col) end
+  return hit and on
+end
+function UI.draw_song_head(w)
+  local c = Notes.song_head()
+  if not c then return 0 end
+  local x, y = ImGui.GetCursorScreenPos(ctx)
+  local h = ImGui.GetFrameHeight(ctx) + 8
+  local dl = ImGui.GetWindowDrawList(ctx)
+  ImGui.DrawList_AddRectFilled(dl, x, y, x + w, y + h, COL.ACTIVE_BG, 6)
+  local ft = c.flash and Util.now() - c.flash
+  if ft and ft >= 0 and ft < CFG.SONG_FLASH then
+    ImGui.DrawList_AddRectFilled(dl, x, y, x + w, y + h, (COL.ACCENT & 0xFFFFFF00) | math.floor(0x99 * (1 - ft / CFG.SONG_FLASH)), 6)
+  end
+  local free = not R.playing and not Notes.busy()
+  local why = R.playing and "Stop first to go to another song." or "Wait for Find notes."
+  if UI.song_arrow("##song_prev", -1, free and (c.i or 2) > 1, x + 4, y, h) then Notes.song_go(-1) end
+  UI.tip_disabled(free and "The song before." or why)
+  ImGui.PushFont(ctx, head_font)
+  local tw = w - 3 * SONG_ARROW_W - 24
+  if c.tw ~= tw then
+    c.tw, c.short = tw, UI.trunc(c.txt, tw)
+    c.sw, c.tip = (ImGui.CalcTextSize(ctx, c.short)), c.short ~= c.txt and (c.txt .. "\n\n" .. SONG_TIP) or SONG_TIP
+  end
+  local tx = x + 4 + SONG_ARROW_W + 4
+  ImGui.SetCursorScreenPos(ctx, tx, y)
+  local open = ImGui.InvisibleButton(ctx, "##song_name", math.max(1, c.sw), h)
   local hov = ImGui.IsItemHovered(ctx)
-  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), x + 8, y + 3, hov and COL.TEXT_MAIN or COL.TEXT_DIM, txt)
-  if hov then ImGui.SetTooltip(ctx, R.playing and R.status.tip_play or R.status.tip) end
-  if hit and not Notes.song_go() and R.playing then UI.notice("Stop first: then a click goes to the start of the song.") end
+  ImGui.DrawList_AddText(dl, tx, y + math.floor((h - ImGui.GetFontSize(ctx)) / 2), hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN, c.short)
+  ImGui.PopFont(ctx)
+  UI.tip(c.tip)
+  if UI.song_arrow("##song_next", 1, free and (c.i or 0) < c.n, tx + c.sw + 4, y, h) then Notes.song_go(1) end
+  UI.tip_disabled(free and "The song after." or why)
+  open = UI.song_arrow("##song_list", 0, free, x + w - SONG_ARROW_W - 4, y, h) or (open and free)
+  UI.tip_disabled(free and "All songs." or why)
+  if open then ImGui.OpenPopup(ctx, "##songlist") end
+  if ImGui.BeginPopup(ctx, "##songlist") then
+    local lb = Notes.song_list()
+    for k, txt in ipairs(lb.items) do
+      if ImGui.Selectable(ctx, txt, k == c.i) and k ~= c.i then Notes.song_go(0, k) end
+    end
+    ImGui.EndPopup(ctx)
+  end
+  ImGui.SetCursorScreenPos(ctx, x, y + h + CFG.SP_ROW)
+  return h + CFG.SP_ROW
 end
 
 function UI.draw_main()
@@ -4137,8 +4200,7 @@ function UI.draw_main()
   UI.draw_tabs()
   local aw, ah = ImGui.GetContentRegionAvail(ctx)
   local nh = UI.notice_h(aw - 16)
-  local bh = ImGui.GetTextLineHeight(ctx) + 6 -- (the bottom bar)
-  ah = ah - CFG.SP_EDGE - nh - bh
+  ah = ah - CFG.SP_EDGE - nh
   local px, py = ImGui.GetCursorScreenPos(ctx)
   ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), px, py, px + aw, py + ah, COL.PANEL_BG, 8,
     ImGui.DrawFlags_RoundCornersBottom())
@@ -4146,8 +4208,10 @@ function UI.draw_main()
     ImGui.SetCursorPosY(ctx, CFG.SP_PANEL + 6)
     ImGui.Indent(ctx, 10)
     if R.page <= #PAGE_NAMES then -- (Tab and Notes: they fill the panel; Settings and Help scroll)
-      if ImGui.BeginChild(ctx, "##inner", (ImGui.GetContentRegionAvail(ctx)) - 10, ah - CFG.SP_PANEL - 12) then
-        if R.page == 1 then UI.draw_tracks() else Notes.draw(ah - CFG.SP_PANEL - 12) end
+      local iw = (ImGui.GetContentRegionAvail(ctx)) - 10
+      local ih = ah - CFG.SP_PANEL - 12 - UI.draw_song_head(iw) -- (the song header above both)
+      if ImGui.BeginChild(ctx, "##inner", iw, ih) then
+        if R.page == 1 then UI.draw_tracks() else Notes.draw(ih) end
         ImGui.EndChild(ctx)
       end
     elseif R.page == UI.PAGE_SETTINGS then UI.draw_settings()
@@ -4165,7 +4229,6 @@ function UI.draw_main()
     ImGui.TextColored(ctx, n.warn and COL.ORANGE or COL.TEXT_DIM, n.text)
     ImGui.PopTextWrapPos(ctx)
   end
-  UI.draw_status(px, py + ah + nh, aw, bh)
   UI.draw_panel_menu()
   if R.page == 1 then UI.tab_keys() elseif R.page == UI.PAGE_NOTES then Notes.keys() end
   Notes.draw_popups()

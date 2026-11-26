@@ -64,18 +64,20 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   tooltips and the note box.
 - Find tempo: the "Tempo" section at the top of the Detection tab (`UI.draw_tempo_step`, in Tab Viewer.lua; Notes.lua
   calls it; the sections: NOTES.md "The screen"): Listen to ("From the tab", the default with a Guitar Pro tab,
-  `Tabs.tempo_from_tab`; then the tracks, `Tempo.sources`; another choice drops a result) with 1 button: Find tempo,
-  the blue Set tempo with a result, Cancel while it listens (the progress under it). A result's rows (`tempo_rows`,
-  label and dropdown as in Song): Tempo (found / half / double; from the tab its tempo), Style with the grey line of
+  `Tabs.tempo_from_tab`; then the tracks, `Tempo.sources`; another choice drops a result); 1 button at the right of
+  the heading (`TB_*`): Find tempo, the blue Set tempo with a result, Cancel while it listens (the progress under
+  Listen to). A result's rows (`tempo_rows`, label and dropdown as in Bass): Tempo (found / half / double; from the tab its tempo), Style with the grey line of
   its suggestion (`tm.lbl_note`), Bar 1 with < >. The Tab tab's Start row points there with a grey line,
   and its yellow tempo warning too. From the tab:
   `GP.timeline(doc)`, `Tempo.from_tab` (bar 1 = the first sound of the song less the time to the first note:
   `Tabs.first_qn`), `Beat.tab_plan` (a marker only where the tempo or time signature changes); it does not move the
-  audio; then the tab starts on the new bar 1. The song: the selected audio item, else the longest
-  (`Tabs.song_item`).
-- The bottom bar (`UI.draw_status`, as Chart Cue's status line; decided 26 November 2026): "Song 2 of 3: name |
-  12 lines, 2 not sure | Tab: file" (`Notes.status`, `UI.status_text`, cached); a click: the start of the song and
-  its bass item selected (`Notes.song_go`, stopped only). The notice stays above it.
+  audio; then the tab starts on the new bar 1. The song (`Tabs.song_item`): in the song of the song header (else the
+  tab's region), the selected audio item, else the longest, cut to the song's range (1 tempo per song).
+- The song header (`UI.draw_song_head`, at the top of the Tab and Detection tabs; the UI/UX review, decided 26
+  November 2026): < "Song 2 of 3: name" > and the song list at the right (a click on the name too); the arrows and
+  the list show that song, move the edit cursor to its start and select its bass item (`Notes.song_go`, stopped
+  only). It flashes (`CFG.SONG_FLASH`) when the Detection list followed the cursor into another song. The songs and
+  their lists: NOTES.md. Headings (`UI.heading`): the status after the title, the section's button(s) at the right.
 - The panel rows Tab (the dropdown: the tabs, Region, Undo all fixes, Layout..., Remove; Open tab...), Track (and
   Import to list), the file line, Start (< >) share the label column (`CFG.LABEL_W`, `UI.field`).
 
@@ -121,7 +123,7 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   that can not be read at Open tab...: an orange notice, nothing changes.
 - `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks`, `lengths`, `written`,
   `tremnotes`, `countshow`, `tab_hide`, `zoom` (only when not 100%), `closed` (the folded sections: Tab, Detection,
-  Look, Window in Settings; Tempo and Song in the Detection tab). The Detection tab keeps its own keys in the same section (NOTES.md).
+  Look, Window in Settings; Tempo and Bass in the Detection tab). The Detection tab keeps its own keys in the same section (NOTES.md).
 - Not saved: the loop and the speed (100% again at close), the selection, `R.page`.
 
 ## The tab

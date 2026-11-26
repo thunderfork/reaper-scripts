@@ -856,7 +856,7 @@ test("settings: defaults and bad values", function()
   C.Util.apply_setting("finger", "1")
   C.Util.apply_setting("strings", "x"); eq(C.S.strings, "letters")
   C.Util.apply_setting("simple", "1"); eq(C.S.simple, nil, "a removed setting (Simple mode) is not read")
-  eq(table.concat(C.Util.settings_lines(), " "), "out=markers frets=1 finger=1 strings=letters export_dir= splits=0")
+  eq(table.concat(C.Util.settings_lines(), " "), "out=markers frets=1 finger=1 strings=letters export_dir= splits=0 song_follow=1")
   C.Util.apply_setting("export_dir", " D:\\Songs ")
   eq(C.S.export_dir, "D:\\Songs")
   C.Util.apply_setting("export_dir", "")
@@ -1701,7 +1701,43 @@ test("songs: 1 long bass item for 2 regions; Find notes fills each song's list f
   eq(texts(), "C", "song One")
   go_to(4)
   eq(texts(), "F (D 3)", "song Two's list was not replaced")
-  eq(C.status(), "Song 2 of 2: Two  |  1 line", "the bottom bar")
+  eq(C.song_head().txt, "Song 2 of 2: Two", "the song header")
+  -- the arrows of the song header: the song before, its list, the edit cursor at its start
+  ok(C.song_go(-1), "the song before")
+  eq(texts(), "C"); near(r.GetCursorPosition(), 0, 1e-6, "the edit cursor at its start")
+  eq(C.song_head().txt, "Song 1 of 2: One")
+  eq(C.song_go(-1), false, "no song before the first")
+  ok(C.song_go(0, 2), "the song list: song 2")
+  eq(texts(), "F (D 3)")
+  -- Follow the song off: the cursor moves, the list stays
+  C.S.song_follow = false
+  go_to(1)
+  eq(texts(), "F (D 3)", "Follow the song off: the list stays")
+  C.S.song_follow = true
+  go_to(1)
+  eq(texts(), "C", "on again: it follows")
+  ok(R.flash, "the header flashes")
+end)
+
+test("songs: the Tempo section checks the tempo of the song in the header", function()
+  clear_project(); clear_tempo() -- (REAPER's first tempo marker at 0 s stays: the songs start later)
+  R.ask, R.trk = nil, nil
+  local tr = add_track("Bass")
+  add_item(tr, tmp .. "\\two_songs.wav", 10)
+  r.AddProjectMarker2(0, true, 10, 13, "One", -1, 0)
+  r.AddProjectMarker2(0, true, 13, 16, "Two", -1, 0)
+  R.trk = tr
+  go_to(14)
+  local item, t0, t1 = TV.Tabs.song_item()
+  ok(item, "the song item"); near(t0, 13, 1e-6, "song Two: from its start"); near(t1, 16, 1e-6, "to its end")
+  TV.R.tset = nil
+  eq(TV.Tabs.tempo_state().ok, false, "song Two: not set yet")
+  r.SetTempoTimeSigMarker(0, -1, 13, -1, -1, 100, 0, 0, false)
+  TV.R.tset = nil
+  ok(TV.Tabs.tempo_state().ok, "song Two: its tempo is set")
+  go_to(11)
+  eq(TV.Tabs.tempo_state().ok, false, "song One: not yet (each song its own)")
+  clear_tempo()
 end)
 
 test("songs: Find notes on a selected item of another song fills that song's list", function()

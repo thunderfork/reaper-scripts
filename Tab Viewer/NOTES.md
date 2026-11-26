@@ -41,7 +41,7 @@ The history of every decision: git.
   Done: clean up removes the list of its song. `P_EXT:TabViewer` = 1 on the Notes track and its items ("midi": the Bass MIDI track).
 - `S` (ExtState "Tab Viewer"; keys that do not meet Tab Viewer's): `out` ("markers", "track", "both"), `frets`
   (String for high notes, on), `finger` (Fingering for runs, on), `strings` ("letters" / "numbers"), `splits` (Split
-  repeated notes, OFF by default), `export_dir` ("" = the project folder).
+  repeated notes, OFF by default), `export_dir` ("" = the project folder), `song_follow` (Follow the song, on).
 - 1 mode: no Simple mode, no beat count, no slide mark.
 - `R` (runtime): the selection, the edit box, `undo` / `redo` (`List.step`: the list text, or `{ reaper = the undo
   name, list }` for Write, Clear and Export: their undo is REAPER's undo too, when that step is REAPER's next one), the
@@ -120,18 +120,23 @@ The history of every decision: git.
 
 ## The screen
 
+- Above the sections: Tab Viewer's song header (`UI.draw_song_head`, also in the Tab tab; `N.song_head`,
+  `N.song_go`, `N.song_list`; decided 26 November 2026, the UI/UX review "A"). Settings > Detection > Follow the
+  song (`S.song_follow`, on) switches `Lists.follow` off; the arrows and the list still change the song.
 - The sections in the order of the work (decided 26 November 2026; no numbers in the headings): "Tempo" (Tab
-  Viewer's `UI.draw_tempo_step`), "Song", "Notes"; Tempo and Song fold (`UI.FOLD_TEMPO`, `UI.FOLD_SONG` in
-  `S.closed`) and show their status at the right of the heading. Blue is the 1 next step: Find tempo (no tempo yet),
-  Set tempo (a result, in Find tempo's place), Import from tab (with a tab) or Find notes (no list), Write. The Tempo
-  section is done when the song has a tempo marker of its own (`Tabs.tempo_state`, `UI.tempo_ok`; "The tempo is
-  right" puts one at the song start); until then Find notes and Import from tab are grey, with a grey line.
-- Song: Song (only with songs: the songs and their line counts, `Songs.labels`; a choice = `Songs.go`, stopped only),
-  Track with Find notes (while it listens: Cancel, the progress under the Notes heading) and Import
-  from tab, Key and Tuning on 1 row (`CFG.KEY_W`, `CFG.TUNE_LABEL_W`; narrower than `CFG.TUNE_MIN_W`: 2 rows), Lines
+  Viewer's `UI.draw_tempo_step`), "Bass", "Notes"; Tempo and Bass fold (`UI.FOLD_TEMPO`, `UI.FOLD_SONG` in
+  `S.closed`). Each heading: its status after the title, its step's button at the right end (also when folded;
+  `UI.heading` with 1 button or a list). Blue is the 1 next step: Find tempo (no tempo yet), Set tempo (a result, in
+  Find tempo's place), Import from tab (with a tab) or Find notes (no list), Write. The Tempo section is done when
+  the song of the header has a tempo marker of its own (`Tabs.tempo_state`, `UI.tempo_ok`; `Tabs.song_item`: the
+  audio in that song, cut to its range; "The tempo is right" puts one at the song start); until then Find notes and
+  Import from tab are grey, with a grey line. Another song drops a Find tempo result (`host.song_changed`).
+- Bass: Import from tab (with a tab) and Find notes in the heading (while it listens: Cancel, the progress under
+  the Notes heading), Track, Key and Tuning on 1 row (`CFG.KEY_W`, `CFG.TUNE_LABEL_W`; narrower than `CFG.TUNE_MIN_W`: 2 rows), Lines
   with an example. Notes: the count and Next not sure at its right. Without a list: the grey hint, no bottom
   rows. With a list: Join, Split, + Add, Delete; then the blue Write, its dropdown, More... (Export, Done, Clear).
-- Settings > Detection: String for high notes, Fingering for runs, Split repeated notes, String names.
+- Settings > Detection: Follow the song, String for high notes, Fingering for runs, Split repeated notes, String
+  names.
 
 ## REAPER facts
 

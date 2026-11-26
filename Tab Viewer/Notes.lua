@@ -156,8 +156,9 @@ local R = {
   hist = {},         -- the Undo and Redo steps of the other songs: { [id] = { undo, redo } } (this session)
   follow_last = nil, -- the song at the cursor when the list last followed it (Lists.follow)
   songs = nil,       -- the songs (Songs.get; made again when the project or the Track row changes)
-  st = nil,          -- the text of the bottom bar (N.status)
-  song_lbls = nil,   -- the texts of the Song dropdown
+  st = nil,          -- the song header (N.song_head)
+  song_lbls = nil,   -- the texts of the song list of the header
+  flash = nil,       -- the time the list last followed the cursor to another song (the header flashes)
 }
 local P
 local S = {
@@ -167,6 +168,7 @@ local S = {
   strings = "letters", -- Settings > Detection > String names: "letters" (E A D G) or "numbers" (4 3 2 1)
   export_dir = "",   -- the folder of the .mid files ("": the project folder)
   splits = false,    -- Settings > Detection > Split repeated notes (after Set tempo; off by default, decided 25 November 2026)
+  song_follow = true, -- Settings > Detection > Follow the song (the list follows the edit cursor; 26 November 2026)
 }
 
 ---------------------------------------------------------------------------
@@ -212,10 +214,12 @@ function Util.browse_folder(title, start)
 end
 function Util.settings_lines()
   return { "out=" .. S.out, "frets=" .. (S.frets and "1" or "0"), "finger=" .. (S.finger and "1" or "0"),
-    "strings=" .. S.strings, "export_dir=" .. S.export_dir, "splits=" .. (S.splits and "1" or "0") }
+    "strings=" .. S.strings, "export_dir=" .. S.export_dir, "splits=" .. (S.splits and "1" or "0"),
+    "song_follow=" .. (S.song_follow and "1" or "0") }
 end
 function Util.apply_setting(k, v)
   if k == "splits" then S.splits = (v ~= "0")
+  elseif k == "song_follow" then S.song_follow = (v ~= "0")
   elseif k == "export_dir" then S.export_dir = Util.clean(v)
   elseif k == "strings" then S.strings = v == "numbers" and v or "letters"
   elseif k == "finger" then S.finger = (v ~= "0")
@@ -1489,7 +1493,7 @@ function Project.save()
   if not (R.proj and r.ValidatePtr2(0, R.proj, "ReaProject*")) then return end
   Lists.store()
   local txt = Lists.join(R.lists)
-  R.song_lbls = nil -- (the line counts of the Song dropdown)
+  R.song_lbls = nil -- (the line counts of the song list)
   if txt == R.plast_txt then return end
   r.SetProjExtState(R.proj, CFG.EXT, CFG.PEXT_KEY, txt)
   r.MarkProjectDirty(R.proj)
@@ -1589,10 +1593,12 @@ end
 function Songs.cur()
   for _, s in ipairs(Songs.get()) do if s.id == R.song then return s end end
 end
--- The bottom bar and the Song dropdown: the edit cursor goes to the start of song s and its bass item is selected.
+-- The song header's arrows and list: song s shows, the edit cursor goes to its start and its bass item is selected.
 -- Only while stopped (false: playing, or no song).
 function Songs.go(s)
   if not s or Util.playing() then return false end
+  Lists.switch(s.id)
+  R.follow_last = s.id
   r.SetEditCurPos2(R.proj, s.t0, true, false)
   local tr, best, bo = Find.track(), nil, 0
   for _, a in ipairs(tr and Find.audio_items(tr) or {}) do
@@ -1606,17 +1612,16 @@ function Songs.go(s)
   r.UpdateArrange()
   return true
 end
--- The texts of the Song dropdown: the shown song ("Far Away (2 of 3)") and each song with its line count.
+-- The texts of the song list of the song header: each song with its line count.
 function Songs.labels()
   local songs = Songs.get()
   local c = R.song_lbls
   if c and c.songs == songs and c.song == R.song and c.n == #P.rows then return c end
-  c = { songs = songs, song = R.song, n = #P.rows, items = {}, cur = "Pick a song" }
+  c = { songs = songs, song = R.song, n = #P.rows, items = {} }
   for k, s in ipairs(songs) do
     local n = s.id == R.song and #P.rows or Lists.count(R.lists and R.lists.txt[s.id])
     c.items[k] = string.format("%d: %s", k, s.name) .. (n > 0 and string.format("  (%d %s)", n, n == 1 and "line" or "lines") or "")
       .. "##song" .. k
-    if s.id == R.song then c.cur = string.format("%s (%d of %d)", s.name, k, #songs) end
   end
   R.song_lbls = c
   return c
@@ -1709,16 +1714,18 @@ function Lists.switch(id)
   P = List.parse(R.lists and R.lists.txt[id] or "")
   R.sel, R.edit, R.view, R.places, R.written, R.written_lbl, R.src_name, R.st = nil, nil, nil, nil, nil, nil, nil, nil
   host.notes_changed()
+  host.song_changed() -- (Tab Viewer: a Find tempo result was for the song before)
 end
 -- Every frame: the list follows the song at the cursor (only when that song changes; not while Find notes listens or
 -- a window of the list is open).
 function Lists.follow()
-  if R.find or R.edit or R.ask or R.finish or R.export or not R.lists then return end
+  if not S.song_follow or R.find or R.edit or R.ask or R.finish or R.export or not R.lists then return end
   local songs = Songs.get()
   local i = Songs.at(songs, Util.cursor())
   local id = i and songs[i].id
   if not id or id == R.follow_last then return end
   R.follow_last = id
+  if id ~= R.song then R.flash = Util.now() end -- (the song header flashes: the list changed by itself)
   Lists.switch(id)
 end
 -- The bass item of any saved list, or the item of a song that is an item (the default of the Track row), or nil.
@@ -2567,7 +2574,7 @@ function N.written() R.view = nil end -- (the bar numbers of the list)
 N.test = { CFG = CFG, S = S, R = R, Util = Util, Key = Key, Det = Det, Group = Group, List = List, Project = Project,
   Find = Find, Out = Out, Export = Export, Imp = Imp, GP = GP, TP = TP, UI = UI, Songs = Songs, Lists = Lists,
   get_P = function() return P end, set_P = function(p) P = p end, draw = function(h) N.draw(h) end,
-  status = function() return N.status() end }
+  song_head = function() return N.song_head() end, song_go = function(dir, k) return N.song_go(dir, k) end }
 
 ---------------------------------------------------------------------------
 -- UI (the Detection tab of Tab Viewer's window)
@@ -2591,11 +2598,11 @@ N.HELP_TOPICS = {
 - Click Write. 1 Ctrl+Z takes it all away.
 - No plugins needed: Tab Viewer reads the audio itself.]] },
   { title = "Several songs in 1 project", text = [[
-- Each song has its own list. A song is a region, or a bass item outside the regions.
-- The list follows the edit cursor (playing: the play position). Between songs the last list stays.
-- Which song is it? The bar at the bottom of the window. Click it: the start of the song.
-- Song (in the Detection tab): pick another song (stop first).
-- 1 long bass item for several regions? Find notes listens only to the part in the song.
+- Each song has its own list and tempo. A song is a region, or a bass item outside the regions.
+- Which song is it? The line at the top: "Song 2 of 3". The arrows: the song before or after. Click the name: all songs (stop first).
+- It follows the edit cursor (playing: the play position), and flashes when it changes. Between songs the last song stays.
+- Rather pick it yourself? Turn off Settings > Detection > Follow the song.
+- 1 long bass item for several regions? Find tempo and Find notes listen only to the part in the song.
 - Write, Clear and Export change only that song.]] },
   { title = "Checking the list", text = [[
 - Click a line: it plays in a loop. Space or Escape: stop.
@@ -2848,6 +2855,9 @@ local STRING_STYLES = { { "letters", "Letters (E A D G)" }, { "numbers", "Number
 function N.draw_settings()
   local ch, pick
   local function dirty(c) if c then R.sdirty = true end end -- (the Detection settings: saved by Notes.lua)
+  ch, S.song_follow = UI.set_toggle("Follow the song", S.song_follow,
+    "On (the default): the song at the top follows the edit cursor (playing: the play position). Off: only the arrows and the song list change it.")
+  dirty(ch)
   ch, S.frets = UI.set_toggle("String for high notes", S.frets,
     "On (the default): high notes get string and fret, \"E (A 7)\". For the next Find notes.")
   dirty(ch)
@@ -3001,44 +3011,42 @@ local FIND_TIP = "Listens to the bass track and fills the list."
 local FIND_AGAIN_TIP = "Listen again: a new list (Undo brings this one back)."
 local IMPORT_TIP = "The notes of the Tab tab become the list."
 local NEED_TEMPO = "Set the tempo first (Tempo, above): the notes go on the song's bars."
-local SONG_TIP = "Each song has its own list. The list follows the edit cursor (playing: the play position)."
-local SONG_PLAYING = "Stop first to go to another song."
--- The "Song" section of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work; folding:
--- 26 November 2026): Track with Find notes and Import from tab (both wait for the Tempo section;
--- the blue one is the next step: Import from tab with a tab, else Find notes, only without a list; while it listens:
--- Cancel), Key and Tuning on 1 row (2 rows when narrow), Lines. The Tempo section: Tab Viewer's UI.draw_tempo_step.
+-- The buttons of the Bass heading (made once; their state is set each frame): Import from tab (only with a tab),
+-- Find notes or Cancel.
+local NB_IMPORT, NB_FIND = { "Import from tab" }, { "Find notes" }
+local NB_CANCEL = { "Cancel", nil, false, "Stop. The list stays as it was." }
+local NB_TWO, NB_TWO_RUN = { NB_IMPORT, NB_FIND }, { NB_IMPORT, NB_CANCEL }
+-- The "Bass" section of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work; folding:
+-- 26 November 2026; "Bass", the buttons in the heading: 26 November 2026): Import from tab and Find notes at the
+-- right of the heading (both wait for the Tempo section; the blue one is the next step: Import from tab with a tab,
+-- else Find notes, only without a list; while it listens: Cancel), then Track, Key and Tuning on 1 row (2 rows when
+-- narrow), Lines. The Tempo section: Tab Viewer's UI.draw_tempo_step.
 function UI.draw_song()
-  local has = #P.rows > 0
-  local _, open = UI.heading("Song", false, nil, UI.FOLD_SONG, R.find and "Listening..." or has and "Notes found" or "No notes yet",
-    has and not R.find and COL.GREEN or COL.TEXT_DIM)
+  local has, ok = #P.rows > 0, UI.tempo_ok()
+  local tab = host.R.tab ~= nil -- (Import from tab only with a tab: decided 26 November 2026)
+  local busy = host.R.tempo ~= nil and host.R.tempo.run ~= nil
+  NB_IMPORT[2], NB_IMPORT[3], NB_IMPORT[4] = ok and not has and "primary" or nil, R.find ~= nil or not ok,
+    not ok and NEED_TEMPO or IMPORT_TIP
+  NB_FIND[2], NB_FIND[3] = ok and not has and not tab and "primary" or nil, busy or not ok
+  NB_FIND[4] = not ok and NEED_TEMPO or busy and "Wait for Find tempo." or has and FIND_AGAIN_TIP or FIND_TIP
+  local btns = R.find and (tab and NB_TWO_RUN or NB_CANCEL) or (tab and NB_TWO or NB_FIND)
+  local hit, open = UI.heading("Bass", false, btns, UI.FOLD_SONG,
+    R.find and "Listening..." or has and "Notes found" or "No notes yet", has and not R.find and COL.GREEN or COL.TEXT_DIM)
+  if hit then
+    local b = type(hit) == "number" and btns[hit] or btns
+    if b == NB_CANCEL then Find.cancel()
+    elseif b == NB_FIND then UI.find()
+    elseif b == NB_IMPORT then UI.import_to_list() end
+  end
   if not open then return end
   local fw = UI.field_w()
-  local ok = UI.tempo_ok()
-  -- Song: the song of the list (only when the project has songs); a choice goes there (stopped only)
-  if Songs.get()[1] then
-    UI.field("Song")
-    local lb, playing = Songs.labels(), Util.playing()
-    ImGui.BeginDisabled(ctx, playing or R.find ~= nil)
-    ImGui.SetNextItemWidth(ctx, fw)
-    if ImGui.BeginCombo(ctx, "##ndsong", lb.cur) then
-      for k, s in ipairs(lb.songs) do
-        if ImGui.Selectable(ctx, lb.items[k], s.id == R.song) and s.id ~= R.song then Songs.go(s) end
-      end
-      ImGui.EndCombo(ctx)
-    end
-    ImGui.EndDisabled(ctx)
-    UI.tip_disabled(playing and SONG_PLAYING or SONG_TIP)
-  end
-  -- Track: the bass track that Find notes listens to, then Find notes
+  -- Track: the bass track that Find notes listens to
   UI.field("Track")
   local tr = Find.track()
   if R.trk_for ~= tr then R.trk_for, R.trk_lbl = tr, nil end
   R.trk_lbl = R.trk_lbl or (tr and Find.track_label(tr) or "Pick the bass track")
-  local bw = UI.btn_w(R.find and "Cancel" or "Find notes")
-  local iw = host.R.tab and UI.btn_w("Import from tab") -- (only with a tab: decided 26 November 2026)
-  local rw = bw + (iw and iw + CFG.CTRL_GAP or 0)
   ImGui.BeginDisabled(ctx, R.find ~= nil)
-  ImGui.SetNextItemWidth(ctx, math.max(80, math.min(fw, (ImGui.GetContentRegionAvail(ctx)) - rw - CFG.CTRL_GAP)))
+  ImGui.SetNextItemWidth(ctx, fw)
   if ImGui.BeginCombo(ctx, "##ndtrack", R.trk_lbl) then
     local list = Find.tracks()
     if not list[1] then ImGui.TextDisabled(ctx, "No tracks with audio yet.") end
@@ -3049,24 +3057,6 @@ function UI.draw_song()
   end
   ImGui.EndDisabled(ctx)
   UI.tip_disabled("The separated bass (bass only, for now).")
-  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  if R.find then
-    if UI.button("Cancel", bw) then Find.cancel() end
-    UI.tip("Stop. The list stays as it was.")
-  else
-    local busy = host.R.tempo ~= nil and host.R.tempo.run ~= nil -- (true or false: BeginDisabled takes nil as true)
-    ImGui.BeginDisabled(ctx, busy or not ok)
-    if UI.button("Find notes", bw, nil, ok and not has and not iw and "primary" or nil) then UI.find() end
-    ImGui.EndDisabled(ctx)
-    UI.tip_disabled(not ok and NEED_TEMPO or busy and "Wait for Find tempo." or has and FIND_AGAIN_TIP or FIND_TIP)
-  end
-  if iw then -- Import from tab: as Import to list in the Tab tab (the track picked there)
-    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-    ImGui.BeginDisabled(ctx, R.find ~= nil or not ok)
-    if UI.button("Import from tab", iw, nil, ok and not has and "primary" or nil) then UI.import_to_list() end
-    ImGui.EndDisabled(ctx)
-    UI.tip_disabled(not ok and NEED_TEMPO or IMPORT_TIP)
-  end
   if not ok then -- (why they are grey: on the screen, not only in the tooltip)
     ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + host.CFG.LABEL_W)
     ImGui.TextColored(ctx, COL.TEXT_DIM, NEED_TEMPO)
@@ -3134,10 +3124,10 @@ function UI.draw_song()
 end
 
 function UI.draw_list(v, h)
-  if #P.rows == 0 then -- (Find notes is on the Track row above, blue)
+  if #P.rows == 0 then -- (Find notes is in the Bass heading above, blue)
     ImGui.Dummy(ctx, 0, 4)
     ImGui.PushTextWrapPos(ctx, 0)
-    ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the bass..." or "No notes yet. Pick the bass track above, then click Find notes. Works with bass only (for now): guitar or other audio gives wrong notes. Have a Guitar Pro tab? Open it in the Tab tab, then click Import from tab.")
+    ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the bass..." or "No notes yet. Pick the bass track above, then click Find notes (bass only, for now). Have a Guitar Pro tab? Open it in the Tab tab, then click Import from tab.")
     ImGui.PopTextWrapPos(ctx)
     return
   end
@@ -3412,22 +3402,38 @@ function N.exit()
   if R.sdirty then Util.save_settings() end
 end
 function N.busy() return R.find ~= nil end -- (Find notes listens)
--- The bottom bar of Tab Viewer: "Song 2 of 3: Far Away  |  12 lines, 2 not sure" (made again only when it changes).
-function N.status()
-  local songs, v = Songs.get(), UI.view()
+-- The song header at the top of Tab Viewer's Tab and Detection tabs (decided 26 November 2026): { txt = "Song 2 of 3:
+-- Far Away", i, n, flash (the time the list last followed the cursor to this song) }; nil: the project has no songs.
+-- Made again only when the song or the songs change.
+function N.song_head()
+  local songs = Songs.get()
+  if not songs[1] then return nil end
   local c = R.st
-  if c and c.songs == songs and c.song == R.song and c.v == v and c.find == (R.find ~= nil) then return c.txt end
-  local parts = {}
+  if c and c.songs == songs and c.song == R.song then c.flash = R.flash; return c end
+  c = { songs = songs, song = R.song, n = #songs, txt = "No song here yet: use the arrows, or move the edit cursor into a song." }
   for k, s in ipairs(songs) do
-    if s.id == R.song then parts[1] = string.format("Song %d of %d: %s", k, #songs, s.name) end
+    if s.id == R.song then c.i, c.txt = k, string.format("Song %d of %d: %s", k, #songs, s.name) end
   end
-  parts[#parts + 1] = R.find and "Listening..." or v.status ~= "" and v.status or "No notes yet"
-  c = { songs = songs, song = R.song, v = v, find = R.find ~= nil, txt = table.concat(parts, "  |  ") }
+  c.flash = R.flash
   R.st = c
-  return c.txt
+  return c
 end
--- A click on the bottom bar: the start of the song of the list (false: playing, or no song).
-function N.song_go() return Songs.go(Songs.cur()) end
+-- The arrows of the song header (dir -1 / 1) and its list (k): that song shows, the edit cursor goes to its start and
+-- its bass item is selected (false: playing, Find notes listens, or no such song).
+function N.song_go(dir, k)
+  local c = R.st
+  if not c or R.find then return false end
+  local i = k or (c.i and c.i + dir) or (dir > 0 and 1 or c.n)
+  return Songs.go(c.songs[i])
+end
+-- The texts of the song list (Songs.labels: each song with its line count).
+function N.song_list() return Songs.labels() end
+-- The song of the header for Tab Viewer's Tempo section: its id (every frame), and its start and end (nil: none).
+function N.song_id() return R.song end
+function N.song_range()
+  local s = Songs.cur()
+  if s then return s.t0, s.t1 end
+end
 -- Import to list (Tab Viewer's Tab tab; list and open: Imp.apply): asks first when the list has notes. done(n): after
 -- the import (n: the number of notes).
 function N.import(list, open, done)
