@@ -2,7 +2,8 @@
 
 Links plugin instances across tracks: a change in one instance of a link group is copied to the other instances
 (Exact: the same value; Relative: the same change). Small Chart Cue look: a toolbar (Show plugins, search, gear, "?"),
-one panel with foldable sections (Link groups, Link settings, Linked parameters, Plugins), no tabs.
+one panel with foldable sections (Link groups, Link settings, Linked parameters, Plugins), no tabs. The gear menu:
+Look, Automatic open and close, Window, Backup.
 
 ## Files
 

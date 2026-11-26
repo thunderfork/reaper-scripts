@@ -5,7 +5,7 @@ Cleans up the tracks of a multitrack import in one step: Scan / Scan all (change
 ("Session Prep: apply"). A preparation tool: no project data, no live features. Chart Cue look with a tab strip:
 Prep, Rules, FX Chains, Buses, Settings (gear), Help ("?"); the sections of Rules, FX Chains and Buses fold (arrows, `S.closed`;
 the Rules list also folds each folder group, ids "rf_<folder>"); Settings has
-collapsing sections, 1 open at a time (`S.settings_open`), with a bold label column as in MIDI Pilot (`UI.form_label`,
+collapsing sections (Appearance, Prep with Tracks / Routing / Checks, Gain staging, Window), 1 open at a time (`S.settings_open`), with a bold label column as in MIDI Pilot (`UI.form_label`,
 `UI.form_toggle`).
 
 ## Files

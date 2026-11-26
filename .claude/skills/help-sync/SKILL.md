@@ -5,15 +5,9 @@ description: Find and fix every text in the scripts of this repository (tools\sc
 
 # Help sync
 
-Old names were the most frequent problem in the reviews. After each change, every place that names
-the changed thing must use the new name and place.
+Read and follow the global skill first: `%USERPROFILE%\.claude\skills\help-sync\SKILL.md`. This project adds:
 
-## 1. List the changed names
-
-The old and the new name of each control, heading, section, tab, menu item, mode or setting; and its
-old and new place ("Settings > Display > ..." -> "Settings > Viewer > ...").
-
-## 2. Search everywhere (grep, case-insensitive)
+## Where to search (step 2 of the global skill)
 
 - `Chart Cue/Chart Cue.lua`: Help topics (HELP_TOPICS, also "more" texts), UI.tip / tooltips,
   UI.heading "?" texts, Msg.notify messages, menu items, status bar texts, comments.
@@ -27,16 +21,9 @@ old and new place ("Settings > Display > ..." -> "Settings > Viewer > ...").
 - `Mono Merge/Mono Merge.lua`: the messages and questions (`r.MB`) and the undo names (`Undo_EndBlock`).
 - The action scripts' comments, the root and folder CLAUDE.md files (also the Chart Cue release checklist), the
   skills, PLAN.md, LESSONS-RULES.md, README.md.
-- Every "Settings > A > B" path: A must be a section name, B a heading in that section.
-  `grep -o 'Settings > [A-Z][A-Za-z]*\( > [A-Z][A-Za-z ]*\)\?'`, then compare with SETTINGS_SECTIONS
-  and the UI.heading names.
-- Removed features: no text may still offer them.
+- The "Settings > A > B" paths: `grep -o 'Settings > [A-Z][A-Za-z]*\( > [A-Z][A-Za-z ]*\)\?'`, then compare
+  with SETTINGS_SECTIONS and the UI.heading names (`tools\docs-check.ps1` checks the paths in the docs).
 
-## 3. Fix
+## Fix (step 3 of the global skill)
 
-Plain words (STE style for the user's texts), the same word for the same thing everywhere. Keep the
-Help topic order the same as the tab order.
-
-## 4. Report
-
-The texts changed, in one short list. Nothing else changes for the user.
+The word style of the script (CLAUDE.md "Look and words"). Keep the Help topic order the same as the tab order.

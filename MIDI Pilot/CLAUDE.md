@@ -1,7 +1,8 @@
 # MIDI Pilot
 
 "MIDI editor for amp modelers": it prepares the MIDI for a Quad Cortex / Quad Cortex mini or a Line 6 Helix, HX
-Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are untested). No relation to the other scripts.
+Stomp, HX Stomp XL or HX Effects (the Line 6 profiles are untested). No relation to the other scripts. Screens: tabs
+Songs (with Songs > Tools), Lanes, Presets; Settings sections Devices, Editing, Appearance, General.
 
 ## Rules
 

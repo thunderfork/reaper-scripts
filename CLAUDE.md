@@ -1,7 +1,7 @@
 # Thunderfork REAPER scripts: development
 
 Repository `thunderfork/reaper-scripts` (https://github.com/thunderfork/reaper-scripts), shown in ReaPack as
-"Thunderfork Scripts". 8 separate scripts, each in its own folder (the folder is the ReaPack category; keep each
+"Thunderfork Scripts". Separate scripts, each in its own folder (the folder is the ReaPack category; keep each
 script's files there). Each folder has its own CLAUDE.md with its modules, data, tests and release details:
 
 - **Chart Cue** (`Chart Cue/`): Windows-only; shows and scrolls PDF charts during playback. The UI style guide.
@@ -14,15 +14,12 @@ script's files there). Each folder has its own CLAUDE.md with its modules, data,
   A preparation tool; Chart Cue look with tabs; in the project only its Soundcheck list (its library index is in Data\SFX Drop).
 - **Mono Merge** (`Mono Merge/`): joins 2 mono items into 1 stereo file. 2 actions, no window (no ReaImGui),
   no saved data.
-- **Tab Viewer** (`Tab Viewer/`): Guitar Pro tabs in the project (guitar, bass, drums). Chart Cue look with tabs
-  (Tab, Note Detection). Its Note Detection tab (`Notes.lua`, `Tab Viewer/NOTES.md`; it was the script Note Detective, moved in 24
-  November 2026) finds the notes of a separated bass item, or takes them from the tab, and writes them as markers or
-  text items; in the project only its list, until Finish. Its other files: `Guitar Pro.lua` (the Guitar Pro reader)
-  and `Tempo.lua` (Tempo and bars); `tools\scripts.psd1` (Uses) and its `@provides` put them next to the script.
+- **Tab Viewer** (`Tab Viewer/`): Guitar Pro tabs in the project, and its Note Detection tab (the bass notes as
+  markers). Chart Cue look with tabs. Its shared files and the Note Detection notes: its folder CLAUDE.md.
 
-The rules below apply to all 8 scripts ("the script" = the script being changed).
+The rules below apply to all the scripts ("the script" = the script being changed).
 
-- Size: full (decided 21 November 2026). Platforms: REAPER (Lua ReaScript and ReaImGui); no global platform file
+- Size: full. Platforms: REAPER (Lua ReaScript and ReaImGui); no global platform file
   yet: the REAPER knowledge is in "REAPER, Lua and ReaImGui" below.
 - @LESSONS-RULES.md
 
@@ -47,16 +44,13 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
   triangle, resize edges and grip, spacing, headings, toggles, rows, buttons). After a change to Chart Cue's UI,
   list the same change for each other script and ask me before you make it.
 - Saved data: see "Saved data" below for what counts.
-- Deploy is automatic (instead of waiting for "build"): after every change to a script, run the checks, then
-  `.\tools\deploy.ps1`.
+- Deploy is automatic (instead of waiting for "build"): after each finished change to a script (not after each
+  edit), run the code checker and the tests of that script 1 time, then `.\tools\deploy.ps1`.
 - Commit, push and release only when I ask (instead of 1 commit after each change).
 - Ask first, in one line, before screenshots (`.\tools\shots.ps1`) or the UI test (it takes the focus).
 - Prefer 1 session per topic (a feature or a release).
-- A change with many parts or many tests: build it in segments and ask me before each segment (decided
-  23 November 2026, after the Note Detective detection change was too large at once).
-- The limit of open manual tests (more than 3: no new feature) counts only the tests of the script being developed
-  (decided 23 November 2026).
-- Code checker: `.\tools\check.ps1` (Lua Language Server, globals, ImGui balance).
+- A change with many parts or many tests: build it in segments and ask me before each segment.
+- The limit of open manual tests (more than 3: no new feature) counts only the tests of the script being developed.
 - The checks of the global rules, in this project: `debug-time` is the `debug-round` (bugs); "before a build" means
   before a deploy that I will test in REAPER; the checks before a push are in the `release` skill (they replace
   the global `checkup` before a push). `checkup` before a large change and every 30 days ("Last checkup" in PLAN.md).
@@ -67,11 +61,11 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
 ## Look and words (all scripts with a window)
 
 - Every optional feature (a visual aid, a warning, a note, an overlay) has an off switch in Settings; say its
-  default. A section that I can fold (its closed state saved) needs no extra switch (decided 9 November 2026).
+  default. A section that I can fold (its closed state saved) needs no extra switch.
 - Short choices (2-3) stay dropdowns or toggles, never joined (segmented) buttons. Blue is the colour of the main
-  action buttons ("press me"), never the colour of a selected state (decided 2 November 2026).
+  action buttons ("press me"), never the colour of a selected state.
 - Help texts are friendly and casual: short leading questions ("Made a mistake?"), "you", the benefit first and the
-  technical detail after it in brackets. Facts and "Settings > ..." paths stay exact (decided 10 November 2026).
+  technical detail after it in brackets. Facts and "Settings > ..." paths stay exact.
   New labels, tooltips and notices use the existing word style of the script.
 - Template: "+ Add" is a ghost button on the heading line, and its menu drops down below it; an empty list is 1 grey
   line "No ... yet. <what to do>."; yellow only for real warnings.
@@ -98,7 +92,7 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
   list); Session Prep's track mark `P_EXT:SessionPrep`; Tab Viewer's Notes mark `P_EXT:TabViewer`),
   the settings (Chart Cue's `settings.ini`, the ExtState "Segue", "MIDI Pilot", "FX Link", "Session Prep", "SFX Drop" and "Tab Viewer" keys; SFX Drop's `library.txt` and ProjExtState "SFX Drop"/"soundcheck"), their defaults, and the
   files in Chart Cue's data folder (including the autostart block). Ask me before you change any of them.
-- Current decision (November 2026; the scripts are public on ReaPack, but I treat them as without other users):
+- Current decision (the scripts are public on ReaPack, but I treat them as without other users):
   no migration code, no old keys, no fallback to old names or folders. Write clean code for a new user. Ask me
   before you change this.
 - New keys get defaults. Write a project key only when it differs from its default (Chart Cue compares the saved
@@ -114,7 +108,7 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
 - Call End / EndChild / EndPopup only when its Begin returned true; keep pushes and pops paired; keep ReaImGui
   calls in their UI / deferred-loop context.
 - Do not move state between `CFG`, `S`, `R` and `P` without asking (`CFG` constants, `COL` colours, `S` settings
-  of this computer, `R` runtime, `P` project data: the same in the 7 scripts with a window (Mono Merge has none of them; Tab Viewer's Notes.lua has its own `S`, `R`, `P` for the list); Session Prep has no `P`, only its track mark).
+  of this computer, `R` runtime, `P` project data: the same in the scripts with a window (Mono Merge has none of them; Tab Viewer's Notes.lua has its own `S`, `R`, `P` for the list); Session Prep has no `P`, only its track mark).
 
 ## Performance
 
@@ -124,37 +118,23 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
 
 ## Verification
 
-- After editing: `.\tools\check.ps1` must print "Syntax and globals OK" (syntax with `luac -p`, undefined
-  globals, CFG names read but never set, then Lua Language Server warnings as information). It compares the warnings with
-  `tools\known-warnings.txt` and shows only new ones: look at each new one; fix it, or (a false alarm) run
-  `.\tools\check.ps1 -UpdateKnown`. It also runs `tools\docs-check.ps1`: paths, skill names and "Settings > ..."
-  paths in the docs and skills that no longer match; fix each one it reports. And `tools\imgui-check.ps1`: the
-  ImGui Push / Pop balance of each function; a new finding: fix it, or (a helper that pushes for its caller, a
-  false alarm) run `.\tools\imgui-check.ps1 -UpdateKnown` (`tools\imgui-known.txt`).
-- Test gaps: `.\tools\test.ps1 -Script "<name>" -Coverage` lists the functions that the tests never run
-  (`tests\coverage_<test file>.txt`); use it to find where a test is missing (the `lessons` skill, step 5).
-- For logic changes: `.\tools\test.ps1 -Script "<the changed script>"` (all scripts only before a release); it
-  must end with "0 failed". An escaped bug (found by me in REAPER, or by `debug-time`): the `lessons` skill
-  (a test that fails first, the fix, a search of the other scripts, an entry in `LESSONS.md`). The tests run in the portable test
-  REAPER `C:\REAPERtest`, in the background; never use, close or save my normal REAPER.
+- Code checker: `.\tools\check.ps1` (only the changed scripts; `-All`: all scripts) must print "Syntax and globals
+  OK". A new warning, docs problem or ImGui finding: fix it, or (a false alarm) do what the tool's message says.
+- Tests: `.\tools\test.ps1 -Script "<the changed script>"` (all scripts only before a release) must end with
+  "0 failed". They run in the portable test REAPER `C:\REAPERtest`, in the background; never use, close or save my
+  normal REAPER.
+- An escaped bug (found by me in REAPER, or by `debug-time`): the `lessons` skill.
 - For UI code that the tests do not reach: the UI test (`ui-test` skill; Chart Cue only), after asking.
 - State the manual test when a change affects rendering, scrolling, MIDI, caching or project state.
-- Pre-commit hook (`tools\hooks\pre-commit`): when `.lua` files of a script are staged, it runs `check.ps1` and the
-  tests of those scripts, and stops the commit on a failure.
+- The pre-commit hook runs the checker and the tests of the staged scripts; a run that already passed on the same
+  files is skipped.
 
 ## Git and releases
 
 - Commit messages: `git commit -m "..." -m "..."` (not from a file written by PowerShell or the Write tool: a
   byte-order mark), ending with the `Co-Authored-By` line.
-- Every time I ask to commit and push: changed `.lua` files in a script folder are a new version of that script
-  (version, changelog, push, ReaPack check, GitHub Release with its zip), without asking again. Only other files
-  changed (docs, the folders' CLAUDE.md, tools, tests, skills): commit and push without a version, and say so.
-  Follow the `release` skill.
-- After each push: the "ReaPack index" workflow must succeed (`gh run list`), then `git pull` the new
-  `index.xml`. Never edit `index.xml` by hand.
-- A script that is not released has `Released = $false` in `tools\scripts.psd1`: `@noindex` in its .lua files and
-  its README part hidden (`<!-- -->`). The pre-push hook (`tools\hooks\pre-push`, `git config core.hooksPath
-  tools/hooks`) runs `tools\publish-check.ps1` and stops a push that would publish it.
+- Every time I ask to commit and push: follow the `release` skill without asking again (a changed script gets a
+  new version and a GitHub Release; only other files changed: no version). Never edit `index.xml` by hand.
 - A new script starts on its own branch (`script/<name>`), with its docs and its line in `tools\scripts.psd1`; it
   merges into main at its first release. (SFX Drop is the exception: it was on main before this rule.)
 
@@ -163,15 +143,7 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
 - `PLAN.md`: Handoff (with "Last checkup"), Open now (numbered; the open manual tests too), Later (ideas and the
   roadmap of each script). No done work: git records it.
 - `LESSONS.md`: the escaped bugs and their cause tags (`lessons` skill). `LESSONS-RULES.md`: the rules that came
-  from them (loaded above).
-- `README.md`: for users. `LICENSE`: MIT.
-- `.claude/skills/`: `release`, `debug-time` (the review round), `ui-test`, `housekeeping` (read-only audit, changes
-  only after my approval), `new-feature` (plan and questions before code), `help-sync` (every text that names a
-  changed feature), `lessons` (the self-improvement routine for escaped bugs).
-- `tools\scripts.psd1`: the 1 list of the scripts (name, test file, tag, released); every tool reads it.
-- `tools\`: check.ps1 (with `.luarc.json` and `known-warnings.txt`; it also runs publish-check.ps1 and imgui-check.ps1), test.ps1 (`-Coverage`), deploy.ps1, release.ps1 (`-Script "<name>"`: the zips in
-  the git-ignored `release\`), shots.ps1, ui-test.ps1 / ui-test.lua, background.ps1, session-start.ps1 (the state
-  at each session start: the SessionStart hook in `.claude\settings.json`), `hooks\pre-push`, `hooks\pre-commit`.
-- `tests\`: run.lua (Chart Cue), segue.lua, midipilot.lua, fxlink.lua, sessionprep.lua, sfxdrop.lua, monomerge.lua, tabviewer.lua (with its made-up data tabviewer_data.lua, and notes.lua: the Note Detection tab), shots.lua, test.pdf (make_pdf.lua makes it; run it with
-  the normal Lua, not REAPER).
+  from them (loaded above). `README.md`: for users.
+- `tools\scripts.psd1`: the 1 list of the scripts (name, test file, tag, released, shared files); every tool reads
+  it. Each tool in `tools\` describes its use in its first lines. A script's extra test files: its folder CLAUDE.md.
 - Temporary files (test logs, helper scripts): in the scratchpad folder, never in the repository.

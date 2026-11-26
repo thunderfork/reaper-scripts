@@ -1,6 +1,6 @@
 ---
 name: debug-time
-description: A review round of a script of this repository (tools\scripts.psd1) before a commit or a release - 4 passes (developer, UI/UX, musician, engineer), a cross-review, feedback, fixes and a check of the fixes. Use when the user says "debug time" (or asks for a debug / optimize / review round).
+description: A review round of a script of this repository (tools\scripts.psd1) before a commit or a release - 1 combined pass for a small change, or 4 passes (developer, UI/UX, musician, engineer), a cross-review, feedback, fixes and a check of the fixes. Use when the user says "debug time" (or asks for a debug / optimize / review round).
 ---
 
 # Debug time
@@ -13,6 +13,9 @@ folder CLAUDE.md). The user does not read code: report in plain words, with what
 - Normal round: the changes since the last review or release (`git diff --stat <tag>..`, `git log`), plus the code
   around each change (the callers, the data it reads and writes). Read those parts, not the whole file.
 - Full round: the whole file, in parts. Only before a major release (x.0) or when the user asks for "full".
+- The passes: a small change (a fix, a text, 1 control): 1 combined pass with the points of passes 1-4 that the
+  change touches. A release, a large change (CLAUDE.md) or "full": the 4 passes. In a `checkup`: only pass 1
+  (the bugs); the checkup's `review` step does the UI/UX part.
 - Segue and Chart Cue share `Setlist` and `UI.draw_now_view`: a change there, check the other script too.
 - `.\tools\check.ps1` and `.\tools\test.ps1 -Script "<name>"` (quiet: they show only problems).
 - The `help-sync` search for the changed names.
@@ -48,7 +51,7 @@ folder CLAUDE.md). The user does not read code: report in plain words, with what
 
 ## 5. Cross-review and feedback
 
-Merge the 4 lists, settle conflicts, sort by risk: bugs, then texts, then visible changes. Give 1 numbered list in
+Merge the lists of the passes, settle conflicts, sort by risk: bugs, then texts, then visible changes. Give 1 numbered list in
 plain words (what is wrong, what the user notices, the fix), in a question window. Visible changes need the user's
 answer (CLAUDE.md visible-change gate); bugs, texts and clean-ups can be fixed after a "go".
 
@@ -61,5 +64,5 @@ that the fixes touched (new names, missed callers, broken pairs), and run check 
 
 ## 7. Report
 
-A short summary, the manual tests in a question window, then the commit choice (commit and push, commit only, not
-yet). For Chart Cue, offer the UI test first when menus, tabs or views changed (`ui-test`).
+A short summary and the manual tests in a question window (no commit question: the user says when to commit). For
+Chart Cue, offer the UI test first when menus, tabs or views changed (`ui-test`).

@@ -1,53 +1,25 @@
 # Thunderfork scripts: plan
 
-## Handoff (25 November 2026)
+## Handoff (26 November 2026)
 
-- Tab Viewer since 1.1.1, committed: the musician review of the Note Detection tab (UX 1-9, passed the user's
-  manual tests), the developer review Dev 1 (a bar or track that can not be shown: a notice, not a script error;
-  passed) and Dev 2 (the alignment test), the full simplify run (manual test open: Open now 20).
-- Committed: the debug-time round of 25 November 2026 (passed the user's manual test): (1) a bar loop and a line loop
-  at the same time: 1 loop at a time now (`Notes.loop_off`, `host.loop_off`); (2) Undo after Write with a newer
-  REAPER step: an orange notice; (3) the undo name "Tab Viewer: clean up the song"; (4) the Tempo row follows the
-  cursor. (1) and (2) in LESSONS.md. Next: the manual test 20, then release 1.2 (the `release` skill).
-- Lessons: `stale-state` has 5 entries now: propose a stronger fix (lessons skill, step 4) at the next session start.
-- Detection research (24 November 2026, all in a test copy, now deleted; nothing of it in git): pYIN-style paths,
-  prime-harmonic octave, review fixes E1/E2/E4/M1/M2, the probabilistic rhythm grid (rhythm first, attacks as x,
-  then rhythm + pitch), the librosa / Boeck onset limit, a 16 kHz click band, no whole-16th offset: none was better
-  by the user's ear ("it is worse"; the 8th grid of the real Tab Viewer was the one clear gain). The comparison with
-  industry practice (the user's question): different from standard: the onset limit (1 s mean x 2 against 100 ms
-  mean + delta), the onset range (50-800 Hz), the automatic whole-16th offset (`Export.delay`), and the way of
-  measuring (own percentages on 1-2 songs; the standard: mir_eval, onset +-50 ms, pitch +-50 cents, precision and
-  recall, songs not used for tuning). Most rules were tuned on 1 day of trials on song 2 (steady 160 BPM, 8ths).
-  The user thinks a limit is reached. Next decision (the user's): give 5-8 stems with matching Guitar Pro tabs for a
-  measuring tool (about 1 session; the files stay on the user's computer, never in git), or "Use a MIDI item" (notes
-  from Melodyne or Basic Pitch), or stop detection work.
-- Not done (decided by Claude, say if wrong): no saved setting for the open tab (always Tab); a tuning that is not in
-  the Notes list (for example Drop A 5-string) imports with Standard's fingering names; the old deployed "Note
-  Detective" folder in REAPER's Scripts is still there (outside the repository: delete it yourself, or ask me). The
-  version line under Settings is gone.
-- Open: Open now 14 (6/8), 15-17 (the older manual tests of the Note Detection tab), 18 (1.1.1), 19 (real
-  .gpx / .gp3 / .gp4 files), 20 (the simplify run).
-- Not fixed (low risk): the speed of a project left with another project tab stays (REAPER has no call for a
-  project that is not active); in the reader: 2 voices sharing a tie, tempo automations out of order, a repeat
-  without a start mark (uncertain).
-- The user's question still open: the stronger fix for the tag `imgui-input` (click rules into plain functions with
-  a test; recommended "Later").
-- Next: the manual test 20, release 1.2; then the manual tests 14-18 and the detection decision above.
-  Open question: the stronger fix for `edge-case` (3 entries): 1 function for the x of a bar, which gives the drawn
-  pass for a bar that is not drawn. Later: chord detection, drums (on
-  hold), "Keep their time (move bar lines)".
-- Last checkup: 24 November 2026, Tab Viewer only (full, and a 2nd on the later changes). The other scripts: none as
-  1 full run yet.
-
-### Other scripts (the facts that still hold from the handoffs before; their history: git)
-
-- Versions: Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1 (released 11 November 2026); Session Prep
-  1.0.1, Mono Merge 1.0 (released 17 November 2026); SFX Drop 1.0 committed, not released (the user wants more work
-  first); Tab Viewer 1.1.1 released 24 November 2026 (1.1.1: the P.M. crash, LESSONS.md) (Note Detective: now its Note Detection tab, never released).
-- The checkup of 21 November 2026 (all scripts) stopped before the user's answers: Open now 9.
-- The Note Detection tab: the detection stays for now; no more detection work until the user brings it up (decided
-  23 November 2026). The Guitar Pro tab is the main feature, the detection the second (decided 23 November 2026).
-- More than 3 manual tests open: no new feature in that script.
+- NOT COMMITTED (26 November 2026), all tested: Tab Viewer 1.2 (UI review, toolbar segment 1, Note Detection
+  layout, 1 mode, .gp5 export; manual tests passed 25-26 November 2026); tools (`check.ps1` only the changed scripts,
+  pass stamps `tools\stamp.ps1`); process and skills audits; housekeeping (no script counts in the notes, old Note
+  Detective entries removed). Next: commit and release Tab Viewer 1.2 when the user asks; then the toolbar segments
+  2 and 3 (Later > Tab Viewer).
+- Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
+  NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
+  what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
+- Lessons: stronger fixes to propose: `stale-state` (5 entries), `imgui-input` (recommended "Later"), `edge-case` (1
+  function for the x of a bar).
+- Decided by Claude (say if wrong): the open tab is not saved (always Tab); a tuning not in the Notes list imports
+  with Standard's names; the old deployed "Note Detective" folder in REAPER's Scripts is still there (delete it).
+  Not fixed (low risk): the speed of a project left in another project tab; in the reader: 2 voices sharing a tie,
+  tempo automations out of order, a repeat without a start mark.
+- Versions: Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1, Session Prep 1.0.1, Mono Merge 1.0, Tab Viewer
+  1.1.1; SFX Drop 1.0 committed, not released (more work first). The checkup of 21 November 2026 (all scripts) stopped
+  before the user's answers: Open now 9.
+- Last checkup: 24 November 2026, Tab Viewer only. The other scripts: none as 1 full run yet.
 
 ## Open now
 
@@ -131,7 +103,6 @@ skipped or failed test stays here; remove it when it passed.
    9.38 SFX Drop: a new library folder drops the favourites and own hit points without a question. 9.39 SFX Drop:
    the Soundcheck copy has no sends (in-ears). 9.40 Help text errors in Chart Cue, MIDI Pilot, FX Link, Session
    Prep (orange vs teal Mono button) and SFX Drop.
-   Notes (housekeeping): 9.41 `Chart Cue/CLAUDE.md` "6 scripts" -> 7.
 10. Lessons rule (`stale-state`, accepted 17 November 2026): add an "another project" test to Chart Cue, Segue,
     MIDI Pilot and FX Link for the data they keep from a project.
 11. Session Prep feedback, not decided yet (17 November 2026): deleting a return does not ask (a bus does); the Prep
@@ -145,29 +116,22 @@ skipped or failed test stays here; remove it when it passed.
 14. Manual test (Tab Viewer, 6/8 and Set tempo, 24 November 2026): in the tab with your 6/8 bars, Find tempo > From
     tab, then Set tempo: REAPER's tempo changes to 93.75 at the first 6/8 bar and back to 125 after the last one; the
     tab stays on the music while it plays. (REAPER counts the tempo in quarter notes: not checked with a 6/8 tab.)
-15. Manual test (Tab Viewer, the Note Detection tab, 24 November 2026): the tab row Tab, Notes, gear, "?"; right-click Notes >
-    Hide this tab (the Import to list button goes too), the Tabs switches in Settings > Look bring it back; a narrow window: icons.
-    Settings: the Notes section. Help: the Notes topics.
-16. Manual test (Tab Viewer, Import to list, 24 November 2026): a project with a Guitar Pro tab and the song's bass
-    (Find tempo first): Tab tab > Import to list (next to Track): the Note Detection tab opens with the list from the tab;
-    again: it asks first; Undo in the Note Detection tab brings the old list back. Write, then Ctrl+Z.
-17. Manual test (Tab Viewer, Find notes and the found notes as a tab, 24 November 2026): a song without a tab: Find
-    tempo (a track), Set tempo, Note Detection tab > select the bass item > Find notes: the list; the Tab tab shows the found
-    notes as a tab from the bar of the first note (the song's bar numbers); click plays; fix a note (stopped): saved
-    after a reopen of the project; Import to list takes the fix. Also: Export..., Finish..., Clear... as before.
-18. Manual test (Tab Viewer 1.1.1, 24 November 2026): the song that crashed (palm mutes through a repeat): scroll the
-    whole tab; no script error; the P.M. row ends at the repeat sign.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
-    computer only (never in git), as the `file-format` rule says.
-20. Manual test (Tab Viewer, the simplify run, 24 November 2026): the Note Detection tab: Join, Split, + Add, Delete,
-    Undo work as before; Find notes shows "Wait for Find tempo." while Find tempo listens; the found notes in the Tab
-    tab: move an item: the tab stays; change the tempo: the tab moves to the new bars.
+    computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
 
 ## Later
 
 Ideas, not started.
 
+- Tab Viewer, the toolbar (decided 25 November 2026; segment 1 built): segment 2 = loop (the selected bar or the bar
+  at the cursor / the selected line; on = the look of a selected toggle, not blue), REAPER's metronome and count-in
+  (2 buttons, REAPER's state; a trial of REAPER's actions first); segment 3 = transpose 0 +/- (the tab's frets and the
+  list's note names, not the audio; saved in the project, 1 value, nothing at 0: a new project key; below the open
+  string: the next lower string, on the lowest an octave up, yellow). All work in both tabs; narrow: 2 rows. Ask
+  before each segment.
+- Tab Viewer: the Guitar Pro tab is the main feature, the detection the second; no more detection work until the
+  user brings it up (decided 23 November 2026).
 - Tab Viewer (moved from Open now at the checkup, 24 November 2026):
   - The song inside a .gp file (its audio and sync points) as the alignment reference: not wanted (the user).
   - Time signature, "Keep their time (move bar lines)" (segment 3; put here by the user, 24 November 2026): the notes

@@ -7,7 +7,7 @@ description: Run Chart Cue's UI test in the test REAPER (every tab, Settings sec
 
 `tools\ui-test.lua` (the steps) and `tools\ui-test.ps1` (the runner). It runs in the portable test
 REAPER `C:\REAPERtest`, never the normal REAPER, and it never touches the user's REAPER or data.
-It covers Chart Cue only: the other 5 scripts have no UI test yet; say so in the report.
+It covers Chart Cue only: the other scripts have no UI test yet; say so in the report.
 
 ## Before running
 

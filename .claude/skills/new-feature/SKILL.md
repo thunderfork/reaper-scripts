@@ -5,57 +5,31 @@ description: Turn a new idea for a script of this repository (tools\scripts.psd1
 
 # New feature
 
-The user decides the look and the behaviour and does not read code. A rename or a move after the build costs a
-whole round, so the visible decisions come first (the global mockup rule). More than 3 open manual tests in
-PLAN.md: no new feature until they are tested (global rule); say so and offer the tests first.
+Read and follow the global skill first: `%USERPROFILE%\.claude\skills\new-feature\SKILL.md`. This project adds:
 
-## 1. Fit it into what exists (look, do not guess)
+- More than 3 open manual tests of this script in PLAN.md: no new feature until they are tested; say so and offer
+  the tests first.
 
-- Where it goes: the tab, the Settings section and heading, the menu (grep the existing names and order).
-  - Chart Cue: Settings sections Viewer, Playback, Control, Appearance, General; the toolbar; the right-click menus.
-  - Segue: the gear menu, the setlist, the now playing view.
-  - MIDI Pilot: tabs Songs, Lanes, Presets; Settings sections Devices, Editing, Appearance, General;
-    Songs > Tools. A preparation tool: no live features (MIDI Pilot/CLAUDE.md).
-  - FX Link: the toolbar, the gear menu (Look, Automatic open and close, Window, Backup), the foldable sections.
-  - Session Prep: tabs Prep, Rules, FX Chains, Buses; Settings sections Appearance, Prep (Tracks, Routing, Checks),
-    Gain staging, Window. A preparation tool (Session Prep/CLAUDE.md).
-  - SFX Drop: tabs Sounds, Spots, Soundcheck; Settings sections Appearance, Library, Insert (Items, Files, Tracks,
-    Levels), Window.
-    A preparation tool (SFX Drop/CLAUDE.md).
-  - Tab Viewer: the toolbar (Open tab..., Find tempo, play); tabs Tab (the Tab and Track dropdowns, Start, the tab)
-    and Notes (Find notes, the Key, Markers and Tuning dropdowns, the list, the foot: Join ... Undo, Write, Export...,
-    Finish...); Settings sections Tab, Note Detection, Look (Tabs), Window (Tab Viewer/CLAUDE.md, Tab Viewer/NOTES.md).
-- Its on/off switch and default (every optional feature can be turned off).
-- What is saved: in the project (P) or on this computer (S); the "?" text says where. A new key: ask first.
+## Fit it into what exists (step 1 of the global skill)
+
+- Where it goes: the tab, the Settings section and heading, the menu. The script's folder CLAUDE.md names its
+  screens and its limits (a preparation tool: no live features); grep the existing names and order in the code.
+  A new tab, Settings section or menu: update that list in the folder CLAUDE.md.
+- Its on/off switch in Settings and its default (CLAUDE.md "Look and words").
+- What is saved: in the project (P) or on this computer (S); the "?" text says where.
 - The special states: playing, paused, stopped, an empty list or project; Chart Cue: locked, performance mode,
   PDF 2, hidden panel or tabs; MIDI Pilot: 2 or more devices, Line 6 or Quad Cortex, muted items.
-- Technical limits that the user will notice: say them plainly. Too large: suggest a smaller first step.
-
 - A name field (a preset, bus, return, device...): when you finish typing, an empty name or a name that another
   item of the same list has goes back to the old name (LESSONS-RULES.md, saved-data).
-- The global `new-feature` skill's checks apply too (an outside source, a small trial of what is not checked yet).
 
-## 2. Mockup and behaviour (always, for anything visible)
+## Mockup (step 2 of the global skill)
 
-A small text mockup in the question window's preview, and the exact behaviour (what a click does, what is
-saved, what Ctrl+Z does). Also when the user asked for it in a few words.
+- The behaviour also says what Ctrl+Z does.
+- Scripts with a window (all except Mono Merge): before the mockup, write every new text (labels, tooltips, "?"
+  texts, notices, questions, empty states) in the existing word style of the script; the mockup shows them.
 
-Scripts with a window (all except Mono Merge): before the mockup, write every new text (labels, tooltips, "?"
-texts, notices, questions, empty states) in the existing word style of the script (CLAUDE.md "Look and words");
-the mockup shows these texts.
+## Build (step 4 of the global skill)
 
-## 3. Ask
-
-1-4 questions, 2-4 options each, the recommended one first: names, place, default, look. Decide the technical
-details yourself.
-
-## 4. Build
-
-CLAUDE.md editing and patch rules; `help-sync` for every new or changed name; tests for the logic; deploy.
-A new script: first its own branch (`script/<name>`, CLAUDE.md "Git and releases") and its line in
-`tools\scripts.psd1` (`Released = $false`, `@noindex` in its header).
-
-## 5. Report
-
-What the user will see and the check / test result in 1 line; the manual tests in a question window. The changed
-functions go into the commit message.
+- `help-sync` for every new or changed name; tests for the logic; deploy (no commit: CLAUDE.md).
+- A new script: first its own branch (`script/<name>`, CLAUDE.md "Git and releases") and its line in
+  `tools\scripts.psd1` (`Released = $false`, `@noindex` in its header).

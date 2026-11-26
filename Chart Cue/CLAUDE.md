@@ -1,7 +1,8 @@
 # Chart Cue
 
 A Windows-only REAPER Lua / ReaImGui script that shows and scrolls PDF charts during playback. The UI style guide
-of all 6 scripts (see the root CLAUDE.md).
+of the other scripts (see the root CLAUDE.md). Screens: the toolbar, the right-click menus; Settings sections
+Viewer, Playback, Control, Appearance, General.
 
 ## Files
 
@@ -34,7 +35,8 @@ of all 6 scripts (see the root CLAUDE.md).
 
 ## Tests
 
-- `tests\run.lua` (`.\tools\test.ps1 -Script "Chart Cue"`; result in `tests\result.txt`).
+- `tests\run.lua` (`.\tools\test.ps1 -Script "Chart Cue"`; result in `tests\result.txt`). Its PDF:
+  `tests\test.pdf` (`tests\make_pdf.lua` makes it; run it with the normal Lua, not REAPER).
 - The UI test (`.\tools\ui-test.ps1`, steps in `tools\ui-test.lua`; the `ui-test` skill) covers menus, popups,
   tabs, Settings sections and views; add a step for each new one.
 - Before a release (sharing a new version): the release checklist below, in REAPER.
