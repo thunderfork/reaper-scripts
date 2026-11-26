@@ -23,7 +23,8 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   `[nomain] ../Tab Viewer/Guitar Pro.lua > Guitar Pro.lua` in its `@provides` (each package needs its own target name:
   the ReaPack index refuses 2 packages with the same file).
 - `Tempo.lua` (`TP`): Tempo and bars (`TP.Beat` finds the beats; `TP.reader`, `TP.first_sound`; `TP.new(host)` = Find
-  tempo, 1/2 x2, bar 1, short bars, Play with click, Set tempo with `hold` / `map` / `align`; the song's tempos with
+  tempo, found / half / double (`Tempo.scale`), bar 1, Set tempo with `hold` / `map` / `align`; bars of 4 beats (no
+  short bars, no Play with click: the user's choice); the song's tempos with
   at most 1 decimal place, `Beat.round`; the 2 bridge bars to the old grid stay exact). What the host gives:
   the comment at `TP.new`; Tab Viewer gives it in `Tempo = TP.new({...})`, the Notes list adds `first_note`,
   `shift` and `set_extra`.
@@ -47,10 +48,12 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   10% steps (`Tabs.zoom_step`, `CFG.ZOOM_MIN` .. `CFG.ZOOM_MAX`); the sizes: "Rules". The tab's fonts `TF` (per zoom step, made by `UI.zoom_fonts` at the start of
   a frame, used from the next one); `UI.draw_tab` pushes `TF.font` for the layout and the drawing, not for its menus,
   tooltips and the note box.
-- Find tempo: step "1 Tempo" at the top of the Detection tab (`UI.draw_tempo_step`, in Tab Viewer.lua; Notes.lua
-  calls it; the steps: NOTES.md "The screen"): Listen to ("From the tab", the default with a Guitar Pro tab, `Tabs.tempo_from_tab`; then the tracks,
-  `Tempo.sources`) and Find tempo; while it listens the progress and Cancel; with a result the fine controls
-  (`UI.draw_tempo_fine`) and a blue Set tempo under them. The Tab tab's Start row points there with a grey line,
+- Find tempo: the "Tempo" section at the top of the Detection tab (`UI.draw_tempo_step`, in Tab Viewer.lua; Notes.lua
+  calls it; the sections: NOTES.md "The screen"): Listen to ("From the tab", the default with a Guitar Pro tab,
+  `Tabs.tempo_from_tab`; then the tracks, `Tempo.sources`; another choice drops a result) with 1 button: Find tempo,
+  the blue Set tempo with a result, Cancel while it listens (the progress under it). A result's rows (`tempo_rows`,
+  label and dropdown as in Song): Tempo (found / half / double; from the tab its tempo), Style with the grey line of
+  its suggestion (`tm.lbl_note`), Bar 1 with < >. The Tab tab's Start row points there with a grey line,
   and its yellow tempo warning too. From the tab:
   `GP.timeline(doc)`, `Tempo.from_tab` (bar 1 = the first sound of the song less the time to the first note:
   `Tabs.first_qn`), `Beat.tab_plan` (a marker only where the tempo or time signature changes); it does not move the
@@ -100,7 +103,7 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   that can not be read at Open tab...: an orange notice, nothing changes.
 - `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks`, `lengths`, `written`,
   `tremnotes`, `tab_hide`, `zoom` (only when not 100%), `closed` (the folded sections: Tab, Detection,
-  Look, Window in Settings; 1 Tempo and 2 Song in the Detection tab). The Detection tab keeps its own keys in the same section (NOTES.md).
+  Look, Window in Settings; Tempo and Song in the Detection tab). The Detection tab keeps its own keys in the same section (NOTES.md).
 - Not saved: the loop and the speed (100% again at close), the selection, `R.page`.
 
 ## The tab

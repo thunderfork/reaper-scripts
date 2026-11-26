@@ -23,8 +23,9 @@
   decisions accepted by the user). Then (26 November 2026, committed, not released): the toolbar centred on play
   with >| (tested), Find notes no longer off before Find tempo (confirmed), Import from tab, the rename to
   "Detection", Lines without "About 2 seconds", Set tempo with at most 1 decimal place (tested), Find tempo moved to
-  the Detection tab (tested), the numbered steps with folding sections and "set" read from REAPER's tempo (the
-  user's choice; manual test Open now 23). Next: Open now 23; then the toolbar segments 2 and 3
+  the Detection tab (tested), the sections Tempo / Song / Notes (no numbers) that fold, "set" read from REAPER's
+  tempo, the Tempo rows as label + dropdown with Set tempo in Find tempo's place, Play with click and Short bars
+  removed (the user's choices, 26 November 2026; manual test Open now 23). Next: Open now 23; then the toolbar segments 2 and 3
   (`Tab Viewer/CLAUDE.md`, Later), or a Tab Viewer release when the user asks.
 - Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
@@ -62,10 +63,12 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-23. Manual test (Tab Viewer, Detection steps, 26 November 2026): the headings 1 Tempo, 2 Song, 3 Notes; 1 and 2
-    fold (still folded after a restart) and show their status; a song without its own tempo: Find tempo is blue,
-    Find notes and Import from tab are grey with the grey line; "The tempo is right" makes step 1 "Set: ... BPM"
-    (1 undo step) and Find notes (or Import from tab, with a tab) turns blue; "Bass audio" in place of "Track".
+23. Manual test (Tab Viewer, Detection, 26 November 2026): the headings Tempo, Song, Notes; Tempo and Song fold
+    (still folded after a restart) and show their status; a song without its own tempo: Find tempo is blue, Find
+    notes and Import from tab are grey with the grey line; "The tempo is right" makes Tempo "Set: ... BPM" (1 undo
+    step) and Find notes (or Import from tab, with a tab) turns blue. The Tempo rows: after Find tempo the button is
+    the blue Set tempo; Tempo (found / half / double), Style with its grey line, Bar 1 < >; no Play with click, no
+    Short bars; another Listen to brings Find tempo back.
 
 ## Later
 

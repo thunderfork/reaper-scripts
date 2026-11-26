@@ -2517,17 +2517,17 @@ function UI.row_menu()
   ImGui.EndPopup(ctx)
 end
 
--- The "3 Notes" heading: the count of the lines and Next not sure at its right (while Find notes listens: the
+-- The "Notes" heading: the count of the lines and Next not sure at its right (while Find notes listens: the
 -- progress under it), then the bass item.
 local HEAD_NEXT = { "Next not sure", "ghost", false, "Go to the next yellow line and play it (N)." } -- (made once)
 function UI.draw_top(v)
   if R.find then
-    UI.heading("3 Notes")
+    UI.heading("Notes")
     ImGui.ProgressBar(ctx, R.find.done or 0, ImGui.GetContentRegionAvail(ctx), ImGui.GetFrameHeight(ctx), "Listening...")
     return
   end
   local doubt = v.n_doubt > 0
-  if UI.heading("3 Notes", false, doubt and HEAD_NEXT or nil, nil, v.status, doubt and COL.YELLOW or COL.TEXT_DIM) then
+  if UI.heading("Notes", false, doubt and HEAD_NEXT or nil, nil, v.status, doubt and COL.YELLOW or COL.TEXT_DIM) then
     UI.select(List.next_doubtful(R.sel), true)
   end
   if #P.rows == 0 then return end -- (the empty list says what to do)
@@ -2698,14 +2698,14 @@ end
 local FIND_TIP = "Tab Viewer listens to the bass track (Track) and fills the list. Nothing is written to the project yet."
 local FIND_AGAIN_TIP = "Listen again: the new list replaces this one (it asks first; Undo brings it back)."
 local IMPORT_TIP = "Have the Guitar Pro tab of the song? Its notes become the list (the track picked in the Tab tab, with your fixes, the repeats played out). It asks first when the list has notes; Undo brings the old list back."
-local NEED_TEMPO = "Set the tempo first (1 Tempo): the notes go on the song's bars."
--- The "2 Song" section of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work; numbered
--- and folding: 26 November 2026): Track with Find notes and Import from tab (both wait for the tempo of step 1;
+local NEED_TEMPO = "Set the tempo first (Tempo, above): the notes go on the song's bars."
+-- The "Song" section of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work; folding:
+-- 26 November 2026): Track with Find notes and Import from tab (both wait for the Tempo section;
 -- the blue one is the next step: Import from tab with a tab, else Find notes, only without a list; while it listens:
--- Cancel), Key and Tuning on 1 row (2 rows when narrow), Lines. Step 1: Tab Viewer's UI.draw_tempo_step.
+-- Cancel), Key and Tuning on 1 row (2 rows when narrow), Lines. The Tempo section: Tab Viewer's UI.draw_tempo_step.
 function UI.draw_song()
   local has = #P.rows > 0
-  local _, open = UI.heading("2 Song", false, nil, UI.FOLD_SONG, R.find and "Listening..." or has and "Notes found" or "No notes yet",
+  local _, open = UI.heading("Song", false, nil, UI.FOLD_SONG, R.find and "Listening..." or has and "Notes found" or "No notes yet",
     has and not R.find and COL.GREEN or COL.TEXT_DIM)
   if not open then return end
   local fw = UI.field_w()
@@ -2990,8 +2990,8 @@ function UI.draw_foot()
   end
 end
 
--- The Detection tab (in Tab Viewer's panel; h: the height it has): 1 Tempo (Tab Viewer's), 2 Song (Track with
--- Find notes, Key, Tuning, Lines), 3 Notes (the count), the list, then the foot (Join ... Undo, Write, More...).
+-- The Detection tab (in Tab Viewer's panel; h: the height it has): Tempo (Tab Viewer's), Song (Track with Find
+-- notes, Key, Tuning, Lines), Notes (the count), the list, then the foot (Join ... Undo, Write, More...).
 function N.draw(h)
   local v = UI.view()
   local y0 = ImGui.GetCursorPosY(ctx)

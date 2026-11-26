@@ -108,14 +108,15 @@ The history of every decision: git.
 
 ## The screen
 
-- The steps (decided 26 November 2026): "1 Tempo" (Tab Viewer's `UI.draw_tempo_step`), "2 Song", "3 Notes"; 1 and 2
-  fold (`UI.FOLD_TEMPO`, `UI.FOLD_SONG` in `S.closed`) and show their status at the right of the heading. Blue is
-  the 1 next step: Find tempo (no tempo yet), Set tempo (a result), Import from tab (with a tab) or Find notes (no
-  list), Write. Step 1 is done when the song has a tempo marker of its own (`Tabs.tempo_state`, `UI.tempo_ok`; "The
-  tempo is right" puts one at the song start); until then Find notes and Import from tab are grey, with a grey line.
-- 2 Song: Track with Find notes (while it listens: Cancel, the progress under the 3 Notes heading) and Import
+- The sections in the order of the work (decided 26 November 2026; no numbers in the headings): "Tempo" (Tab
+  Viewer's `UI.draw_tempo_step`), "Song", "Notes"; Tempo and Song fold (`UI.FOLD_TEMPO`, `UI.FOLD_SONG` in
+  `S.closed`) and show their status at the right of the heading. Blue is the 1 next step: Find tempo (no tempo yet),
+  Set tempo (a result, in Find tempo's place), Import from tab (with a tab) or Find notes (no list), Write. The Tempo
+  section is done when the song has a tempo marker of its own (`Tabs.tempo_state`, `UI.tempo_ok`; "The tempo is
+  right" puts one at the song start); until then Find notes and Import from tab are grey, with a grey line.
+- Song: Track with Find notes (while it listens: Cancel, the progress under the Notes heading) and Import
   from tab, Key and Tuning on 1 row (`CFG.KEY_W`, `CFG.TUNE_LABEL_W`; narrower than `CFG.TUNE_MIN_W`: 2 rows), Lines
-  with an example. 3 Notes: the count and Next not sure at its right. Without a list: the grey hint, no bottom
+  with an example. Notes: the count and Next not sure at its right. Without a list: the grey hint, no bottom
   rows. With a list: Join, Split, + Add, Delete; then the blue Write, its dropdown, More... (Export, Done, Clear).
 - Settings > Detection: String for high notes, Fingering for runs, Split repeated notes, String names.
 

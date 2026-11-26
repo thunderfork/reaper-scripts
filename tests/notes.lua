@@ -1190,13 +1190,10 @@ test("export: no .mid file (project not saved), but the MIDI item is made: the n
   C.get_P().notes = {}
 end)
 
-test("tempo: a project switch during Play with click puts the metronome back", function()
-  local before = r.GetToggleCommandStateEx(0, 40364)
-  TR.tempo = { click = before, click_seen = true }
-  r.Main_OnCommand(40364, 0) -- (Play with click turned it over)
+test("tempo: a project switch drops the Find tempo result", function()
+  TR.tempo = { song = {} }
   TR.proj = nil -- (Tab Viewer sees another project)
   TV.Project.update()
-  eq(r.GetToggleCommandStateEx(0, 40364), before, "the metronome as before")
   eq(TR.tempo, nil)
 end)
 
@@ -1367,11 +1364,16 @@ test("tempo: a click track (generated WAV): its tempo, its beats and bar 1", fun
   near(tm.beats[tm.i0], 3.0, 0.03, "bar 1")
   eq(tm.steady, true, "steady")
   eq(tm.style, "steady")
-  eq(tm.lbl_bpm, "150.0 BPM")
+  eq(tm.lbl_bpm, "150 BPM")
+  -- the Tempo dropdown (26 November 2026): found, half, double of the found tempo
+  eq(#tm.choices, 3); eq(tm.lbl_choice, tm.choices[1].lbl); ok(tm.choices[2].lbl:find("(half)", 1, true))
   Tempo.scale(0.5)
-  near(tm.bpm, 75, 0.2, "1/2")
+  near(tm.bpm, 75, 0.2, "half"); eq(tm.f, 0.5); eq(tm.lbl_choice, tm.choices[2].lbl)
   Tempo.scale(2)
-  near(tm.bpm, 150, 0.3, "x2")
+  near(tm.bpm, 300, 0.6, "double of the found tempo, not of the half")
+  Tempo.scale(1)
+  near(tm.bpm, 150, 0.3, "the found tempo again")
+  eq(C.TP.bpm_text(159.875), "159.9 BPM"); eq(C.TP.bpm_text(160.02), "160 BPM")
 end)
 
 test("tempo: Find tempo needs the song and a track with audio", function()
@@ -1387,18 +1389,15 @@ test("tempo: Find tempo needs the song and a track with audio", function()
   eq(TR.tempo, nil); ok(TR.notice.text:find("no audio", 1, true), "the track is empty")
 end)
 
-test("tempo: the plan of 1 tempo and of Follow the song, with a short bar", function()
+test("tempo: the plan of 1 tempo and of Follow the song", function()
   local beats = {}
   for k = 1, 40 do beats[k] = 1 + (k - 1) * 0.5 end -- 120 BPM from 1 s
-  local m, after, nb = Beat.plan(beats, 1, {}, "steady", 9)
+  local m, after, nb = Beat.plan(beats, 1, "steady", 9)
   eq(#m, 1); near(m[1].t, 1, 1e-6); near(m[1].bpm, 120, 1e-6); eq(m[1].num, 4)
   near(after, 9, 1e-6, "the bar line after the song"); eq(nb, 4)
-  m, after, nb = Beat.plan(beats, 1, { [9] = true }, "steady", 9) -- bar 3 has 3 beats
-  eq(#m, 3); eq(m[2].num, 3); eq(m[2].bar, 2); eq(m[3].num, 4); near(m[3].t, 6.5, 1e-6)
-  near(after, 10.5, 1e-6); eq(nb, 5)
   for k = 2, 40 do beats[k] = beats[k - 1] + 0.5 + 0.002 * k end -- it slows down
   beats[14] = beats[14] + 0.4 -- a wrong beat on a bar line (bar 4 starts at beat 13: beat 17)
-  m = Beat.plan(beats, 1, {}, "follow", 15)
+  m = Beat.plan(beats, 1,"follow", 15)
   eq(m[1].num, 4); eq(m[2].num, 0, "the same time signature")
   near(m[2].t, beats[5], 0.002, "bar 2 on its beat (the rounded tempo: under 2 ms)")
   ok(m[2].bpm < m[1].bpm, "slower")
@@ -1412,13 +1411,13 @@ test("tempo: Set tempo writes at most 1 decimal place, and the bars stay on the 
   local function one_decimal(x) return math.abs(x * 10 - math.floor(x * 10 + 0.5)) < 1e-6 end
   local beats, per = {}, 60 / 159.875
   for k = 1, 600 do beats[k] = 2 + (k - 1) * per end -- 159.875 BPM, about 3:45
-  local m = Beat.plan(beats, 1, {}, "steady", beats[600])
+  local m = Beat.plan(beats, 1,"steady", beats[600])
   eq(#m, 1); near(m[1].bpm, 159.9, 1e-9, "1 tempo: rounded")
   local worst = 0
   for k = 1, 600 do worst = math.max(worst, math.abs(m[1].t + (k - 1) * 60 / 159.9 - beats[k])) end
   ok(worst < 0.03, "1 tempo: the grid stays near the beats (" .. worst .. " s)")
   for k = 2, 600 do beats[k] = beats[k - 1] + per * (1 + 0.01 * math.sin(k / 20)) end -- it drifts a little
-  m = Beat.plan(beats, 1, {}, "follow", beats[600])
+  m = Beat.plan(beats, 1,"follow", beats[600])
   worst = 0
   for k, x in ipairs(m) do
     ok(one_decimal(x.bpm), "bar " .. k .. ": 1 decimal place (" .. x.bpm .. ")")
@@ -1433,7 +1432,7 @@ local function tempo_by_hand(item, t0, t1, first, per, step, style)
   local _, guid = r.GetSetMediaItemInfo_String(item, "GUID", "", false)
   local beats, t, p = {}, first, per
   while t < t1 + 2 do beats[#beats + 1] = t; t = t + p; p = p + (step or 0) end
-  TR.tempo = { song = { guid = guid, t0 = t0, t1 = t1 }, beats = beats, i0 = 1, short = {}, bpm = 60 / per,
+  TR.tempo = { song = { guid = guid, t0 = t0, t1 = t1 }, beats = beats, i0 = 1, bpm = 60 / per,
     steady = style ~= "follow", style = style or "steady" }
   Tempo.labels()
   return beats
@@ -1536,46 +1535,21 @@ test("tempo: Set tempo moves the song's audio so its first bass note is on the n
   near(C.get_P().notes[1].t, 11.12, 1e-9, "Undo of the list: back")
 end)
 
-test("tempo: Follow the song puts every bar on its beat; a short bar; Set tempo again replaces it", function()
+test("tempo: Follow the song puts every bar on its beat; Set tempo again replaces it", function()
   clear_project(); clear_tempo()
   local it = add_item(add_track("Bass"), bass_wav("song5.wav", { { nil, 30 } }), 2)
   local beats = tempo_by_hand(it, 2, 32, 2.9, 0.36, 0.0004, "follow") -- it slows down a little
-  Tempo.set_short(beats[9] + 0.1, true) -- bar 3 has 3 beats
-  eq(#TR.tempo.short_list, 1); ok(TR.tempo.short_list[1].text:find("^Bar 3"), TR.tempo.short_list[1].text)
   Tempo.set()
   local m0 = where(beats[1]):match("^%d+")
   eq(where(beats[1]), m0 .. ".0.00", "bar 1")
   eq(where(beats[5]), (m0 + 1) .. ".0.00", "bar 2")
-  eq(where(beats[9]), (m0 + 2) .. ".0.00", "bar 3 (3 beats)")
-  eq(where(beats[12]), (m0 + 3) .. ".0.00", "bar 4 after the short bar")
-  eq(where(beats[40]), (m0 + 10) .. ".0.00", "bar 11")
+  eq(where(beats[13]), (m0 + 3) .. ".0.00", "bar 4")
+  eq(where(beats[41]), (m0 + 10) .. ".0.00", "bar 11")
   Tempo.nudge(1) -- bar 1 a beat later; Set tempo again
-  eq(TR.tempo.short[10], true, "the short bar moves with it")
   Tempo.set()
   local m1 = where(beats[2]):match("^%d+")
   eq(where(beats[2]), m1 .. ".0.00", "the new bar 1")
-  eq(where(beats[41]), (m1 + 10) .. ".0.00", "bar 11")
-  Tempo.remove_short(10)
-  eq(#TR.tempo.short_list, 0)
-end)
-
-test("tempo: Play with click is taken back by the next try and by Set tempo", function()
-  clear_project(); clear_tempo()
-  local it = add_item(add_track("Bass"), bass_wav("song6.wav", { { nil, 20 } }), 1)
-  tempo_by_hand(it, 1, 21, 1.5, 0.4)
-  local click = r.GetToggleCommandStateEx(0, 40364)
-  Tempo.try()
-  eq(r.Undo_CanUndo2(0), TV.CFG.UNDO_TRY)
-  eq(r.GetToggleCommandStateEx(0, 40364), 1, "the metronome is on")
-  Tempo.nudge(1) -- a change: the try starts again
-  eq(r.Undo_CanUndo2(0), TV.CFG.UNDO_TRY)
-  r.OnStopButtonEx(0)
-  Tempo.set()
-  eq(r.GetToggleCommandStateEx(0, 40364), click, "the metronome as before")
-  eq(r.Undo_CanUndo2(0), "Tab Viewer: set the tempo")
-  r.Main_OnCommand(40029, 0)
-  ok(r.Undo_CanUndo2(0) ~= TV.CFG.UNDO_TRY, "no try left behind")
-  near(r.TimeMap_GetDividedBpmAtTime(10), 120, 0.01, "1 undo: the old tempo")
+  eq(where(beats[42]), (m1 + 10) .. ".0.00", "bar 11")
   TR.tempo = nil
 end)
 

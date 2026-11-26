@@ -16,7 +16,7 @@ TP.CFG = {
   ON_GATE = 35,                 -- dB: the first sound is not this far below the loud parts (TP.first_sound)
   ALIGN_SCAN = 90,              -- s: Set tempo looks this far into the song item for its first sound
   BPM_MIN = 60, BPM_MAX = 200,  -- the tempos that Find tempo tries
-  BPM_LO = 90, BPM_HI = 180,    -- a found tempo outside is doubled or halved (the 1/2 and x2 buttons correct it)
+  BPM_LO = 90, BPM_HI = 180,    -- a found tempo outside is doubled or halved (the Tempo dropdown corrects it)
   BPM_BAR = 0.15,               -- "Follow the song": a bar this far from the song tempo is a wrong beat (the song tempo)
   STEADY = 0.03,                -- s: 9 of 10 beats this close to 1 straight grid: a steady song ("1 tempo")
   PRE_MIN = 0.5,                -- of a beat: a shorter bar before beat 1 (or after the song) joins the bar before it
@@ -220,27 +220,22 @@ function Beat.bar1(beats, env)
   return first > #beats and 1 or first
 end
 
--- The bars from the beat i0: { { i = its first beat, n = its beats } }; short[i]: the bar from beat i has 3 beats.
-function Beat.bars(nb, i0, short)
-  local bars, i = {}, i0
-  while i <= nb do
-    local n = short[i] and 3 or 4
-    bars[#bars + 1] = { i = i, n = n }
-    i = i + n
-  end
-  return bars
-end
-
 -- A tempo as Set tempo writes it: at most 1 decimal place (159.875 BPM helps no one: the user, 26 November 2026).
 function Beat.round(bpm) return math.floor(bpm * 10 + 0.5) / 10 end
+-- A tempo as the window shows it: "160 BPM", "159.9 BPM".
+function TP.bpm_text(bpm)
+  local b = Beat.round(bpm)
+  return b == math.floor(b) and string.format("%d BPM", math.floor(b)) or string.format("%.1f BPM", b)
+end
 
--- The tempo markers of the song from bar 1 until t_end: { { t, bpm, num (0: the same as before), bar (0 = bar 1) } },
--- the bar line after the song, and the number of bars. style "steady": 1 tempo (the straight grid of the beats);
+-- The tempo markers of the song from bar 1 until t_end, bars of 4 beats (no short bars: the user, 26 November 2026):
+-- { { t, bpm, num (4 on the first, then 0: the same), bar (0 = bar 1) } }, the bar line after the song, and the number
+-- of bars. style "steady": 1 tempo (the straight grid of the beats);
 -- "follow": 1 marker per bar, on the beats (a bar far from the song tempo is a wrong beat: it gets the song tempo).
 -- Every tempo has at most 1 decimal place (Beat.round): "steady" fits the start of its grid again for the rounded
 -- tempo; in "follow" a bar ends a little off its beat (under 1 ms) and the next bar starts there, so the errors do
 -- not add up.
-function Beat.plan(beats, i0, short, style, t_end)
+function Beat.plan(beats, i0, style, t_end)
   local a, p = Beat.fit(beats, i0)
   local base = Beat.round(60 / p)
   p = 60 / base
@@ -252,7 +247,7 @@ function Beat.plan(beats, i0, short, style, t_end)
   local m, i, num, bar = {}, i0, 0, 0
   local t = style == "follow" and beats[i0] or a
   while (t < t_end - 1e-9 or #m == 0) and bar < 5000 do
-    local n = short[i] and 3 or 4
+    local n = 4
     local bpm, nxt = base, nil
     if style == "follow" then
       local b = beats[i + n]
@@ -325,7 +320,7 @@ end
 -- TEMPO (Find tempo reads a track in steps, or takes the tempo of the tab; Set tempo writes the tempo map of the song)
 ---------------------------------------------------------------------------
 -- Find tempo of a script. host: { R (its runtime table: R.proj, and the state R.tempo, R.tsrc, R.tsrc_sel live
--- there), name ("Tab Viewer"), undo_try (the undo step of Play with click), notice(text, warn),
+-- there), name ("Tab Viewer"), notice(text, warn),
 -- song() (the item of the song, its start, its end; or nil and why), first_note(tm) (the time of the first note of the
 -- song, or nil: then the first sound of the song item), shift(d, tm) (the audio moved d s), written() (after each tempo
 -- write), set_extra(d) (more text for the Set tempo notice) }.
@@ -382,10 +377,9 @@ function TP.new(host)
     if not it then host.notice("That track has no audio while the song plays. Pick another track.", true); return end
     local pos = r.GetMediaItemInfo_Value(it, "D_POSITION")
     local a, b = math.max(t0, pos), math.min(t1, pos + r.GetMediaItemInfo_Value(it, "D_LENGTH"))
-    Tempo.untry()
     Tempo.cancel()
     local _, guid = r.GetSetMediaItemInfo_String(song, "GUID", "", false)
-    R.tempo = { song = { guid = guid, t0 = t0, t1 = t1 }, short = {},
+    R.tempo = { song = { guid = guid, t0 = t0, t1 = t1 },
       run = { item = it, f0 = a, done = 0, rd = TP.reader(r.GetActiveTake(it), b - a, a - pos) } }
   end
   -- false when the song or the read item is gone: Find tempo stops, the result goes.
@@ -432,7 +426,7 @@ function TP.new(host)
     end
     tm.env, tm.f0 = env, run.f0
     Tempo.set_beats(bpm, beats)
-    host.notice(string.format("Tempo: %s. Check bar 1 with Play with click, then click Set tempo.", tm.lbl_bpm))
+    host.notice(string.format("Tempo found: %s. Check Bar 1, then click Set tempo.", tm.lbl_bpm))
   end
   function Tempo.cancel()
     local tm = R.tempo
@@ -441,12 +435,11 @@ function TP.new(host)
 
   -- From the tab (Tab Viewer's "From tab"): no listening; the tempo, its changes and the time signatures of the tab (bars:
   -- GP.timeline). Bar 1 goes where the first note of the tab (qn: quarter notes from its start) meets the first sound
-  -- of the song. Bar 1 (by beats), Play with click and Set tempo work as after Find tempo.
+  -- of the song. Bar 1 (by beats) and Set tempo work as after Find tempo.
   function Tempo.from_tab(bars, qn)
     local song, t0, t1 = host.song()
     if not song then host.notice(t0, true); return end
     if not bars[1] then return end
-    Tempo.untry()
     Tempo.cancel()
     local first = TP.first_sound_of(song) or t0
     local bar1 = first - Beat.tab_time(bars, qn or 0)
@@ -462,10 +455,10 @@ function TP.new(host)
       end
     end
     local _, t_after = Beat.tab_plan(bars, bar1)
-    R.tempo = { song = { guid = guid, t0 = t0, t1 = math.max(t1, t_after) }, short = {}, tab = bars, beats = beats, i0 = i0,
+    R.tempo = { song = { guid = guid, t0 = t0, t1 = math.max(t1, t_after) }, tab = bars, beats = beats, i0 = i0,
       bpm = bars[1].tempos[1].bpm, steady = true, style = "tab" }
     Tempo.labels()
-    host.notice(string.format("Tempo of the tab: %s. Check bar 1 with Play with click, then click Set tempo.", R.tempo.lbl_bpm))
+    host.notice(string.format("Tempo of the tab: %s. Check Bar 1, then click Set tempo.", R.tempo.lbl_bpm))
   end
   -- The tempo markers that Set tempo writes: Beat.plan, or Beat.tab_plan from the tab. Also the tempo before bar 1.
   function Tempo.plan()
@@ -474,15 +467,15 @@ function TP.new(host)
       local m, t_after, nbars = Beat.tab_plan(tm.tab, tm.beats[tm.i0])
       return m, t_after, nbars, m[1].bpm
     end
-    local m, t_after, nbars = Beat.plan(tm.beats, tm.i0, tm.short, tm.style, tm.song.t1)
+    local m, t_after, nbars = Beat.plan(tm.beats, tm.i0, tm.style, tm.song.t1)
     local _, p = Beat.fit(tm.beats, tm.i0)
     return m, t_after, nbars, Beat.round(60 / p)
   end
 
-  -- The found beats (s from the read start); bar 1, the short bars and the style start again.
+  -- The found beats (s from the read start); bar 1 and the style start again.
   function Tempo.set_beats(bpm, rel)
     local tm = R.tempo
-    tm.bpm, tm.beats, tm.short = bpm, {}, {}
+    tm.bpm, tm.beats = bpm, {}
     for k, t in ipairs(rel) do tm.beats[k] = t + tm.f0 end
     tm.i0 = Beat.bar1(rel, tm.env)
     local _, _, dev = Beat.fit(tm.beats, tm.i0)
@@ -490,75 +483,53 @@ function TP.new(host)
     tm.style = tm.steady and "steady" or "follow"
     Tempo.labels()
   end
-  -- 1/2 and x2: the beats of half or double the tempo.
+  -- The Tempo dropdown: the found tempo (f 1), half (0.5) or double (2) of it: its beats again.
   function Tempo.scale(f)
     local tm = R.tempo
-    Tempo.set_beats(tm.bpm * f, Beat.track(tm.env, tm.bpm * f))
-    Tempo.changed()
+    local bpm = tm.bpm0 * f
+    Tempo.set_beats(bpm, Beat.track(tm.env, bpm))
+    tm.f = f
+    Tempo.labels()
   end
-  -- Bar 1 one beat earlier (-1) or later (1); the short bars move with it.
+  -- Bar 1 one beat earlier (-1) or later (1).
   function Tempo.nudge(d)
     local tm = R.tempo
     local i0 = math.max(1, math.min(#tm.beats, tm.i0 + d))
     if i0 == tm.i0 then return end
-    local short = {}
-    for i in pairs(tm.short) do short[i + i0 - tm.i0] = true end
-    tm.i0, tm.short = i0, short
-    Tempo.changed()
+    tm.i0 = i0
+    Tempo.labels()
   end
   function Tempo.set_style(style)
     R.tempo.style = style
-    Tempo.changed()
-  end
-  -- The bar at a time has 3 beats (on: true) or 4 again. Returns false when the time is outside the bars.
-  function Tempo.set_short(t, on)
-    local tm = R.tempo
-    for _, b in ipairs(Beat.bars(#tm.beats, tm.i0, tm.short)) do
-      local e = tm.beats[b.i + b.n]
-      if t >= tm.beats[b.i] and (not e or t < e) then
-        tm.short[b.i] = on or nil
-        Tempo.changed()
-        return true
-      end
-    end
-    return false
-  end
-  function Tempo.remove_short(i)
-    R.tempo.short[i] = nil
-    Tempo.changed()
-  end
-  -- After a change: the texts again, and a running Play with click starts again with the new bars.
-  function Tempo.changed()
     Tempo.labels()
-    if R.tempo.try then Tempo.try() end
   end
 
-  -- The texts of the section (made after a change, not every frame).
+  -- The texts of the section (made after a change, not every frame): lbl_bpm, lbl_bar1, lbl_note (the grey line: the
+  -- tab's tempo changes, or why the Style is suggested), choices (the Tempo dropdown: { { f, lbl } }).
   function Tempo.labels()
     local tm = R.tempo
     tm.lbl_bar1 = TP.time(tm.beats[tm.i0])
     if tm.tab then
       local n = 0
       for _, b in ipairs(tm.tab) do n = n + #b.tempos end
-      tm.lbl_bpm = string.format("%.4g BPM", tm.bpm)
-      tm.lbl_drift = n > 1 and string.format("%d tempo changes in the tab", n - 1) or "1 tempo"
-      tm.short_list = {}
+      tm.lbl_bpm = TP.bpm_text(tm.bpm)
+      tm.lbl_note = n > 1 and string.format("The tab has %d tempo changes; Set tempo writes them too.", n - 1) or nil
       return
     end
     local _, p = Beat.fit(tm.beats, tm.i0)
-    tm.lbl_bpm = string.format("%.1f BPM", 60 / p)
-    local m = Beat.plan(tm.beats, tm.i0, tm.short, "follow", tm.song.t1)
+    tm.lbl_bpm = TP.bpm_text(60 / p) -- (what Set tempo writes)
+    tm.bpm0, tm.f = tm.bpm0 or tm.bpm, tm.f or 1
+    tm.choices = { { f = 1, lbl = TP.bpm_text(tm.bpm0) .. " (found)" } }
+    if tm.bpm0 >= CFG.BPM_MIN then tm.choices[#tm.choices + 1] = { f = 0.5, lbl = TP.bpm_text(tm.bpm0 / 2) .. " (half)" } end
+    if tm.bpm0 <= CFG.BPM_MAX then tm.choices[#tm.choices + 1] = { f = 2, lbl = TP.bpm_text(tm.bpm0 * 2) .. " (double)" } end
+    for _, c in ipairs(tm.choices) do if c.f == tm.f then tm.lbl_choice = c.lbl end end
+    local m = Beat.plan(tm.beats, tm.i0, "follow", tm.song.t1)
     local bpms = {}
     for k, x in ipairs(m) do bpms[k] = x.bpm end
     table.sort(bpms)
     local lo, hi = bpms[math.max(1, math.floor(0.1 * #bpms))], bpms[math.max(1, math.ceil(0.9 * #bpms))]
-    tm.lbl_drift = tm.steady and "steady" or string.format("drifts %.0f-%.0f", lo, hi)
-    tm.short_list = {}
-    for k, b in ipairs(Beat.bars(#tm.beats, tm.i0, tm.short)) do
-      if b.n == 3 then
-        tm.short_list[#tm.short_list + 1] = { i = b.i, text = string.format("Bar %d (%s): 3 beats", k, TP.time(tm.beats[b.i])) }
-      end
-    end
+    tm.lbl_note = tm.steady and "Suggested: 1 tempo (the beats stay on 1 steady grid)."
+      or string.format("Suggested: Follow the song (it drifts %.0f-%.0f BPM).", lo, hi)
   end
 
   -- Holds the rest of the project in place while the tempo changes: the items go to time mode for a moment, the
@@ -713,44 +684,9 @@ function TP.new(host)
     return d
   end
 
-  -- Play with click: writes the tempo (an undo step that the next try or Set tempo takes back), turns the metronome
-  -- on and plays from bar 1. The metronome goes back to how it was when the playback stops.
-  function Tempo.try()
-    local tm = R.tempo
-    Tempo.untry()
-    local t = Tempo.write(host.undo_try)
-    tm.try = true
-    if tm.click == nil then tm.click, tm.click_seen = r.GetToggleCommandStateEx(0, 40364), false end
-    if r.GetToggleCommandStateEx(0, 40364) ~= 1 then r.Main_OnCommand(40364, 0) end -- Options: Toggle metronome
-    local playing = r.GetPlayStateEx(R.proj) & 1 == 1
-    r.SetEditCurPos2(R.proj, t, true, playing)
-    if not playing then r.OnPlayButtonEx(R.proj) end
-  end
-  -- Takes back the last Play with click (only when it is still REAPER's last undo step).
-  function Tempo.untry()
-    local tm = R.tempo
-    if not (tm and tm.try) then return end
-    tm.try = nil
-    if r.Undo_CanUndo2(R.proj) == host.undo_try then r.Undo_DoUndo2(R.proj) end
-  end
-  -- Every frame: the metronome goes back to how it was after the playback of Play with click.
-  function Tempo.tick()
-    local tm = R.tempo
-    if not (tm and tm.click ~= nil) then return end
-    if r.GetPlayStateEx(R.proj) & 1 == 1 then tm.click_seen = true; return end
-    if tm.click_seen then Tempo.click_back() end
-  end
-  function Tempo.click_back()
-    local tm = R.tempo
-    if not (tm and tm.click ~= nil) then return end
-    if r.GetToggleCommandStateEx(0, 40364) ~= tm.click then r.Main_OnCommand(40364, 0) end
-    tm.click = nil
-  end
   -- Set tempo: the tempo map of the song for good (1 undo step). Returns the measure (from 0) of bar 1.
   function Tempo.set()
     local tm = R.tempo
-    Tempo.untry()
-    Tempo.click_back()
     local t, d = Tempo.write(host.name .. ": set the tempo", true)
     local _, m = r.TimeMap2_timeToBeats(R.proj, t + 1e-6)
     local msg = string.format("Tempo set: %s, bar 1 of the song is bar %d.", tm.lbl_bpm, m + 1)
