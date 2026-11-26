@@ -7,6 +7,7 @@
 #   .\tools\check.ps1 -Force        (run even when the same files passed already: tools\stamp.ps1)
 # 1. Syntax (luac -p)                       - must pass
 # 2. Undefined globals (from the luac listing) - must pass; 2b. CFG names read but never set - must pass
+# Also: the docs check, the ImGui balance, the copied helpers (copy-check.ps1, must pass), the publish check.
 # 3. Lua Language Server warnings            - information only (many are false alarms: it cannot see that a value
 #    is checked earlier in the same function). Compared with tools\known-warnings.txt by file, code and text (not by
 #    line: the lines move with every change); only a new one is shown.
@@ -45,6 +46,8 @@ $scope = if ($scriptNames.Count -eq $scriptList.Count) { "all scripts" } else { 
 $stampName = if ($scriptNames.Count -eq $scriptList.Count) { "check-all" } else { "check" }
 if (-not ($Force -or $Full -or $UpdateKnown) -and (Test-Passed $stampName)) {
   & (Join-Path $PSScriptRoot "docs-check.ps1")
+  & (Join-Path $PSScriptRoot "copy-check.ps1")
+  if ($LASTEXITCODE -ne 0) { Write-Host "CHECKS FAILED" -ForegroundColor Red; exit 1 }
   & (Join-Path $PSScriptRoot "publish-check.ps1") | Out-Null
   if ($LASTEXITCODE -ne 0) { Write-Host "  Publish check failed: a push stops until this is fixed" -ForegroundColor Yellow }
   Write-Host "Syntax and globals: passed already on these files, $scope (-Force to run again)" -ForegroundColor Green
@@ -147,6 +150,9 @@ if ($new.Count -gt 0) {
 & (Join-Path $PSScriptRoot "docs-check.ps1")
 # the ImGui Push / Pop balance per function (information only; 1 line when nothing is new)
 & (Join-Path $PSScriptRoot "imgui-check.ps1")
+# the copied helpers are the same in every script (must pass)
+& (Join-Path $PSScriptRoot "copy-check.ps1")
+if ($LASTEXITCODE -ne 0) { $failed = $true }
 # 5. the publish check (information here; the pre-push hook stops a push when it fails)
 & (Join-Path $PSScriptRoot "publish-check.ps1") | Out-Null
 if ($LASTEXITCODE -ne 0) { Write-Host "  (a push stops until this is fixed: release the script or hide it)" -ForegroundColor Yellow }
