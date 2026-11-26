@@ -231,25 +231,38 @@ function Beat.bars(nb, i0, short)
   return bars
 end
 
+-- A tempo as Set tempo writes it: at most 1 decimal place (159.875 BPM helps no one: the user, 26 November 2026).
+function Beat.round(bpm) return math.floor(bpm * 10 + 0.5) / 10 end
+
 -- The tempo markers of the song from bar 1 until t_end: { { t, bpm, num (0: the same as before), bar (0 = bar 1) } },
 -- the bar line after the song, and the number of bars. style "steady": 1 tempo (the straight grid of the beats);
 -- "follow": 1 marker per bar, on the beats (a bar far from the song tempo is a wrong beat: it gets the song tempo).
+-- Every tempo has at most 1 decimal place (Beat.round): "steady" fits the start of its grid again for the rounded
+-- tempo; in "follow" a bar ends a little off its beat (under 1 ms) and the next bar starts there, so the errors do
+-- not add up.
 function Beat.plan(beats, i0, short, style, t_end)
   local a, p = Beat.fit(beats, i0)
-  local base = 60 / p
+  local base = Beat.round(60 / p)
+  p = 60 / base
+  if style ~= "follow" and beats[i0] then -- (the start of the straight grid with the rounded beat length)
+    local s, k = 0, 0
+    for j = i0, #beats do s = s + beats[j] - (j - i0) * p; k = k + 1 end
+    a = s / k
+  end
   local m, i, num, bar = {}, i0, 0, 0
   local t = style == "follow" and beats[i0] or a
   while (t < t_end - 1e-9 or #m == 0) and bar < 5000 do
     local n = short[i] and 3 or 4
-    local nxt
+    local bpm, nxt = base, nil
     if style == "follow" then
       local b = beats[i + n]
-      nxt = (b and math.abs(60 * n / (b - t) / base - 1) <= CFG.BPM_BAR) and b or t + n * p
+      if b and math.abs(60 * n / (b - t) / base - 1) <= CFG.BPM_BAR then bpm = Beat.round(60 * n / (b - t)) end
+      nxt = t + 60 * n / bpm
     else
       nxt = a + (i + n - i0) * p
     end
     if style == "follow" or n ~= num then
-      m[#m + 1] = { t = t, bpm = 60 * n / (nxt - t), num = n ~= num and n or 0, bar = bar }
+      m[#m + 1] = { t = t, bpm = bpm, num = n ~= num and n or 0, bar = bar }
     end
     num, i, t, bar = n, i + n, nxt, bar + 1
   end
@@ -301,7 +314,8 @@ function Beat.tab_time(bars, qn)
   return t
 end
 
--- A bar between 2 fixed times, at about this beat length: its beats and its tempo.
+-- A bar between 2 fixed times, at about this beat length: its beats and its tempo (exact, not Beat.round: the bars
+-- before bar 1 and after the song must end on the old bar lines, or the song and the songs after it move).
 function Beat.fit_bar(t0, t1, beat)
   local n = math.max(1, math.floor((t1 - t0) / beat + 0.5))
   return n, 60 * n / (t1 - t0)
@@ -462,7 +476,7 @@ function TP.new(host)
     end
     local m, t_after, nbars = Beat.plan(tm.beats, tm.i0, tm.short, tm.style, tm.song.t1)
     local _, p = Beat.fit(tm.beats, tm.i0)
-    return m, t_after, nbars, 60 / p
+    return m, t_after, nbars, Beat.round(60 / p)
   end
 
   -- The found beats (s from the read start); bar 1, the short bars and the style start again.

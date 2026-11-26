@@ -23,7 +23,8 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   `[nomain] ../Tab Viewer/Guitar Pro.lua > Guitar Pro.lua` in its `@provides` (each package needs its own target name:
   the ReaPack index refuses 2 packages with the same file).
 - `Tempo.lua` (`TP`): Tempo and bars (`TP.Beat` finds the beats; `TP.reader`, `TP.first_sound`; `TP.new(host)` = Find
-  tempo, 1/2 x2, bar 1, short bars, Play with click, Set tempo with `hold` / `map` / `align`). What the host gives:
+  tempo, 1/2 x2, bar 1, short bars, Play with click, Set tempo with `hold` / `map` / `align`; the song's tempos with
+  at most 1 decimal place, `Beat.round`; the 2 bridge bars to the old grid stay exact). What the host gives:
   the comment at `TP.new`; Tab Viewer gives it in `Tempo = TP.new({...})`, the Notes list adds `first_note`,
   `shift` and `set_extra`.
 - `Notes.lua`: the Detection tab (NOTES.md).

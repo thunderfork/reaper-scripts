@@ -1400,12 +1400,32 @@ test("tempo: the plan of 1 tempo and of Follow the song, with a short bar", func
   beats[14] = beats[14] + 0.4 -- a wrong beat on a bar line (bar 4 starts at beat 13: beat 17)
   m = Beat.plan(beats, 1, {}, "follow", 15)
   eq(m[1].num, 4); eq(m[2].num, 0, "the same time signature")
-  near(m[2].t, beats[5], 1e-6, "bar 2 on its beat")
+  near(m[2].t, beats[5], 0.002, "bar 2 on its beat (the rounded tempo: under 2 ms)")
   ok(m[2].bpm < m[1].bpm, "slower")
   local n, bpm = Beat.fit_bar(10, 11.9, 0.5)
-  eq(n, 4); near(bpm, 240 / 1.9, 1e-6)
+  eq(n, 4); near(bpm, 240 / 1.9, 1e-6, "exact: it fills the gap")
   n = Beat.fit_bar(10, 10.1, 0.5)
   eq(n, 1, "at least 1 beat")
+end)
+
+test("tempo: Set tempo writes at most 1 decimal place, and the bars stay on the beats (26 November 2026)", function()
+  local function one_decimal(x) return math.abs(x * 10 - math.floor(x * 10 + 0.5)) < 1e-6 end
+  local beats, per = {}, 60 / 159.875
+  for k = 1, 600 do beats[k] = 2 + (k - 1) * per end -- 159.875 BPM, about 3:45
+  local m = Beat.plan(beats, 1, {}, "steady", beats[600])
+  eq(#m, 1); near(m[1].bpm, 159.9, 1e-9, "1 tempo: rounded")
+  local worst = 0
+  for k = 1, 600 do worst = math.max(worst, math.abs(m[1].t + (k - 1) * 60 / 159.9 - beats[k])) end
+  ok(worst < 0.03, "1 tempo: the grid stays near the beats (" .. worst .. " s)")
+  for k = 2, 600 do beats[k] = beats[k - 1] + per * (1 + 0.01 * math.sin(k / 20)) end -- it drifts a little
+  m = Beat.plan(beats, 1, {}, "follow", beats[600])
+  worst = 0
+  for k, x in ipairs(m) do
+    ok(one_decimal(x.bpm), "bar " .. k .. ": 1 decimal place (" .. x.bpm .. ")")
+    worst = math.max(worst, math.abs(x.t - beats[1 + 4 * (k - 1)]))
+  end
+  ok(worst < 0.002, "Follow the song: every bar starts on its beat (" .. worst .. " s)")
+  eq(Beat.round(159.875), 159.9); eq(Beat.round(160.04), 160); eq(Beat.round(120), 120)
 end)
 
 -- TR.tempo by hand: the song from t0 to t1, beats every per s from first (step: the change of each beat)
