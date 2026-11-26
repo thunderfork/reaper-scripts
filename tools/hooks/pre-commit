@@ -1,16 +1,24 @@
 #!/bin/sh
 # Git pre-commit hook (git config core.hooksPath tools/hooks): when .lua files of a script folder are staged, it
 # runs the code checker and the tests of those scripts (tools/scripts.psd1 names them; the folder = the script).
-# A failure stops the commit. Only docs, tools or tests staged: no run.
+# A failure stops the commit. Only docs, tools or tests staged: no run. A check or test that already passed on exactly
+# these files (tools/stamp.ps1) is skipped.
 root="$(git rev-parse --show-toplevel)"
 scripts="$(git diff --cached --name-only --diff-filter=ACMR -- '*.lua' | grep '/' | grep -v '^tests/' | grep -v '^tools/' | cut -d/ -f1 | sort -u)"
 [ -z "$scripts" ] && exit 0
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root/tools/check.ps1" || {
-  echo "Commit stopped: the code checker failed (tools/check.ps1)."
-  exit 1
-}
-# 1 name per line ("Chart Cue" has a space): 'Chart Cue','Segue'
-args="$(printf '%s\n' "$scripts" | sed "s/.*/'&'/" | paste -sd, -)"
+# a check or test that already passed on exactly the files to commit (tools/stamp.ps1) is not run again
+passed() { powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root/tools/stamp.ps1" -Test "$1" >/dev/null 2>&1; }
+if passed check; then echo "Code checker: passed on these files already."
+else
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root/tools/check.ps1" || {
+    echo "Commit stopped: the code checker failed (tools/check.ps1)."
+    exit 1
+  }
+fi
+# the scripts whose tests did not pass on these files yet; 1 name per line ("Chart Cue" has a space): 'Chart Cue','Segue'
+todo="$(printf '%s\n' "$scripts" | while IFS= read -r s; do passed "test-$s" || printf '%s\n' "$s"; done)"
+[ -z "$todo" ] && { echo "Tests: passed on these files already."; exit 0; }
+args="$(printf '%s\n' "$todo" | sed "s/.*/'&'/" | paste -sd, -)"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "& '$root/tools/test.ps1' -Script $args; exit \$LASTEXITCODE" || {
   echo "Commit stopped: a test failed (tools/test.ps1 -Script $args)."
   exit 1

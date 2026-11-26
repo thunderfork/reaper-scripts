@@ -1,14 +1,17 @@
 # Static checks for the scripts (no REAPER needed). Run before deploying:
 #   .\tools\check.ps1               (quiet: 1 summary line; details only on a failure or a new warning)
 #   .\tools\check.ps1 -Full         (every file and every warning)
-#   .\tools\check.ps1 -UpdateKnown  (the current warnings become the known ones: tools\known-warnings.txt)
+#   .\tools\check.ps1 -All          (all scripts; without it: only the scripts with a file changed since the last
+#                                    commit, or all when a file in tools\ or .luarc.json changed)
+#   .\tools\check.ps1 -UpdateKnown  (the current warnings become the known ones: tools\known-warnings.txt; all scripts)
+#   .\tools\check.ps1 -Force        (run even when the same files passed already: tools\stamp.ps1)
 # 1. Syntax (luac -p)                       - must pass
 # 2. Undefined globals (from the luac listing) - must pass; 2b. CFG names read but never set - must pass
 # 3. Lua Language Server warnings            - information only (many are false alarms: it cannot see that a value
 #    is checked earlier in the same function). Compared with tools\known-warnings.txt by file, code and text (not by
 #    line: the lines move with every change); only a new one is shown.
 # These checks find syntax errors and wrong names. They do not replace a test in REAPER.
-param([switch]$Full, [switch]$UpdateKnown)
+param([switch]$Full, [switch]$UpdateKnown, [switch]$All, [switch]$Force)
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is in tools\)
@@ -26,7 +29,27 @@ $known = @('reaper', 'string', 'math', 'table', 'utf8', 'io', 'os', 'package', '
   'tostring', 'tonumber', 'type', 'pcall', 'xpcall', 'setmetatable', 'getmetatable', 'dofile',
   'next', 'select', 'error', 'print', 'assert', 'rawget', 'rawset', 'require', '_G')
 
-$scriptNames = @((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts | ForEach-Object { $_.Name }) # tools\scripts.psd1
+$scriptList = @((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts) # tools\scripts.psd1
+# the scripts to check: the changed ones (a file in its folder or one of its Uses files, staged, not staged or new)
+$changed = @(@(git -C $root diff --name-only HEAD) + @(git -C $root ls-files --others --exclude-standard) | Where-Object { $_ })
+if ($LASTEXITCODE -ne 0) { $All = $true } # (git could not tell what changed)
+$scriptNames = @($scriptList | Where-Object {
+    $s = $_
+    $All -or $UpdateKnown -or ($changed | Where-Object {
+        $_ -like "tools/*" -or $_ -eq ".luarc.json" -or $_ -like "$($s.Name)/*" -or ($s.Uses -and ($s.Uses -replace '\\', '/') -contains $_)
+      })
+  } | ForEach-Object { $_.Name })
+$scope = if ($scriptNames.Count -eq $scriptList.Count) { "all scripts" } else { "$($scriptNames.Count) of $($scriptList.Count) scripts (changed; -All for all)" }
+# the same files passed already (tools\stamp.ps1): only the fast checks of the files that the stamp does not cover
+. (Join-Path $PSScriptRoot "stamp.ps1")
+$stampName = if ($scriptNames.Count -eq $scriptList.Count) { "check-all" } else { "check" }
+if (-not ($Force -or $Full -or $UpdateKnown) -and (Test-Passed $stampName)) {
+  & (Join-Path $PSScriptRoot "docs-check.ps1")
+  & (Join-Path $PSScriptRoot "publish-check.ps1") | Out-Null
+  if ($LASTEXITCODE -ne 0) { Write-Host "  Publish check failed: a push stops until this is fixed" -ForegroundColor Yellow }
+  Write-Host "Syntax and globals: passed already on these files, $scope (-Force to run again)" -ForegroundColor Green
+  exit 0
+}
 $files = $scriptNames | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } |
   ForEach-Object { Get-ChildItem -Path $_ -Filter "*.lua" }
 Say "== 1. Syntax ==" Cyan
@@ -67,7 +90,7 @@ foreach ($f in $files) {
 
 Say "== 3. Lua Language Server (information only) ==" Cyan
 $summary = @()
-$all = @()      # every warning: "file [code] text" (no line), for the comparison
+$warnings = @() # every warning: "file [code] text" (no line), for the comparison
 $shown = @()    # with the line, for the screen
 $ls = Get-ChildItem "$env:USERPROFILE\.vscode\extensions" -Directory -Filter "sumneko.lua-*" -ErrorAction SilentlyContinue |
   Sort-Object Name -Descending | Select-Object -First 1
@@ -90,7 +113,7 @@ if ($exe -and (Test-Path $exe)) {
         $name = [uri]::UnescapeDataString(($f.Name -split '/')[-1])
         foreach ($d in $f.Value) {
           $text = ($d.message -split "`n")[0]
-          $all += "$name [$($d.code)] $text"
+          $warnings += "$name [$($d.code)] $text"
           $shown += [pscustomobject]@{ key = "$name [$($d.code)] $text"; line = "${name}:$($d.range.start.line + 1) [$($d.code)] $text" }
           $n++
         }
@@ -106,13 +129,13 @@ if ($exe -and (Test-Path $exe)) {
 # the known warnings: a new one is one more of its kind (file, code, text) than the known ones
 if ($UpdateKnown) {
   # (UTF-8 without a byte-order mark, LF line ends: Set-Content -Encoding utf8 writes a BOM in PowerShell 5.1)
-  [System.IO.File]::WriteAllText($knownFile, ((@($all | Sort-Object) -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
-  Write-Host "Known warnings saved: $($all.Count) in tools\known-warnings.txt"
+  [System.IO.File]::WriteAllText($knownFile, ((@($warnings | Sort-Object) -join "`n") + "`n"), (New-Object System.Text.UTF8Encoding($false)))
+  Write-Host "Known warnings saved: $($warnings.Count) in tools\known-warnings.txt"
 }
 $knownCount = @{}
 if (Test-Path $knownFile) { Get-Content $knownFile | Where-Object { $_ -ne "" } | ForEach-Object { $knownCount[$_] = 1 + [int]$knownCount[$_] } }
 $nowCount = @{}
-foreach ($k in $all) { $nowCount[$k] = 1 + [int]$nowCount[$k] }
+foreach ($k in $warnings) { $nowCount[$k] = 1 + [int]$nowCount[$k] }
 $new = @()
 foreach ($k in $nowCount.Keys) { if ($nowCount[$k] -gt [int]$knownCount[$k]) { $new += $k } }
 if ($new.Count -gt 0) {
@@ -130,5 +153,7 @@ if ($LASTEXITCODE -ne 0) { Write-Host "  (a push stops until this is fixed: rele
 
 if ($failed) { Write-Host "CHECKS FAILED" -ForegroundColor Red; exit 1 }
 $w = if ($summary.Count) { "; warnings: " + ($summary -join ", ") + $(if ($new.Count) { " ($($new.Count) new)" } else { " (none new)" }) } else { "" }
-Write-Host "Syntax and globals OK$w" -ForegroundColor Green
+Write-Host "Syntax and globals OK, $scope$w" -ForegroundColor Green
+Save-Stamp "check" # (no 2nd check of the same files: here and in the pre-commit hook)
+if ($stampName -eq "check-all") { Save-Stamp "check-all" }
 exit 0 # (the Language Server's own exit code is information only)

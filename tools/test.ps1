@@ -6,19 +6,24 @@
 # Quiet by default: the failed tests and 1 summary line per script. -Full: every test line.
 # -Coverage: also which functions of the script the tests ran (a call hook; slower). 1 line per script, and the
 #   functions never run in tests\coverage_<test file>.txt (git-ignored).
-param([string[]]$Script = @(), [switch]$Full, [switch]$Coverage)
+# A script whose tests passed already on the same files is skipped (tools\stamp.ps1); -Force runs it.
+param([string[]]$Script = @(), [switch]$Full, [switch]$Coverage, [switch]$Force)
 $list = (Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts
 if (-not $Script.Count) { $Script = @($list | ForEach-Object { $_.Name }) }
 $root = Split-Path $PSScriptRoot -Parent # the repository folder (this script is in tools\)
 $reaper = "C:\REAPERtest\reaper.exe"
 if (-not (Test-Path $reaper)) { Write-Host "Test REAPER not found: $reaper" -ForegroundColor Red; exit 2 }
 . (Join-Path $PSScriptRoot "background.ps1") # in the background: your window keeps the focus
+. (Join-Path $PSScriptRoot "stamp.ps1") # (a pass: Save-Stamp; Test-Passed: no 2nd run on the same files)
 
 $bad = $false
 $all = @($list | ForEach-Object { , @($_.Name, $_.Test, $_.Result) })
 foreach ($n in $Script) { if (-not ($list | Where-Object { $_.Name -eq $n })) { Write-Host "Unknown script: $n (tools\scripts.psd1)" -ForegroundColor Red; exit 2 } }
 foreach ($s in $all) {
   if ($Script -notcontains $s[0]) { continue }
+  if (-not ($Force -or $Full -or $Coverage) -and (Test-Passed "test-$($s[0])")) {
+    Write-Host "$($s[0]): passed already on these files (-Force to run again)"; continue
+  }
   $t = @($s[1], $s[2])
   $result = Join-Path $root "tests\$($t[1])"
   Remove-Item $result -ErrorAction SilentlyContinue
@@ -68,6 +73,7 @@ dofile(target)
     elseif ($Full -or $line -match "passed, \d+ failed") { Write-Host $(if ($line -match "passed, \d+ failed") { "$($s[0]): $line" } else { $line }) }
   }
   if ($text -match "^FAIL") { $bad = $true }
+  elseif (-not $Coverage -and ($text -match "passed, 0 failed")) { Save-Stamp "test-$($s[0])" }
   if ($Coverage) {
     Remove-Item $wrap -ErrorAction SilentlyContinue
     if (-not (Test-Path $hits)) { Write-Host "$($s[0]): no coverage data (the tests did not reach their end)" -ForegroundColor Yellow; continue }
