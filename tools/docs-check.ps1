@@ -1,6 +1,6 @@
 # Checks that the documents still match the repository (run by check.ps1; also on its own):
 #   .\tools\docs-check.ps1
-# In CLAUDE.md, the folder CLAUDE.md files, README.md, PLAN.md and the skills:
+# In CLAUDE.md, the .md files of the script folders, README.md, PLAN.md and the skills:
 # 1. paths in backticks (tools\..., tests\..., "MIDI Pilot/...", .claude\...) that no longer exist;
 # 2. skill names (`name` skill) that do not exist in .claude\skills;
 # 3. "Settings > Section" paths whose section is in no script, and "Settings > Section > Name" paths whose name is
@@ -8,8 +8,10 @@
 # Prints 1 line when everything matches; else each problem (information only: it never fails the checks).
 $root = Split-Path $PSScriptRoot -Parent
 $names = @((Import-PowerShellDataFile (Join-Path $PSScriptRoot "scripts.psd1")).Scripts | ForEach-Object { $_.Name }) # tools\scripts.psd1
-$docs = @("CLAUDE.md", "README.md", "PLAN.md", "LESSONS.md", "LESSONS-RULES.md") + @($names | ForEach-Object { "$_\CLAUDE.md" }) |
+$docs = @("CLAUDE.md", "README.md", "PLAN.md", "LESSONS.md", "LESSONS-RULES.md") |
   ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ }
+$docs += $names | ForEach-Object { Get-ChildItem (Join-Path $root $_) -Filter "*.md" -ErrorAction SilentlyContinue } |
+  ForEach-Object { $_.FullName } # each script folder's CLAUDE.md and other notes (Tab Viewer\NOTES.md)
 $docs += Get-ChildItem (Join-Path $root ".claude\skills") -Recurse -Filter "SKILL.md" | ForEach-Object { $_.FullName }
 $skills = Get-ChildItem (Join-Path $root ".claude\skills") -Directory | ForEach-Object { $_.Name }
 $code = @($names | ForEach-Object { Join-Path $root $_ } | Where-Object { Test-Path $_ } |
@@ -43,7 +45,7 @@ foreach ($doc in $docs) {
       if ($skills -notcontains $m.Groups[1].Value) { $problems += "${rel}:$n no such skill: $($m.Groups[1].Value)" }
     }
     # 3. Settings paths
-    foreach ($m in [regex]::Matches($line, 'Settings > ([A-Z][A-Za-z]+)(?: > ([A-Z][A-Za-z'' ]*[A-Za-z]))?')) {
+    foreach ($m in [regex]::Matches($line, 'Settings > ([A-Z][A-Za-z]+(?: [A-Z][A-Za-z]+)*)(?: >([A-Z][A-Za-z'' ]*[A-Za-z]))?')) {
       $sec = $m.Groups[1].Value
       if ($sections -notcontains $sec) { $problems += "${rel}:$n no Settings section '$sec'" }
       elseif ($m.Groups[2].Success -and -not $allCode.Contains($m.Groups[2].Value)) {
