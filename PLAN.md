@@ -61,10 +61,6 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-20. Manual test (Tab Viewer, songs, 26 November 2026): in a project with 2-3 songs (regions, or bass items in a
-    row): the song header names the song at the edit cursor (and flashes when it changes); its arrows and list go
-    to a song; Find tempo / Set tempo and Find notes from the headings; each song keeps its own tempo status and
-    list; Write in song 2 leaves song 1's markers and Notes items; Follow the song off.
 
 ## Later
 
