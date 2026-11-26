@@ -47,7 +47,7 @@ YYYY-MM-DD | Script | tag | what the user saw
   the start is still bar 1 and its own region; failed before the fix. Fix: CFG.TIME_EPS in Tabs.region_at and
   Tabs.place_of (shared: |< and every click on a bar start get it too).
   Other scripts: searched; MIDI Pilot's item lookup uses REAPER's own times (not affected).
-  Status: fixed, not confirmed
+  Status: confirmed
 
 2026-11-26 | Tab Viewer | imgui-value | Find notes was grey (off) with no reason until Find tempo was clicked once
   Cause: ImGui.BeginDisabled(ctx, busy) with busy = nil (no Find tempo state yet: `R.tempo and ...` gives nil);

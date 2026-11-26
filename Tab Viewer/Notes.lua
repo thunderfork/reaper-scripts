@@ -74,18 +74,19 @@ CFG.HARM = { { 0, 1 }, { 12, 0.8 }, { 19, 0.5 }, { 24, 0.4 } } -- the 2nd method
 CFG.HARM_LO, CFG.HARM_HI = 24, 47 -- the 2nd method: the notes C1 to B2
 -- Octaves and strings (the trials of 23 November 2026: the odd harmonics of the low octave against the even ones)
 CFG.TUNINGS = { -- the open strings from the lowest (MIDI numbers); the strings keep the names of their places
-  { id = "std", label = "Standard (E A D G)", open = { 28, 33, 38, 43 } },
-  { id = "half", label = "Half step down", open = { 27, 32, 37, 42 } },
-  { id = "dropd", label = "Drop D (D A D G)", open = { 26, 33, 38, 43 } },
-  { id = "dropc", label = "Drop C (C G C F)", open = { 24, 31, 36, 41 } },
-  { id = "five", label = "5-string (B E A D G)", open = { 23, 28, 33, 38, 43 } },
-  -- (more: the user, 26 November 2026; the ids above stay, they are saved in projects)
+  -- (in the order of the dropdown, decided 26 November 2026: 4 strings from the highest standard tuning down, the
+  -- drop tunings, then 5 strings; the ids are saved in projects: they stay; the first one is the default)
+  { id = "std", label = "E standard (E A D G)", open = { 28, 33, 38, 43 } },
+  { id = "half", label = "Eb standard (Eb Ab Db Gb)", open = { 27, 32, 37, 42 } },
   { id = "dstd", label = "D standard (D G C F)", open = { 26, 31, 36, 41 } },
   { id = "cstd", label = "C standard (C F Bb Eb)", open = { 24, 29, 34, 39 } },
   { id = "bstd", label = "B standard (B E A D)", open = { 23, 28, 33, 38 } },
+  { id = "dropd", label = "Drop D (D A D G)", open = { 26, 33, 38, 43 } },
   { id = "dropcs", label = "Drop C# (C# G# C# F#)", open = { 25, 32, 37, 42 } },
+  { id = "dropc", label = "Drop C (C G C F)", open = { 24, 31, 36, 41 } },
   { id = "dropb", label = "Drop B (B F# B E)", open = { 23, 30, 35, 40 } },
-  { id = "five_half", label = "5-string half step down (Bb Eb Ab Db Gb)", open = { 22, 27, 32, 37, 42 } },
+  { id = "five", label = "5-string B standard (B E A D G)", open = { 23, 28, 33, 38, 43 } },
+  { id = "five_half", label = "5-string Bb standard (Bb Eb Ab Db Gb)", open = { 22, 27, 32, 37, 42 } },
   { id = "five_a", label = "5-string A standard (A D G C F)", open = { 21, 26, 31, 36, 41 } },
   { id = "five_dropa", label = "5-string Drop A (A E A D G)", open = { 21, 28, 33, 38, 43 } },
 }
@@ -278,6 +279,12 @@ end
 
 function Key.pc(letter, acc)
   return (Key.PC[letter] + (acc == "#" and 1 or acc == "b" and -1 or 0)) % 12
+end
+-- The key tp half steps higher (Transpose: "E minor" +2 = "F# minor"); "" (not known) stays "".
+function Key.shift(key, tp)
+  local l, a, mode = (key or ""):match("^([A-G])([#b]?) (%a+)$")
+  if not l or not TONIC[mode] or tp % 12 == 0 then return key end
+  return TONIC[mode][(Key.pc(l, a) + tp) % 12] .. " " .. mode
 end
 
 -- The key in a file name ("... C minor ...", "... Cm ...", "... F# major ..."), as in Key.LIST; nil without one.
@@ -986,21 +993,23 @@ end
 -- notes, runs = the fingering of every note in a row of CFG.RUN_MIN notes or more }. A slide into a note: no mark
 -- (decided 25 November 2026), but a slide into the same note is still a note of its own.
 function Group.rows(notes, bars, key, opt)
-  local slices, names = Group.slice(notes, bars, opt ~= nil and (opt.high or opt.runs)), Key.names(key)
-  -- the places: the fingering of the notes (the same as the tab; a string that the user chose in the tab stays)
-  local places = opt and (opt.high or opt.runs) and List.places(notes, opt.tun)
+  local tp = opt and opt.tp or 0 -- (Transpose of the toolbar: the names tp half steps higher, in the transposed key)
+  local slices, names = Group.slice(notes, bars, opt ~= nil and (opt.high or opt.runs)), Key.names(Key.shift(key, tp))
+  -- the places: the fingering of the notes (the same as the tab; a string that the user chose in the tab stays;
+  -- transposed: only the place of each high note)
+  local places = tp == 0 and opt and (opt.high or opt.runs) and List.places(notes, opt.tun)
   local keys = {}
   for i, parts in ipairs(slices) do
     local t = {}
-    local run = opt and opt.runs and #parts >= CFG.RUN_MIN
+    local run = places and opt.runs and #parts >= CFG.RUN_MIN
     for k, p in ipairs(parts) do
       local pl = places and places[p.ni]
       local extra = ""
       if run then extra = Key.place_text(pl, opt.tun, opt.names)
-      elseif opt and opt.high and p.midi and p.midi >= opt.tun.open[1] + 12 then -- (a high note)
-        extra = pl and Key.place_text(pl, opt.tun, opt.names) or Key.place(p.midi, opt.tun, opt.names)
+      elseif opt and opt.high and p.midi and p.midi + tp >= opt.tun.open[1] + 12 then -- (a high note)
+        extra = pl and Key.place_text(pl, opt.tun, opt.names) or Key.place(p.midi + tp, opt.tun, opt.names)
       end
-      t[k] = names[p.pc] .. extra
+      t[k] = names[(p.pc + tp) % 12] .. extra
     end
     keys[i] = table.concat(t, " - ")
   end
@@ -1053,10 +1062,10 @@ function List.places(notes, tun)
 end
 -- Settings > Detection as they apply (the texts of Group.rows, the split repeated notes). 1 mode (decided
 -- 25 November 2026: no Simple mode, no beat count, no slide mark).
-function List.opt()
+function List.opt(tp)
   local tun = Key.tuning(P.tuning)
   local names = Key.string_names(tun, S.strings == "numbers")
-  return { tun = tun, names = names, high = S.frets, runs = S.finger, splits = S.splits }
+  return { tun = tun, names = names, high = S.frets, runs = S.finger, splits = S.splits, tp = tp or host.transpose() }
 end
 
 function List.parse(txt)
@@ -1408,10 +1417,11 @@ function List.set_tuning(id)
   Util.mark_pdirty()
   return heard
 end
--- The rows that Group.make gives now (with the key changes), without changing P.rows.
-function List.auto_rows()
+-- The rows that Group.make gives now (with the key changes; tp: at this Transpose, else the toolbar's), without
+-- changing P.rows.
+function List.auto_rows(tp)
   local keep = P.rows
-  P.rows = Group.make(P.notes, P.mode, P.key, R.proj, P.t_end, List.opt())
+  P.rows = Group.make(P.notes, P.mode, P.key, R.proj, P.t_end, List.opt(tp))
   List.respell()
   local rows = P.rows
   P.rows = keep
@@ -2333,7 +2343,7 @@ The same note played again and again (8ths, 16ths)? Tab Viewer listens for each 
 
 Rather string numbers, as in tab books ("E (3 7)")? Settings > Detection > String names.
 
-Pick the "Tuning" of the bass for the song (Standard, Half step down, Drop D, Drop C, 5-string). Changed it after Find notes? The list follows at once: the strings and frets, and the low notes that can now be an octave lower are heard again (your corrections stay). Only the names, no frets? Turn off Settings > Detection > String for high notes, and Settings > Detection > Fingering for runs.]] },
+Pick the "Tuning" of the bass for the song: the standard tunings from E down to B, the drop tunings (Drop D to Drop B), then the 5-string tunings. Changed it after Find notes? The list follows at once: the strings and frets, and the low notes that can now be an octave lower are heard again (your corrections stay). Only the names, no frets? Turn off Settings > Detection > String for high notes, and Settings > Detection > Fingering for runs.]] },
   { title = "Markers or a Notes track", text = [[
 The dropdown next to "Write" decides what it makes: markers, text items on a "Notes" track above the bass, or both. The text items have more room than the marker names, so long lines stay readable.
 
@@ -3062,6 +3072,12 @@ function N.save(mouse_down)
 end
 -- Ends the loop of a row (Tab Viewer: before its bar loop starts).
 function N.loop_off() UI.loop_off() end
+-- Transpose changed (from old): the names of the list again; a line that you corrected keeps your text.
+function N.transposed(old)
+  if not (P and #P.notes > 0) then return end
+  List.remake(List.auto_rows(old))
+  Util.mark_pdirty()
+end
 -- The toolbar's Undo / Redo in this tab (dir -1 / 1): false when the list has no step (then Tab Viewer uses REAPER's).
 function N.has_undo(dir) return #(dir < 0 and R.undo or R.redo) > 0 end
 function N.undo(dir)

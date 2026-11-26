@@ -1606,21 +1606,34 @@ test("the toolbar (26 November 2026): |<, <, > and >| go to the bars; play in th
   -- Find tempo's Listen to (the Detection tab, 26 November 2026): From the tab with a Guitar Pro tab, until you pick a track
   eq(Tabs.tempo_from_tab(true, nil), true, "a tab: From the tab first"); eq(Tabs.tempo_from_tab(true, false), false, "a track picked")
   eq(Tabs.tempo_from_tab(true, true), true); eq(Tabs.tempo_from_tab(false, true), false, "no tab (or found notes): a track")
-  -- the places: Find tempo 100, size 120, transport 252 (play's middle at 126), speed 100, Undo / Redo 66
-  local w = { L = 100, Z = 120, T = 252, S = 100, U = 66 }
+  -- the places: the left group 100, size 120, transport 252 (play's middle at 126), Undo / Redo 66 (the speed: in the
+  -- left group, 26 November 2026)
+  local w = { L = 100, Z = 120, T = 252, U = 66 }
   local p = Tabs.toolbar_rows(0, 1000, w, 126, 25, 16)
   eq(p.urow, 0); eq(p.ux, 934, "wide: Undo / Redo at the right end"); eq(p.trow, 0, "wide: 1 row")
-  eq(p.tx + 126, 500, "play in the middle"); eq(p.zx, 238, "the size next to the transport"); eq(p.sx, 642, "the speed")
-  eq(p.zrow, 0); eq(p.srow, 0)
+  eq(p.tx + 126, 500, "play in the middle"); eq(p.zx, 238, "the size next to the transport"); eq(p.zrow, 0)
   p = Tabs.toolbar_rows(0, 700, w, 126, 25, 16, p) -- (the same table again, as the toolbar does)
-  eq(p.urow, 0); eq(p.trow, 1, "no room next to Find tempo: the center on row 2"); eq(p.tx + 126, 350, "play still in the middle")
-  eq(p.zrow, 1); eq(p.srow, 1); eq(p.zx, 88)
+  eq(p.urow, 0); eq(p.trow, 1, "no room next to the left group: the center on row 2"); eq(p.tx + 126, 350, "play still in the middle")
+  eq(p.zrow, 1); eq(p.zx, 88)
   p = Tabs.toolbar_rows(0, 400, w, 126, 25, 16)
-  eq(p.urow, 0); eq(p.trow, 1, "narrow: the transport alone on row 2"); eq(p.tx, 74, "play in the middle")
-  eq(p.zrow, 2); eq(p.zx, 0, "the size on row 3 at the left"); eq(p.srow, 2); eq(p.sx, 300, "the speed at the right")
+  eq(p.trow, 1); eq(p.zx, 0, "narrow: the center as far left as it must go"); eq(p.tx, 136)
   p = Tabs.toolbar_rows(0, 150, w, 126, 25, 16)
-  eq(p.urow, 1, "very narrow: Undo / Redo on row 2"); eq(p.ux, 84); eq(p.trow, 2); eq(p.tx, 0, "never left of the window")
-  eq(p.zrow, 3)
+  eq(p.urow, 1, "very narrow: Undo / Redo on row 2"); eq(p.ux, 84); eq(p.trow, 2, "the transport alone"); eq(p.tx, 0, "never left of the window")
+  eq(p.zrow, 3, "the size on the row after it")
+  -- Transpose (26 November 2026): -12 .. 12, nothing saved at 0; a fret below 0 to the next lower string, past the
+  -- lowest an octave up (yellow); above fret 24 to the next higher string
+  eq(Tabs.clamp_tp(0), nil); eq(Tabs.clamp_tp(-20), -12); eq(Tabs.clamp_tp("3"), 3)
+  local open = { 28, 33, 38, 43 } -- (E A D G)
+  local tt = { bars = { { notes = { { s = 2, fret = 1 }, { s = 1, fret = 0 }, { s = 4, fret = 23 }, { s = 1, fret = 3, fx = { dead = true } } } } } }
+  Tabs.transpose(tt, -2, open)
+  local n = tt.bars[1].notes
+  eq(n[1].s .. "/" .. n[1].fret, "1/4", "A1 -2: the E string, fret 4"); eq(n[2].s .. "/" .. n[2].fret, "1/10", "the open E -2: an octave up")
+  ok(n[2].oct, "yellow"); eq(n[3].fret, 21); eq(n[4].fret, 3, "a dead note stays")
+  tt = { bars = { { notes = { { s = 3, fret = 24 } } } } }
+  Tabs.transpose(tt, 2, open)
+  eq(tt.bars[1].notes[1].s .. "/" .. tt.bars[1].notes[1].fret, "4/21", "above 24: the next higher string")
+  eq(Project.serialize(Project.parse("transpose=-3\ntab=x.gp\n")), "transpose=-3\ntab=x.gp\n", "saved before the tabs")
+  eq(Project.parse("transpose=0\n").transpose, nil, "0: nothing")
   -- drawn in both tabs (the stand-in: no error), and Undo / Redo of the tab
   local UI = C.UI
   Tabs.open(src)
@@ -1628,6 +1641,13 @@ test("the toolbar (26 November 2026): |<, <, > and >| go to the bars; play in th
     R.page = page
     UI.draw_toolbar()
   end
+  R.page = 1
+  Tabs.set_transpose(3) -- (transposed: the yellow value, the tab made again; fixes need 0)
+  UI.draw_toolbar(); UI.draw_tab(100000)
+  R.notice = nil
+  eq(Tabs.set_fret(1, 1, (R.tab.bars[1].notes[1].fret + 1) % 20), false, "transposed: no fix")
+  ok(R.notice and R.notice.text == C.CFG.TP_NO_FIX, "it says why")
+  Tabs.set_transpose(0)
   R.page = 1
   R.undo, R.redo = {}, {}
   local f0 = R.tab.bars[1].notes[1].fret

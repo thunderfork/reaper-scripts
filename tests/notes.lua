@@ -433,6 +433,25 @@ test("list: another key changes the names", function()
   eq(texts(), "G# - A# (A 1)"); eq(C.get_P().key, "")
 end)
 
+test("Transpose (26 November 2026): the names in the transposed key; a corrected line keeps its text", function()
+  eq(C.Key.shift("E minor", 2), "F# minor"); eq(C.Key.shift("C major", -1), "B major"); eq(C.Key.shift("", 3), "")
+  eq(C.Key.shift("Eb major", 12), "Eb major", "an octave: the same key")
+  local n = notes({ { 4, 1, 1.4 }, { 7, 1.5, 1.9 } }) -- (E, G)
+  local opt = List.opt(0)
+  opt.high, opt.runs = false, false
+  eq(texts(Group.make(n, "change", "E minor", 0, 5, opt)), "E | G")
+  opt.tp = 2
+  eq(texts(Group.make(n, "change", "E minor", 0, 5, opt)), "F# | A", "2 half steps higher, in F# minor")
+  local p = set_rows({})
+  p.notes, p.mode, p.key, p.t_end = n, "change", "E minor", 5
+  p.rows = Group.make(n, "change", "E minor", 0, 5, List.opt(0))
+  p.rows[2].text = "my G"
+  TV.Tabs.set_transpose(2) -- (the toolbar: the list follows)
+  eq(texts(), "F# | my G", "the names transposed; your text stays")
+  TV.Tabs.set_transpose(0)
+  eq(texts(), "E | my G")
+end)
+
 test("another project: the list is not used and not written", function()
   clear_project()
   set_rows({ { 1, "C" } })

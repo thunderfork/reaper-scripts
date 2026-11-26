@@ -39,13 +39,19 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   > Hide this tab (Settings > Look > Tabs). The tab keys work only in the Tab tab, the list keys only in the
   Detection tab.
 - The toolbar (inspired by Guitar Pro's): `UI.draw_toolbar`, its places from `Tabs.toolbar_rows` (a part without
-  room goes to the next row): left Loop, Metronome and Count-in (`UI.draw_left`; the last 2 are REAPER's own switches `CFG.CMD`: Options: Toggle
-  metronome, and Pre-roll: Toggle pre-roll on play = REAPER's count-in; blue while on); center the size, |<, <, play / stop, >, >| (play in the middle of the
-  window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Detection tab by lines,
-  `Notes.go`), the speed with a note icon; right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes
-  `Tabs.undo` or the list `Notes.undo`, then REAPER's; Ctrl+Z too). Icons: `UI.tb_icon`, `ICON` (drawn, as Chart
-  Cue's; plain icons, not Chart Cue's framed transport buttons: the user's choice). Next: loop, metronome and count-in, transpose ("Later" below).
-- The tab size: -, the percent (a click: the list `ZOOMS`), + (only in the Tab tab; right-click: 100%), `S.zoom`,
+  room goes to the next row): left (`UI.draw_left`, the order of Guitar Pro: the user's choice) Loop, the speed,
+  Count-in (an hourglass) and Metronome (REAPER's own switches `CFG.CMD`: Pre-roll: Toggle pre-roll on play =
+  REAPER's count-in, Options: Toggle metronome; blue while on), Transpose; center the size, |<, <, play / stop, >, >|
+  (play in the middle of the window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Detection
+  tab by lines, `Notes.go`); right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes `Tabs.undo` or
+  the list `Notes.undo`, then REAPER's; Ctrl+Z too). Icons: `UI.tb_icon`, `ICON` (drawn, as Chart Cue's; plain icons,
+  not Chart Cue's framed transport buttons: the user's choice). The vertical half buttons + / - (`UI.stepper`, as Guitar
+  Pro's) of the size and Transpose.
+- Transpose (`UI.draw_transpose`, `Tabs.set_transpose`): -12 .. 12 half steps, the tab's frets (`Tabs.transpose`:
+  below fret 0 the next lower string, above 24 the next higher, past the last string an octave, yellow `nt.oct`) and
+  the Detection list's names (`List.opt().tp`, `Key.shift`, `N.transposed`: your corrected lines stay), not the audio.
+  Fixes of the tab and Import to list need 0 (a notice says so).
+- The tab size: the percent (a click: the list `ZOOMS`) and + / - (only in the Tab tab; right-click: 100%), `S.zoom`,
   10% steps (`Tabs.zoom_step`, `CFG.ZOOM_MIN` .. `CFG.ZOOM_MAX`); the sizes: "Rules". The tab's fonts `TF` (per zoom step, made by `UI.zoom_fonts` at the start of
   a frame, used from the next one); `UI.draw_tab` pushes `TF.font` for the layout and the drawing, not for its menus,
   tooltips and the note box.
@@ -88,6 +94,7 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
 
 ## Data
 
+- `P.transpose` (the same ProjExtState, the first line `transpose=-3`, only when not 0; decided 26 November 2026).
 - `P.tabs` (ProjExtState "Tab Viewer"/"cfg"; nothing saved without a tab): 1 block per tab: `tab=` the file (relative
   to the project folder, "Tabs/Song.gp", or a full path in an unsaved project), `region=` the GUID of its region
   (none: the whole project), `track=` (only when not `Tabs.default_track`: the first bass, else the first guitar),

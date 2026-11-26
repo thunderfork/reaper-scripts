@@ -63,20 +63,11 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-25. Manual test (Tab Viewer, the selection and the Loop button, 26 November 2026): drag over the tab (stopped and
-    playing): a light blue band from note to note with round handles; drag a handle: that end moves; click a note,
-    then Shift+click a later one: the selection; the Loop button (top left) turns blue and the selection repeats; no
-    selection: it loops the bar at the edit cursor; a plain click ends the selection (not while it loops); Escape
-    ends both; a click on a note still selects it to fix it.
-27. Manual test (Tab Viewer, 26 November 2026): the Metronome and Count-in buttons next to Loop turn blue and switch
-    REAPER's metronome and pre-roll (also when switched in REAPER itself); with both on, Play counts in with clicks.
-    And the bug fix: a click at the empty start of bar 1 stays in this song (LESSONS.md, not confirmed).
-26. Tab Viewer toolbar, next segment (decided 26 November 2026; B, Metronome and Count-in, done): C: Transpose (a tuning-fork icon, 0 and - / +; the
-    tab's frets and Detection's note names, not the audio; saved in the project, a new key written only when not 0).
-    Ask before each segment.
-24. Manual test (Tab Viewer, 26 November 2026): Detection > Song > Tuning lists the new tunings (D standard, C
-    standard, B standard, Drop C#, Drop B, 5-string half step down, A standard, Drop A); a D standard bass part
-    gets the right frets.
+28. Manual test (Tab Viewer, 26 November 2026): the toolbar's left group Loop, speed (no note icon), Count-in (an
+    hourglass), Metronome, Transpose (a tuning fork, the number, + / - stacked); the size: the percent with + / -
+    stacked; Transpose +2: the frets move, a note with no string left goes an octave and turns yellow, the Detection
+    names follow (your corrected lines stay), saved in the project; a fix or Import while transposed: a notice; a
+    click on the number: 0. The tunings in their new order (E to B standard, the drops, 5-string).
 
 ## Later
 
