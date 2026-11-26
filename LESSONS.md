@@ -38,6 +38,17 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-26 | Tab Viewer | edge-case | Ctrl+wheel: the bar under the mouse did not stay there (manual test failed)
+  Cause: the fix kept the same share of the whole tab height in view; a new size puts fewer or more bars on each
+  line, so that share lands on another line.
+  Why the tests missed it: the tests cannot turn the wheel; the scroll was inside the drawing code, not a plain
+  function.
+  Test: "Count-in / Ctrl+wheel" lines in the Transpose test (tests\tabviewer.lua): Tabs.zoom_anchor (the line under
+  the mouse, its first bar) and Tabs.zoom_scroll (that line back under the mouse); new functions, so no run on the
+  old code. Fix: anchor on the bar of the line, not on a share of the height.
+  Other scripts: searched, no other zoom by wheel.
+  Status: fixed, not confirmed
+
 2026-11-26 | Tab Viewer | edge-case | a click in the empty start of bar 1 moved the edit cursor to the bar before, into the
   song before (its tab came up)
   Cause: the time of bar 1 (beats to seconds and back) came out a hair (1e-12 s) before the region's start; the

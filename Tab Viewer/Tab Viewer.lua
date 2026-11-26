@@ -167,7 +167,7 @@ local R = {
   wait_at = nil,     -- during a count-in or pre-roll: where the song starts (UI.count_step, every frame)
   count_n = nil,     -- during REAPER's count-in: the count 1 .. 4 shown, and count_ph how far into its beat (0 .. 1)
   count_ph = 0,
-  zoom_at = nil,     -- after Ctrl+wheel: { z, ratio, my }, the place under the mouse, scrolled back there at the new size
+  zoom_at = nil,     -- after Ctrl+wheel: { z, bi, frac, rel }, the line under the mouse, scrolled back there at the new size
   err = nil,         -- why the tab of the project could not be read (a line in the window)
   doc = nil,         -- the opened tab (GP.read)
   rows = nil,        -- the tracks of the Track dropdown: { name, what, tun, tip, label } (Tabs.show; with the tab)
@@ -1433,6 +1433,22 @@ function Tabs.tempo_check()
   end
 end
 -- The line of the tab that holds bar bi.
+-- Ctrl+wheel (plain functions): the line at y (in the tab; below the last line: that one) gives its first bar and how
+-- far down y is in it (in line heights); after the new size, the scroll that puts that place at rel (from the top of
+-- the view) again. (lessons 26 November 2026: a share of the whole height lands on another line, because the bars
+-- per line change with the size)
+function Tabs.zoom_anchor(tab, y)
+  local pick
+  for _, ln in ipairs(tab.lines or {}) do
+    if ln.y <= y or not pick then pick = ln else break end
+  end
+  if not (pick and (tab.lh or 0) > 0) then return nil end
+  return Tabs.vbar(tab, pick.first), (y - pick.y) / tab.lh
+end
+function Tabs.zoom_scroll(tab, bi, frac, rel)
+  local ln = Tabs.line_of(tab, bi)
+  return ln and math.max(0, ln.y + frac * tab.lh - rel)
+end
 function Tabs.line_of(tab, bi)
   local b = tab.bars[bi]
   return b and b.ln and tab.lines and tab.lines[b.ln] -- (b.ln: from Tabs.layout; asked every frame)
@@ -3770,11 +3786,13 @@ function UI.draw_tab(h)
     local z = wheel ~= 0 and Tabs.zoom_step(S.zoom, wheel > 0 and 1 or -1)
     if z and z ~= S.zoom then
       S.zoom = z; R.sdirty = true
-      if R.tab and (R.tab.h or 0) > 0 then -- (the place under the mouse stays there: R.zoom_at, used below at the new size)
+      if R.tab then -- (the line under the mouse stays there: R.zoom_at, used below at the new size)
         local _, my = ImGui.GetMousePos(ctx)
-        local _, wy = ImGui.GetWindowPos(ctx)
-        local rel = my - wy
-        R.zoom_at = { z = z, ratio = (ImGui.GetScrollY(ctx) + rel) / R.tab.h, my = rel }
+        local _, oy = ImGui.GetCursorScreenPos(ctx) -- (the top of the tab, scrolled)
+        local bi, frac = Tabs.zoom_anchor(R.tab, my - oy)
+        local za = R.zoom_at -- (more steps before the new size shows: the first place stays)
+        if bi and not za then R.zoom_at = { z = z, bi = bi, frac = frac, rel = my - oy - ImGui.GetScrollY(ctx) }
+        elseif za then za.z = z end
       end
     end
   end
@@ -3802,7 +3820,8 @@ function UI.draw_tab(h)
   ImGui.InvisibleButton(ctx, "##tabarea", math.max(1, w), math.max(1, tab.h))
   local za = R.zoom_at
   if za and math.abs(TZ.z - za.z) < 1e-6 then -- (the tab at the new size: scroll so the place under the mouse stays)
-    ImGui.SetScrollY(ctx, math.max(0, za.ratio * tab.h - za.my))
+    local sy = Tabs.zoom_scroll(tab, za.bi, za.frac, za.rel)
+    if sy then ImGui.SetScrollY(ctx, sy) end
     R.zoom_at = nil
   end
   local playing = R.playing

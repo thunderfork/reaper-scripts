@@ -1649,6 +1649,21 @@ test("the toolbar (26 November 2026): |<, <, > and >| go to the bars; play in th
   R.count_n, R.count_ph = 3, 0.4 -- (the count over the tab: no error)
   UI.draw_tab(100000)
   R.count_n = nil
+  -- Ctrl+wheel (lessons 26 November 2026): the line under the mouse, not a share of the whole height
+  local ft = { lh = 80, lines = { { y = 0, first = 1 }, { y = 100, first = 5 }, { y = 200, first = 9 } },
+    bars = { [1] = { ln = 1 }, [5] = { ln = 2 }, [9] = { ln = 3 } } }
+  local abi, afr = Tabs.zoom_anchor(ft, 120)
+  eq(abi, 5, "the line under the mouse: its first bar"); near(afr, 0.25, 1e-9, "20 of 80 down")
+  eq((Tabs.zoom_anchor(ft, 190)), 5, "in the gap below a line: that line"); eq((Tabs.zoom_anchor(ft, 999)), 9, "below the last line")
+  eq((Tabs.zoom_anchor(ft, -5)), 1, "above the first line: the first"); eq(Tabs.zoom_anchor({ lh = 80, lines = {} }, 10), nil, "no lines")
+  -- the new size: bar 5 now on the 3rd line, lines 120 high: that line back under the mouse (40 below the view's top)
+  ft.lh, ft.lines[3].y, ft.bars[5].ln = 120, 300, 3
+  eq(Tabs.zoom_scroll(ft, 5, 0.25, 40), 300 + 30 - 40, "the scroll that puts it back"); eq(Tabs.zoom_scroll(ft, 5, 0, 500), 0, "never below 0")
+  local tl = R.tab.lines -- (a real tab: the anchor of each line is its own first bar)
+  for li = 1, #tl do
+    local b = Tabs.zoom_anchor(R.tab, tl[li].y + 1)
+    eq(Tabs.line_of(R.tab, b), tl[li], "line " .. li .. ": its first bar is on it")
+  end
   R.notice = nil
   eq(Tabs.set_fret(1, 1, (R.tab.bars[1].notes[1].fret + 1) % 20), false, "transposed: no fix")
   ok(R.notice and R.notice.text == C.CFG.TP_NO_FIX, "it says why")
