@@ -21,7 +21,6 @@ test("notes: the test project of the Note Detection tab opens", function()
   r.RecursiveCreateDirectory(tmp, 0)
   empty_project(proj_file)
   r.Main_openProject("noprompt:" .. proj_file)
-  C.S.simple = false -- (the tests check the extras; Simple mode has a test of its own)
   Project.update()
   TV.Project.update()
 end)
@@ -193,7 +192,7 @@ local function notes(list)
 end
 local function bars(n, len)
   local t = {}
-  for i = 1, n do t[i] = { t0 = (i - 1) * len, t1 = i * len, tol = C.CFG.PUSH * len } end
+  for i = 1, n do t[i] = { t0 = (i - 1) * len, t1 = i * len, tol = C.CFG.BAR_TOL } end
   return t
 end
 
@@ -243,14 +242,25 @@ test("group: 1 per bar, the same bar again has no marker", function()
   eq(#rows[2].ts, 2, "the time of each note")
 end)
 
-test("group: a note just before the bar line belongs to the next bar", function()
+test("group: strict bars (25 November 2026): a note is in the bar where it starts; a note that rings on is the next bar's first note too", function()
   local rows = Group.rows(notes({ { 0, 0, 1.8 }, { 5, 1.8, 3.9 } }), bars(2, 2), "")
-  eq(texts(rows), "C | F")
-  eq(rows[2].t, 1.8, "it starts where the note starts")
-  rows = Group.rows(notes({ { 0, 0, 1.8 }, { 5, 1.8, 2.0 }, { 5, 2.02, 4 } }), bars(2, 2), "")
-  eq(texts(rows), "C | F", "played again on the bar line")
+  eq(texts(rows), "C - F | F", "an 8th before the bar line: in its own bar, and it rings on in the next one")
+  rows = Group.rows(notes({ { 0, 0, 1.98 }, { 5, 1.98, 4 } }), bars(2, 2), "")
+  eq(texts(rows), "C | F", "20 ms before the bar line: the 1 of the next bar")
+  eq(rows[2].t, 1.98, "it starts where the note starts")
+  rows = Group.rows(notes({ { 0, 0, 2.5 }, { 7, 2.5, 4 } }), bars(2, 2), "")
+  eq(texts(rows), "C | C - G", "rings on into the next bar: a plain name, no brackets")
+  eq(rows[2].t, 2, "the line starts on the bar line")
+  rows = Group.rows(notes({ { 0, 0, 2.1 }, { 7, 2.1, 4 } }), bars(2, 2), "")
+  eq(texts(rows), "C | G", "rings only 0.1 s on: not shown")
   rows = Group.rows(notes({ { 0, 0, 1.75 }, { 5, 1.75, 1.95 }, { 7, 2, 4 } }), bars(2, 2), "")
   eq(texts(rows), "C - F | G", "a short note inside the bar stays")
+  rows = Group.rows(notes({ { 0, 0, 5.9 }, { 0, 6, 8 } }), bars(4, 2), "")
+  eq(texts(rows), "C", "a long C, then C again: 1 marker")
+  rows = Group.rows(notes({ { 8, 0, 1 }, { 1, 1, 3 } }), bars(2, 2), "C minor")
+  eq(texts(rows), "Ab - Db | Db", "the key decides the names (the Db rings on into bar 2)")
+  rows = Group.rows(notes({ { 8, 0, 2.5 }, { 1, 2.5, 4 } }), bars(2, 2), "C minor")
+  eq(texts(rows), "Ab | Ab - Db")
 end)
 
 test("group: after a silent bar the same notes get a marker again", function()
@@ -369,9 +379,37 @@ test("list: add, move, delete and Undo", function()
   List.delete(1)
 end)
 
+test("the tab draws (the UI/UX review of 25 November 2026): empty, and a list with a line that is not sure; the count", function()
+  set_rows({})
+  R.view = nil
+  C.draw(500)
+  eq(C.UI.view().status, "", "empty: no count")
+  set_rows({ { 1, "C" }, { 3, "F", true } })
+  R.view = nil
+  C.draw(500)
+  eq(C.UI.view().status, "2 lines, 1 not sure")
+  set_rows({ { 1, "C" } })
+  R.view = nil
+  eq(C.UI.view().status, "1 line", "none unsure: only the count")
+  R.view = nil
+end)
+
+test("list: Redo (the toolbar arrow, 25 November 2026)", function()
+  set_rows({ { 1, "C" }, { 3, "F" } })
+  List.delete(1); eq(texts(), "F")
+  List.undo(); eq(texts(), "C | F", "Undo")
+  List.undo(true); eq(texts(), "F", "Redo")
+  List.undo(true); eq(texts(), "F", "nothing more to redo")
+  List.undo(); List.add(2); eq(#R.redo, 0, "a new change: no Redo")
+end)
+
 test("list: the line at a time", function()
   set_rows({ { 1, "C" }, { 3, "F" }, { 5, "G" } })
   eq(List.at(0.5), nil); eq(List.at(1), 1); eq(List.at(4.9), 2); eq(List.at(99), 3)
+  -- the toolbar's |<, < and > (25 November 2026)
+  eq(List.go(0, 4), 1, "|<"); eq(List.go(-1, 4), 1, "<"); eq(List.go(1, 4), 3, ">")
+  eq(List.go(1, 5), nil, "> on the last line: none"); eq(List.go(-1, 1), nil, "< on the first line: none")
+  eq(List.go(1, 0.5), 1, "before the first line: > to it"); eq(List.go(-1, 0.5), 1)
 end)
 
 test("list: another key changes the names", function()
@@ -785,12 +823,8 @@ test("settings: defaults and bad values", function()
   C.Util.apply_setting("finger", "0"); eq(C.S.finger, false)
   C.Util.apply_setting("finger", "1")
   C.Util.apply_setting("strings", "x"); eq(C.S.strings, "letters")
-  C.Util.apply_setting("counts", "0"); eq(C.S.counts, false)
-  C.Util.apply_setting("counts", "1")
-  C.Util.apply_setting("slide", "x"); eq(C.S.slide, "slash")
-  C.Util.apply_setting("simple", "1"); eq(C.S.simple, true)
-  eq(table.concat(C.Util.settings_lines(), " "), "out=markers frets=1 finger=1 strings=letters counts=1 export_dir= slide=slash simple=1 splits=1")
-  C.Util.apply_setting("simple", "0")
+  C.Util.apply_setting("simple", "1"); eq(C.S.simple, nil, "a removed setting (Simple mode) is not read")
+  eq(table.concat(C.Util.settings_lines(), " "), "out=markers frets=1 finger=1 strings=letters export_dir= splits=0")
   C.Util.apply_setting("export_dir", " D:\\Songs ")
   eq(C.S.export_dir, "D:\\Songs")
   C.Util.apply_setting("export_dir", "")
@@ -883,16 +917,15 @@ test("found notes as a tab: the bars from the bar of the first note, the 16th gr
   eq(C.Imp.found_doc(), nil, "no notes: no tab")
 end)
 
-test("slides: a glide into a note is 1 note with a slide mark; a plain note change is not (generated WAV)", function()
+test("slides: a glide into a note is 1 note (no mark, decided 25 November 2026); a plain note change too (generated WAV)", function()
   clear_project(); clear_tempo()
   local tr = add_track("Bass")
   local it, tk = add_item(tr, path_wav("slide.wav", { { nil, 0.3 }, { 36, 0.8, 0.15 }, { 41, 0.8 }, { nil, 0.3 } }), 0)
   local list, _, t_end = find_all(it, tk)
-  local opt = List.opt()
-  eq(texts(Group.make(list, "change", "", 0, t_end, opt)), "C | /F (D 3)", "the slide into F")
-  opt.slide = "sl"; eq(texts(Group.make(list, "change", "", 0, t_end, opt)), "C | sl. F (D 3)")
-  opt.slide = "word"; eq(texts(Group.make(list, "change", "", 0, t_end, opt)), "C | F (D 3) (slide)")
-  opt.slide = "off"; eq(texts(Group.make(list, "change", "", 0, t_end, opt)), "C | F (D 3)")
+  local slid = false
+  for _, n in ipairs(list) do if n.slide then slid = true end end
+  ok(slid, "the slide into F is found")
+  eq(texts(Group.make(list, "change", "", 0, t_end, List.opt())), "C | F (D 3)", "no mark")
   it, tk = add_item(tr, path_wav("noslide.wav", { { nil, 0.3 }, { 36, 0.8 }, { 41, 0.8 }, { nil, 0.3 } }), 5)
   list, _, t_end = find_all(it, tk)
   eq(texts(Group.make(list, "change", "", 0, t_end, List.opt())), "C | F (D 3)", "a plain note change")
@@ -1001,17 +1034,13 @@ test("repeated notes: split on the 16th grid when the project has a tempo marker
   eq(#C.Export.notes(list, 0.25), 8, "8 notes in the export")
 end)
 
-test("simple mode: only the notes and the string of a high note; no fingering of runs, slides or beat counts", function()
+test("1 mode (25 November 2026): the fingering of runs, no slide mark, no beat count", function()
   local list = notes({ { 5, 0, 0.4 }, { 3, 0.5, 0.9 }, { 0, 1, 1.4 }, { 10, 1.5, 1.9 }, { 7, 2, 3.9 } })
   for i, m in ipairs({ 41, 39, 36, 34, 43 }) do list[i].midi = m end
   list[5].slide = true
-  C.S.simple = true
-  eq(texts(Group.rows(list, bars(2, 2), "C minor", List.opt())), "F (D 3) - Eb - C - Bb | G (G 0)",
-    "the high notes at the place of the fingering (the open G string after the run)")
+  eq(texts(Group.rows(list, bars(2, 2), "C minor", List.opt())), "F (D 3) - Eb (D 1) - C (A 3) - Bb (A 1) | G (G 0)")
   set_rows({ { 2, "C - G (D 5)", false, { 2, 3 } } })
-  eq(Out.item_text(1), "C - G (D 5)", "no beat count")
-  C.S.simple = false
-  eq(texts(Group.rows(list, bars(2, 2), "C minor", List.opt())), "F (D 3) - Eb (D 1) - C (A 3) - Bb (A 1) | /G (G 0)")
+  eq(Out.item_text(1), "C - G (D 5)", "the Notes track item: the line")
 end)
 
 test("strings of the notes: a note with its string (from a tab) keeps it; the list and the found tab use that place", function()
@@ -1067,19 +1096,10 @@ test("string names: letters or numbers as in tab books", function()
   C.S.strings = "letters"
 end)
 
-test("beat count: 1 e & a in the Notes track items; off; a key change line without markers", function()
+test("Notes track items: the line; a key change line without markers", function()
   clear_project(); clear_tempo()
-  -- 120 BPM: bar 2 starts at 2 s; a 16th = 0.125 s
-  eq(Group.count(0, 2), "1"); eq(Group.count(0, 2.125), "1e"); eq(Group.count(0, 2.25), "1&")
-  eq(Group.count(0, 3.9), "4a"); eq(Group.count(0, 3.97), "1", "just before the next bar line")
   set_rows({ { 2, "C - Eb (A 6) - G", false, { 2, 2.75, 3.5 } }, { 4, "F" } })
-  eq(Out.item_text(1), "1 C · 2& Eb (A 6) · 4 G")
-  C.get_P().rows[1].text = "C - G" -- (typed: not 1 part per note any more)
-  eq(Out.item_text(1), "C - G")
-  C.get_P().rows[1].text = "C - Eb (A 6) - G"
-  C.S.counts = false
-  eq(Out.item_text(1), "C - Eb (A 6) - G", "off")
-  C.S.counts = true
+  eq(Out.item_text(1), "C - Eb (A 6) - G")
   List.key_from(2, "F major")
   eq(Out.item_text(2, true), "Key: F major\nF", "the key change on its first line (no markers)")
   eq(Out.item_text(2, false), "F")
@@ -1152,7 +1172,7 @@ test("export: no .mid file (project not saved), but the MIDI item is made: the n
   local msg, warn = C.Export.run({ item = true, file = true, step = 0.25 })
   R.projfn = fn
   eq(warn, true)
-  ok(msg:find("Made a MIDI item", 1, true) and msg:find("No .mid file", 1, true), msg)
+  ok(msg:find("Made a MIDI item", 1, true) and msg:find("No files", 1, true), msg)
   r.Main_OnCommand(40029, 0) -- (the item goes again)
   C.get_P().notes = {}
 end)
@@ -1232,6 +1252,48 @@ test("export: the MIDI item on the Bass MIDI track and the .mid file; again: rep
   eq(r.CountTrackMediaItems(mt), 1, "again: replaced")
   eq(r.Undo_CanUndo2(0), "Tab Viewer: export MIDI")
   os.remove(path)
+  -- the Guitar Pro file (25 November 2026): the same name, .gp5; it reads back with the reader
+  local msg2, warn2 = C.Export.run({ item = false, file = false, gp = true, step = 0.25 })
+  eq(warn2, nil, msg2)
+  ok(msg2:find("Far Away - Bass.gp5", 1, true), msg2)
+  local gp = path:gsub("%.mid$", ".gp5")
+  local fg = assert(io.open(gp, "rb"))
+  local doc = C.GP.read_old(fg:read("a"))
+  fg:close()
+  ok(doc, "the Guitar Pro file reads back")
+  if doc then
+    eq(doc.rest, 0); eq(doc.tempo, 120); eq(doc.tracks[1].kind, "bass"); eq(table.concat(doc.tracks[1].open, " "), "28 33 38 43")
+    local t = {}
+    for k, x in ipairs(C.GP.notes(doc, 1)) do t[k] = string.format("%.2f %d", x.q, x.midi) end
+    eq(table.concat(t, " | "), "0.00 36 | 2.00 41", "the found notes, from the bar of the first one")
+  end
+  os.remove(gp)
+end)
+
+test("export: the Guitar Pro file: a note over the bar line goes on tied; a tempo change; your fix in the Tab tab", function()
+  clear_project(); clear_tempo()
+  -- 120 BPM: a C from beat 1 of bar 2 for 3 quarters, then an F over 2 bar lines (bar 3, into bar 4 at 90 BPM)
+  local p = set_rows({ { 2, "C - F" } })
+  p.notes = { { pc = 0, midi = 36, t = 2, t1 = 3.5, man = true }, { pc = 5, midi = 41, t = 3.5, t1 = 6.5, man = true } }
+  r.SetTempoTimeSigMarker(0, -1, 6, -1, -1, 90, 4, 4, false) -- (bar 4 at 90 BPM: the F ends 3/4 of a beat into it)
+  r.UpdateTimeline()
+  local song = TV.Tabs.found_song("Test")
+  ok(song, "a song")
+  if not song then return end
+  eq(math.floor(song.tempo + 0.5), 120); ok(song.bars[3] and song.bars[3].tempo and math.floor(song.bars[3].tempo + 0.5) == 90, "the tempo change")
+  local doc = C.GP.read_old(C.GP.write_gp5(song))
+  local t = {}
+  for k, x in ipairs(C.GP.notes(doc, 1)) do t[k] = string.format("%.2f+%.2f %d", x.q, x.len, x.midi) end
+  eq(table.concat(t, " | "), "0.00+3.00 36 | 3.00+5.75 41", "the F over 2 bar lines: 1 note (tied)")
+  -- a fix in the Tab tab (the found notes' entry): bar 1, the C on fret 8 of the E string (C2)
+  p.tab = p.tab or { edits = {} }
+  p.tab.edits = { [1] = { [1] = { { q = 0, s = 1, fret = 8, len = 3 }, { q = 3, s = 2, fret = 8, len = 1 } } } }
+  song = TV.Tabs.found_song("Test")
+  local doc2 = C.GP.read_old(C.GP.write_gp5(song))
+  local n1 = C.GP.notes(doc2, 1)[1]
+  eq(n1.s, 1, "the fix: the E string"); eq(n1.fret, 8)
+  p.tab = nil
+  clear_tempo()
 end)
 
 test("fingering: the run of the example stays in 1 hand position", function()

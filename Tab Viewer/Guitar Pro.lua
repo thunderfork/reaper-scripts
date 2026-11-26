@@ -1025,4 +1025,135 @@ function GP.tuning_text(open, kind, capo)
   return name
 end
 
+---------------------------------------------------------------------------
+-- WRITE A GUITAR PRO 5 FILE (.gp5; the Export of the Note Detection tab, decided 25 November 2026)
+---------------------------------------------------------------------------
+-- The plain and dotted note values (quarter notes, the Guitar Pro duration: -2 whole ... 3 32nd), the longest first.
+local GP5_VALUES = {}
+for d = -2, 3 do
+  local len = 4 / (1 << (d + 2))
+  GP5_VALUES[#GP5_VALUES + 1] = { len = len * 1.5, d = d, dot = true }
+  GP5_VALUES[#GP5_VALUES + 1] = { len = len, d = d }
+end
+table.sort(GP5_VALUES, function(a, b) return a.len > b.len end)
+-- A length (quarter notes) as note values that are played one after the other (tied): the longest that fits first.
+-- What is shorter than a 32nd is left out. Returns { { d, dot }, ... }.
+function GP.values(len)
+  local out = {}
+  while len > 0.125 - 1e-3 do
+    for _, v in ipairs(GP5_VALUES) do
+      if v.len <= len + 1e-3 then out[#out + 1] = v; len = len - v.len; break end
+    end
+  end
+  return out
+end
+-- The file (Guitar Pro 5.10, the same layout that GP.read_old reads) of song = { title, artist, tempo (BPM),
+-- tracks = { { name, open = { the MIDI note of each string, from the lowest }, program (General MIDI, 0-127) } },
+-- bars = { { num, den, tempo (a change at its start, or nil), tracks = { [t] = { { len (quarter notes), trip (a
+-- triplet: len is the played length), notes = { { s (1 = the lowest string), fret } } (none: a rest), tie (the notes
+-- go on from the bar before) } } } } } }. An event that is not 1 note value is written as tied notes (a rest: rests).
+function GP.write_gp5(song)
+  local b = {}
+  local function u8(x) b[#b + 1] = char(x & 0xFF) end
+  local function i16(x) b[#b + 1] = string.pack("<i2", x) end
+  local function i32(x) b[#b + 1] = string.pack("<i4", x) end
+  local function zeros(n) b[#b + 1] = string.rep("\0", n) end
+  local function bstr(s, size) s = s:sub(1, size); u8(#s); b[#b + 1] = s .. string.rep("\0", size - #s) end
+  local function istr(s) i32(#s); b[#b + 1] = s end
+  local function ibstr(s) s = s:sub(1, 255); i32(#s + 1); u8(#s); b[#b + 1] = s end
+  local tracks, bars = song.tracks, song.bars
+  -- the song: texts, lyrics, the master effect, the page, the tempo, key
+  bstr("FICHIER GUITAR PRO v5.10", 30)
+  ibstr(song.title or ""); ibstr(""); ibstr(song.artist or "")
+  for _ = 1, 6 do ibstr("") end -- (album, words, music, copyright, tab, instructions)
+  i32(0) -- (no notice lines)
+  i32(0); for _ = 1, 5 do i32(1); istr("") end -- (lyrics)
+  i32(100); i32(0); zeros(11) -- (the master effect: volume, ?, equalizer)
+  i32(210); i32(297); i32(10); i32(10); i32(15); i32(10); i32(100); i16(0x1FF) -- (A4, margins, size, header and footer)
+  for _, s in ipairs({ "%TITLE%", "%SUBTITLE%", "%ARTIST%", "%ALBUM%", "Words by %WORDS%", "Music by %MUSIC%",
+    "Words & Music by %WORDSMUSIC%", "Copyright %COPYRIGHT%", "All Rights Reserved - International Copyright Secured",
+    "Page %N%/%P%" }) do ibstr(s) end
+  ibstr("Moderate"); i32(math.floor((song.tempo or 120) + 0.5)); u8(0) -- (the tempo; shown)
+  u8(0); i32(0) -- (key C, octave)
+  -- the 64 MIDI channels: track t plays on channel 2t - 1 (its effect channel 2t)
+  for c = 1, 64 do
+    local tr = tracks[(c + 1) // 2]
+    i32(tr and tr.program or 25); u8(13); u8(8); zeros(4); zeros(2) -- (program; volume, balance, effects off)
+  end
+  for _ = 1, 19 do i16(-1) end -- (no directions: coda, segno ...)
+  i32(0) -- (the master reverb)
+  i32(#bars); i32(#tracks)
+  -- the bars: the time signature where it changes (beamed in 8ths)
+  local num, den
+  for k, bar in ipairs(bars) do
+    if k > 1 then u8(0) end
+    local f = (bar.num ~= num and 1 or 0) | (bar.den ~= den and 2 or 0)
+    u8(f)
+    if f & 1 ~= 0 then u8(bar.num) end
+    if f & 2 ~= 0 then u8(bar.den) end
+    if f & 3 ~= 0 then u8(2); u8(2); u8(2); u8(2) end
+    u8(0); u8(0) -- (no alternate ending; no triplet feel)
+    num, den = bar.num, bar.den
+  end
+  -- the tracks: visible, tab and notation, the strings from the highest
+  for t, tr in ipairs(tracks) do
+    if t == 1 then u8(0) end
+    u8(0x08); bstr(tr.name or ("Track " .. t), 40)
+    local n = #tr.open
+    i32(n)
+    for i = 1, 7 do i32(tr.open[n - i + 1] or 0) end
+    i32(1); i32(2 * t - 1); i32(2 * t); i32(24); i32(0) -- (port, channel, effect channel, frets, capo)
+    u8(255); u8(0); u8(0); u8(0) -- (red)
+    i16(0x0003); u8(0); u8(0) -- (tab and notation; accents; bank)
+    u8(0); zeros(12); zeros(12) -- (RSE: humanize ...)
+    i32(-1); i32(1); i32(-1); i32(-1) -- (no RSE instrument)
+    zeros(4); ibstr(""); ibstr("") -- (equalizer, effect, its category)
+  end
+  u8(0)
+  -- the beats
+  local function beat(v, trip, notes, tie, n, tempo)
+    local f = (v.dot and 0x01 or 0) | (trip and 0x20 or 0) | (tempo and 0x10 or 0) | (notes and 0 or 0x40)
+    u8(f)
+    if not notes then u8(2) end -- (a rest)
+    u8(v.d)
+    if trip then i32(3) end
+    if tempo then -- (a mix table with only a tempo change)
+      u8(0xFF); i32(-1); i32(-1); i32(-1); i32(-1)
+      for _ = 1, 6 do u8(0xFF) end
+      ibstr(""); i32(math.floor(tempo + 0.5)); u8(0); u8(0)
+      u8(0); u8(0xFF); ibstr(""); ibstr("") -- (applies to all tracks; no wah; no RSE effect)
+    end
+    local sf, list = 0, {}
+    for _, nt in ipairs(notes or {}) do
+      local gs = n - nt.s + 1 -- (1 = the highest string)
+      if gs >= 1 and gs <= 7 and sf & (1 << (7 - gs)) == 0 then sf = sf | (1 << (7 - gs)); list[#list + 1] = { gs = gs, fret = nt.fret } end
+    end
+    table.sort(list, function(x, y) return x.gs < y.gs end)
+    u8(sf)
+    for _, nt in ipairs(list) do
+      u8(0x20); u8(tie and 2 or 1); u8(math.max(0, math.min(99, nt.fret))); u8(0)
+    end
+    i16(0)
+  end
+  for _, bar in ipairs(bars) do
+    for t, tr in ipairs(tracks) do
+      local n, beats, tempo = #tr.open, {}, t == 1 and bar.tempo or nil
+      for _, e in ipairs(bar.tracks and bar.tracks[t] or {}) do
+        local notes = e.notes and e.notes[1] and e.notes or nil
+        for k, v in ipairs(GP.values(e.trip and e.len * 1.5 or e.len)) do
+          beats[#beats + 1] = { v = v, trip = e.trip, notes = notes, tie = notes and (k > 1 or e.tie) }
+        end
+      end
+      if not beats[1] then -- (an empty bar: 1 rest over the whole bar)
+        for _, v in ipairs(GP.values(4 * bar.num / bar.den)) do beats[#beats + 1] = { v = v } end
+      end
+      i32(#beats)
+      for k, x in ipairs(beats) do beat(x.v, x.trip, x.notes, x.tie, n, k == 1 and tempo or nil) end
+      i32(0) -- (voice 2: empty)
+      u8(0) -- (no line break)
+    end
+  end
+  return table.concat(b)
+end
+
 return GP

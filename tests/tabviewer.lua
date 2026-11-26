@@ -36,7 +36,8 @@ local function finish()
   r.defer(function() r.Main_OnCommand(40004, 0) end) -- File: Quit REAPER
 end
 
--- A stand-in for ReaImGui: it draws nothing, counts the fonts and the texts, Begin... opens (a popup: not), Is...: no.
+-- A stand-in for ReaImGui: it draws nothing, counts the fonts and the texts, Begin... opens (a popup: not), Is...: no,
+-- no button or line is clicked.
 local IG = { push = 0, pop = 0, texts = 0 }
 local ImGuiStub = setmetatable({}, { __index = function(t, k)
   local f
@@ -45,7 +46,8 @@ local ImGuiStub = setmetatable({}, { __index = function(t, k)
   elseif k == "PopFont" then f = function() IG.pop = IG.pop + 1 end
   elseif k == "DrawList_AddText" then f = function(_, _, _, _, s) assert(type(s) == "string", "a text"); IG.texts = IG.texts + 1 end
   elseif k == "GetContentRegionAvail" then f = function() return 900, 600 end
-  elseif k == "BeginPopup" or k:match("^Is") then f = function() return false end
+  elseif k == "BeginPopup" or k == "ListClipper_Step" or k:match("^Is") or k:match("Button$") or k == "Selectable"
+    or k == "MenuItem" then f = function() return false end -- (nothing is clicked)
   elseif k:match("^Begin") then f = function() return true end
   else f = function() return 0, 0 end end
   rawset(t, k, f)
@@ -289,6 +291,35 @@ local function old_file(v)
   end
   return table.concat(b)
 end
+
+test("write a .gp5 file (the Export, 25 November 2026): read back with the reader, the same notes, bars and tempo", function()
+  eq(#GP.values(1.25), 2, "5 16ths: a quarter tied to a 16th")
+  eq(GP.values(1.25)[1].d, 0); eq(GP.values(1.25)[2].d, 2)
+  eq(#GP.values(1.5), 1, "a dotted quarter"); eq(GP.values(1.5)[1].dot, true)
+  eq(#GP.values(0.05), 0, "shorter than a 32nd: left out")
+  local song = { title = "Export test", tempo = 120,
+    tracks = { { name = "Bass", open = { 28, 33, 38, 43 }, program = 33 } },
+    bars = {
+      { num = 4, den = 4, tracks = { {
+        { len = 1, notes = { { s = 1, fret = 3 } } }, { len = 0.5 }, { len = 0.5, notes = { { s = 2, fret = 0 } } },
+        { len = 1.25, notes = { { s = 3, fret = 2 } } }, { len = 0.75 } } } },
+      { num = 3, den = 4, tempo = 90, tracks = { {
+        { len = 1 / 3, trip = true, notes = { { s = 4, fret = 5 } } }, { len = 1 / 3, trip = true, notes = { { s = 4, fret = 7 } } },
+        { len = 1 / 3, trip = true, notes = { { s = 4, fret = 5 } } }, { len = 2, notes = { { s = 1, fret = 0 } } } } } },
+      { num = 3, den = 4, tracks = { {} } }, -- (an empty bar: a rest)
+    } }
+  local doc, why = GP.read_old(GP.write_gp5(song))
+  ok(doc, "read: " .. tostring(why))
+  if not doc then return end
+  eq(doc.rest, 0, "read to the last byte")
+  eq(table.concat(doc.tracks[1].open, " "), "28 33 38 43", "the tuning"); eq(doc.tracks[1].name, "Bass"); eq(doc.tracks[1].kind, "bass")
+  eq(#doc.mbars, 3); eq(doc.mbars[1].num, 4); eq(doc.mbars[2].num, 3); eq(doc.mbars[3].den, 4)
+  eq(doc.tempo, 120); eq(#doc.tmap, 1); eq(doc.tmap[1].bar, 2); eq(doc.tmap[1].bpm, 90, "the tempo change in bar 2")
+  local t = {}
+  for k, x in ipairs(GP.notes(doc, 1)) do t[k] = string.format("%.2f+%.2f %d s%d f%d", x.q, x.len, x.midi, x.s, x.fret) end
+  eq(table.concat(t, " | "), "0.00+1.00 31 s1 f3 | 1.50+0.50 33 s2 f0 | 2.00+1.25 40 s3 f2 | 4.00+0.33 48 s4 f5 | "
+    .. "4.33+0.33 50 s4 f7 | 4.67+0.33 48 s4 f5 | 5.00+2.00 28 s1 f0", "the notes, the tie, the triplets")
+end)
 
 test("older files (.gp3, .gp4, .gp5 of Guitar Pro 5.0 and 5.1): tracks, bars, repeats, endings, notes", function()
   local function fmt(list)
@@ -601,7 +632,7 @@ test("the tab of a track: the bars as they play (repeats, 3/4), the notes on the
   end
   eq(table.concat(t, " | "), "0+4/16: 0.00 s2 3 | 4+4/16: 0.00 s3 2, 1.50 s3 x | 8+4/16: 0.00 s3 2, 1.50 s3 x | 12+3/12: 0.00 s4 0",
     "bar 2 twice, the 3/4 bar 12 16ths, the muted note an x")
-  eq(#GP.notes(GP.parse(D.GPIF), 1), 4, "Note Detective: no dead notes (bar 2 plays twice)")
+  eq(#GP.notes(GP.parse(D.GPIF), 1), 4, "Note Detection: no dead notes (bar 2 plays twice)")
   write(tmp .. "\\src\\guitar.gp5", old_file(510))
   local g = GP.tab(GP.read(tmp .. "\\src\\guitar.gp5"), 1) -- (the guitar of the older file test: Drop D)
   eq(table.concat(g.names, " "), "D A D G B E", "the highest E is not the lowest name: capital")
@@ -1190,7 +1221,7 @@ test("the yellow line when the project's tempo is not the tab's (the tab would d
   eq(R.tempo_warn, nil, "the project and the tab: both 120 BPM")
   R.doc.tempo = 150
   Tabs.tempo_check()
-  ok(R.tempo_warn and R.tempo_warn:find("120 BPM, the tab's 150 BPM", 1, true), tostring(R.tempo_warn))
+  ok(R.tempo_warn and R.tempo_warn:find("Tab 150 BPM, project 120 BPM here", 1, true), tostring(R.tempo_warn))
   Tabs.show(nil)
   eq(R.tempo_warn, nil, "no tab: no line")
   Tabs.open(src) -- (the tests after this one start with the tab open)
@@ -1270,6 +1301,7 @@ test("tabs per region: Open tab for the region at the edit cursor, the tab moves
   local back = Project.parse(txt)
   eq(#back.tabs, n0 + 2); eq(back.tabs[n0 + 1].rgn, Tabs.cur().rgn, "read back"); eq(back.tabs[n0 + 1].bar, 2)
   ok(R.tab_labels[n0 + 1].txt:find('Song One', 1, true), R.tab_labels[n0 + 1].txt)
+  ok(R.tab_labels[1].txt:find(" - outside regions", 1, true), R.tab_labels[1].txt) -- (the tab without a region)
   -- the region is deleted: the tab stays, "its region is gone", from the song's bar 2
   r.DeleteProjectMarker(proj, i1, true)
   Tabs.regions()
@@ -1282,6 +1314,9 @@ test("tabs per region: Open tab for the region at the edit cursor, the tab moves
   Tabs.select(n0 + 1); Tabs.remove()
   eq(#C.get_P().tabs, n0)
   r.DeleteProjectMarker(proj, i2, true)
+  Tabs.regions()
+  eq(#R.rgns.list, 0, "no regions left")
+  ok(R.tab_labels[1].txt:find(" - whole project", 1, true), R.tab_labels[1].txt)
   Tabs.regions(); Tabs.select(1)
   r.SetEditCurPos2(proj, 0, false, false)
   Project.save()
@@ -1515,6 +1550,58 @@ test("settings: the folded sections and hidden tabs are saved as a list of numbe
   s = U.load_set("test_set", 4)
   ok(s[2] and not s[0] and not s[9], "only 1-4")
   r.DeleteExtState(EXT, "test_set", true)
+end)
+
+test("the tab size (UI review 25 November 2026): 10% steps from 70% to 200%; a larger tab has larger bars and lines", function()
+  near(Tabs.zoom_step(1, 1), 1.1, 1e-9); near(Tabs.zoom_step(1, -1), 0.9, 1e-9)
+  near(Tabs.zoom_step(0.7, -1), 0.7, 1e-9, "not below 70%"); near(Tabs.zoom_step(2, 1), 2, 1e-9, "not above 200%")
+  near(Tabs.zoom_step(1.23, 0), 1.2, 1e-9, "a saved value: on a step"); near(Tabs.zoom_step(9, 0), 2, 1e-9, "and in range")
+  Tabs.open(src)
+  local tab = R.tab
+  local lh1 = tab.lh
+  local lines1 = Tabs.layout(tab, 600)
+  Tabs.set_zoom(1.5); Tabs.build()
+  tab = R.tab
+  near(tab.lh, lh1 * 1.5, 1e-6, "150%: the line height")
+  local lines2 = Tabs.layout(tab, 600)
+  tab.lines = lines2
+  ok(#lines2 > #lines1, "150%: fewer bars on a line (" .. #lines1 .. " -> " .. #lines2 .. " lines)")
+  local b = tab.bars[1]
+  local bi = Tabs.hit(tab, C.CFG.TAB_LEFT * 1.5 + b.x + b.pad + 0.5 * b.sw, C.CFG.TAB_TOP * 1.5)
+  eq(bi, 1, "a click still finds its bar")
+  Tabs.set_zoom(1); Tabs.build()
+  near(R.tab.lh, lh1, 1e-6, "100% again")
+end)
+
+test("the toolbar (25 November 2026): |<, < and > go to the bars; the groups wrap into rows; it draws in both tabs", function()
+  eq(Tabs.go(10, 0, 5), 1, "|<: bar 1"); eq(Tabs.go(10, -1, 5), 4, "<"); eq(Tabs.go(10, 1, 5), 6, ">")
+  eq(Tabs.go(10, -1, 1), nil, "< on bar 1: none"); eq(Tabs.go(10, 1, 10), nil, "> on the last bar: none")
+  eq(Tabs.go(10, 1, nil), 1, "before the tab: > to bar 1"); eq(Tabs.go(10, -1, nil), nil, "before the tab: no <")
+  eq(Tabs.go(10, -1, nil, true), 10, "after the tab: < to the last bar"); eq(Tabs.go(10, 1, nil, true), nil)
+  eq(Tabs.go(0, 0, nil), nil, "no bars")
+  -- the rows: left 300, center 134, right 120, gap 25
+  local cx, crow, rx, rrow = Tabs.toolbar_rows(0, 1000, 300, 134, 120, 25)
+  eq(crow, 0); eq(rrow, 0, "wide: 1 row"); eq(cx, 433, "the center in the middle"); eq(rx, 880, "the right group at the end")
+  cx, crow, rx, rrow = Tabs.toolbar_rows(0, 600, 300, 134, 120, 25)
+  eq(cx, 325, "after the left group"); eq(crow, 0); eq(rrow, 1, "no room: the right group on row 2"); eq(rx, 480)
+  cx, crow, rx, rrow = Tabs.toolbar_rows(0, 400, 300, 134, 120, 25)
+  eq(crow, 1, "narrow: the center on row 2"); eq(cx, 0); eq(rrow, 1, "the right group after it"); eq(rx, 280)
+  cx, crow, rx, rrow = Tabs.toolbar_rows(0, 200, 300, 134, 120, 25)
+  eq(crow, 1); eq(rrow, 2, "very narrow: the right group on row 3"); eq(rx, 80)
+  -- drawn in both tabs (the stand-in: no error), and Undo / Redo of the tab
+  local UI = C.UI
+  Tabs.open(src)
+  for _, page in ipairs({ 1, UI.PAGE_NOTES }) do
+    R.page = page
+    UI.draw_toolbar()
+  end
+  R.page = 1
+  R.undo, R.redo = {}, {}
+  local f0 = R.tab.bars[1].notes[1].fret
+  Tabs.set_fret(1, 1, f0 == 5 and 6 or 5)
+  UI.undo(-1); eq(R.tab.bars[1].notes[1].fret, f0, "the Undo arrow")
+  UI.undo(1); ok(R.tab.bars[1].notes[1].fret ~= f0, "the Redo arrow")
+  UI.undo(-1); R.undo, R.redo = {}, {}
 end)
 
 test("drawing the tab (Dev 1 of the review, 24 November 2026): every test file and track draws without an error; a bar or a tab that fails: a notice, not a script error", function()
