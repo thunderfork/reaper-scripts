@@ -2279,12 +2279,12 @@ N.HELP_TOPICS = {
   { title = "Detection: markers to learn the part", text = [[
 Want the bass notes as markers, to learn the part in REAPER? That is the Detection tab.
 
-1. Got a Guitar Pro tab of the song? Open it (Open tab...), set the tempo (Find tempo), then click "Import to list" in the Tab tab (or "Import from tab" here): the list gets the exact notes, strings and frets of the tab.
-2. No tab? Separate the song and put the bass file on a track. Click Find tempo (at the top), then in the Detection tab: pick that track (Track), then click "Find notes": Tab Viewer listens to it.
+1. Got a Guitar Pro tab of the song? Open it (Tab tab > Open tab...), set the tempo here (Tempo at the top: From the tab, Find tempo, then Set tempo), then click "Import from tab": the list gets the exact notes, strings and frets of the tab.
+2. No tab? Separate the song and put the bass file on a track. Set the tempo here (Tempo at the top: listen to the drums or a click track), then pick the bass track (Track) and click "Find notes": Tab Viewer listens to it.
 3. Check the list. Yellow lines are not sure: click one to hear it in a loop, point at it to see why.
 4. Click "Write". One Ctrl+Z takes it all away again.
 
-No plugins needed: Tab Viewer reads the bass file itself, so an octave shifter or a tuner on the track changes nothing. Do Find tempo first, so the markers land on the real bars of the song (Set tempo then also moves the list with the audio).]] },
+No plugins needed: Tab Viewer reads the bass file itself, so an octave shifter or a tuner on the track changes nothing. Set the tempo first (Tempo at the top), so the markers land on the real bars of the song (Set tempo then also moves the list with the audio).]] },
   { title = "Checking the list", text = [[
 Click a line: REAPER plays it in a loop, again and again (Space, Escape or a click on another line ends it; Up, Down and N loop the next one). Double-click it (or press F2) to type other notes. You can add anything, for example a string and a fret: F (D 3).
 
@@ -2336,7 +2336,7 @@ Guitar Pro file: a .gp5 file with the notes as the Tab tab shows them: their str
 
 MIDI: a MIDI item on a "Bass MIDI" track below the bass (an older export there is replaced; 1 Ctrl+Z takes it back), and a .mid file. Guitar Pro can import the .mid file too (File > Import > MIDI), but then it chooses its own strings and frets. Rhythm moves the MIDI notes to 16th notes (or 8th notes, or not at all).
 
-The files go into the project folder, or into a folder of your own (Folder > Change...; it stays for all songs). Set the tempo first (Find tempo), so the notes land on the right bars.
+The files go into the project folder, or into a folder of your own (Folder > Change...; it stays for all songs). Set the tempo first (Tempo at the top of this tab), so the notes land on the right bars.
 
 The export uses the notes of the list (found, or imported from the tab), not the texts of the list: your typed corrections are not in it.]] },
   { title = "Done: clean up", text = [[
@@ -2700,9 +2700,9 @@ local FIND_AGAIN_TIP = "Listen again: the new list replaces this one (it asks fi
 local IMPORT_TIP = "Have the Guitar Pro tab of the song? Its notes become the list (the track picked in the Tab tab, with your fixes, the repeats played out). It asks first when the list has notes; Undo brings the old list back."
 -- The rows of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work): Track with
 -- Find notes (blue only without a list; while it listens: Cancel), Key and Tuning on 1 row (2 rows when narrow),
--- Lines. Find tempo: the toolbar only.
+-- Lines. Find tempo: the Tempo rows above (Tab Viewer's UI.draw_tempo_step).
 function UI.draw_song()
-  UI.heading("Song", true)
+  UI.heading("Song")
   local fw = UI.field_w()
   -- Track: the bass track that Find notes listens to, then Find notes
   UI.field("Track")
@@ -2980,11 +2980,12 @@ function UI.draw_foot()
   end
 end
 
--- The Detection tab (in Tab Viewer's panel; h: the height it has): the Song rows (Track, Key, Tuning,
--- Markers), the Notes heading with Find notes, the list, then the foot (Join ... Undo, Write, More...).
+-- The Detection tab (in Tab Viewer's panel; h: the height it has): the Tempo rows (Tab Viewer's), the Song rows
+-- (Track, Key, Tuning, Lines), the Notes heading with Find notes, the list, then the foot (Join ... Undo, Write, More...).
 function N.draw(h)
   local v = UI.view()
   local y0 = ImGui.GetCursorPosY(ctx)
+  UI.draw_tempo_step() -- (Tab Viewer's: Find tempo and Set tempo)
   UI.draw_song()
   UI.draw_top(v)
   local has = P.rows[1] ~= nil -- (the edit row, Write and More...: only with a list)

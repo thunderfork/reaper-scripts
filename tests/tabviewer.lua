@@ -1582,6 +1582,9 @@ test("the toolbar (26 November 2026): |<, <, > and >| go to the bars; play in th
   eq(Tabs.go(10, -1, nil, true), 10, "after the tab: < to the last bar"); eq(Tabs.go(10, 1, nil, true), nil)
   eq(Tabs.go(10, 2, 5), 10, ">|: the last bar"); eq(Tabs.go(10, 2, nil), 10, ">| before the tab")
   eq(Tabs.go(1, 2, 1), 1, ">| with 1 bar"); eq(Tabs.go(0, 0, nil), nil, "no bars"); eq(Tabs.go(0, 2, nil), nil)
+  -- Find tempo's Listen to (the Detection tab, 26 November 2026): From the tab with a Guitar Pro tab, until you pick a track
+  eq(Tabs.tempo_from_tab(true, nil), true, "a tab: From the tab first"); eq(Tabs.tempo_from_tab(true, false), false, "a track picked")
+  eq(Tabs.tempo_from_tab(true, true), true); eq(Tabs.tempo_from_tab(false, true), false, "no tab (or found notes): a track")
   -- the places: Find tempo 100, size 120, transport 252 (play's middle at 126), speed 100, Undo / Redo 66
   local w = { L = 100, Z = 120, T = 252, S = 100, U = 66 }
   local p = Tabs.toolbar_rows(0, 1000, w, 126, 25, 16)

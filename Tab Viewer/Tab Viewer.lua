@@ -72,7 +72,6 @@ CFG.ROW_H = 26
 CFG.TB_ICON_W = 32             -- the icons in the toolbar (Undo / Redo, the transport)
 CFG.TB_NEAR_GAP = 16           -- between the transport and the size / the speed next to it
 CFG.TB_NOTE_W = 14             -- the note icon before the speed
-CFG.TB_PROGRESS_W = 100        -- Find tempo's "Listening..." bar
 CFG.TB_ROW_GAP = 4             -- between the rows of a narrow toolbar
 CFG.TB_GROUP_GAP = 25          -- the least gap between the toolbar groups (as in Chart Cue)
 CFG.STRIP_H, CFG.STRIP_GAP, CFG.STRIP_LIFT = 32, 4, 6 -- the tab strip, as in Chart Cue and MIDI Pilot
@@ -166,7 +165,8 @@ local R = {
   tlast = nil,       -- the place of the last click on the tab (Tabs.click: a double-click must be on the same place)
   tbox = nil,        -- the open note box ({ txt, focus, new; a new note: bi, q, s }; UI.tab_box)
   tempo = nil,       -- Find tempo (Tempo.lua): the found tempo, bar 1, a running Find tempo
-  tsrc = nil,        -- the tracks of the Find tempo menu (cached until the project changes); tsrc_sel: the chosen track
+  tsrc = nil,        -- the tracks of Listen to (cached until the project changes); tsrc_sel: the chosen track; tsrc_tab:
+                     -- true = From the tab picked, false = a track picked, nil = no pick (Tabs.tempo_from_tab)
   cur = nil,         -- the tab in the window (its index in P.tabs; nil: none)
   docs = {},         -- the tabs read in this project, by full path (cleared at a project switch)
   rgns = nil,        -- the regions of the project: { by = { [guid] = region }, list } (Tabs.regions)
@@ -1340,7 +1340,7 @@ function Tabs.tempo_check()
   local q0 = Tabs.start_qn()
   local bpm = 60 / (r.TimeMap2_QNToTime(R.proj, q0 + 1) - r.TimeMap2_QNToTime(R.proj, q0)) -- (quarter notes)
   if math.abs(bpm - R.doc.tempo) > 0.5 then
-    R.tempo_warn = string.format("Tab %.4g BPM, project %.4g BPM here: use Find tempo first.", R.doc.tempo, bpm)
+    R.tempo_warn = string.format("Tab %.4g BPM, project %.4g BPM here: set the tempo first (Detection > Tempo).", R.doc.tempo, bpm)
   end
 end
 -- The line of the tab that holds bar bi.
@@ -1770,7 +1770,7 @@ function Project.update()
     Tabs.loop_off() -- (in the project of the loop, before R.proj changes)
     Tempo.cancel()
     Tempo.click_back() -- (the metronome of a Play with click: as it was before)
-    R.tempo, R.tsrc, R.tsrc_sel = nil, nil, nil
+    R.tempo, R.tsrc, R.tsrc_sel, R.tsrc_tab = nil, nil, nil, nil
     R.proj, R.projfn, R.state_cc = proj, fn, r.GetProjectStateChangeCount(proj)
     Project.load(Project.read())
     local rate = r.Master_GetPlayRate(proj) -- (a project saved slow, or left so after a crash: say it)
@@ -1785,7 +1785,7 @@ function Project.update()
     local old = R.projfn
     R.state_cc, R.projfn = cc, fn
     local txt = Project.read()
-    R.tsrc = nil -- (the tracks of the Find tempo menu: again)
+    R.tsrc = nil -- (the tracks of Listen to: again)
     Tempo.check()
     if txt ~= R.plast_txt then Project.load(txt) -- (never write the old tab into the next project)
     else
@@ -1927,19 +1927,19 @@ Want to practise a hard part? Shift+click a bar: the song loops from the selecte
 
 A drum track? Drums come in a later version (a drum grid).]] },
   { title = "Find tempo", text = [[
-Does the tab drift away from the song? Then REAPER's bars are not on the song yet. Click Find tempo (at the top).
+Does the tab drift away from the song? Then REAPER's bars are not on the song yet. Go to the Detection tab: Tempo is at the top. Pick what to listen to, then click Find tempo.
 
-From tab (the first choice): Tab Viewer takes the tempo, the tempo changes and the time signatures of the tab, without listening. It puts bar 1 where the first note of the tab meets the first sound of the song (the selected item, else the longest one in the tab's region).
+From the tab (the first choice with a Guitar Pro tab): Tab Viewer takes the tempo, the tempo changes and the time signatures of the tab, without listening. It puts bar 1 where the first note of the tab meets the first sound of the song (the selected item, else the longest one in the tab's region).
 
 A track (best a metronome or the drums): Find tempo listens to it while the song plays. Then 1/2 and x2 halve or double a tempo that came out wrong, Style is 1 tempo (a steady grid) or Follow the song (a tempo marker on every bar, so the bars stay on the drums), and Short bars adds a bar with only 3 beats (put the edit cursor in it, then + Add).
 
-Got a result? Open Find tempo again and check bar 1 with Play with click: is the loud click on the "1"? If not, move it with < 1 beat and 1 beat >. Then click the blue Set tempo next to it: the tempo goes into the project (1 undo step), and the tab starts on that bar.]] },
+Got a result? Its controls show under Find tempo. Check bar 1 with Play with click: is the loud click on the "1"? If not, move it with < 1 beat and 1 beat >. Then click the blue Set tempo under them: the tempo goes into the project (1 undo step; at most 1 decimal place, for example 159.9 BPM), and the tab starts on that bar.]] },
   { title = "Fix the tab", text = [[
 A wrong note in the tab? Stop the song, then click the note: a blue box selects it (the edit cursor goes there). Left / Right selects the note before or after it, Up / Down the note (or the empty place) on the next string, as in Guitar Pro. Alt+Up / Alt+Down puts the note on the next string (the same pitch), a number gives it a new fret ("1" "2" quickly = 12), Delete removes it (a rest is left there). On an empty place, type a number: a new note, as long as the note before it. Double-click a note to open its box: type a new fret and press Enter, or move the note with Left / Right (a 16th at a time, inside its bar; never onto another note). A missing note? Double-click an empty place on its string, type the fret and press Enter (a new note is as long as the note before it; in a triplet beat, 1 triplet place). Wrong length? With a note selected, + makes it twice as long and - half as long, "." adds or removes the dot (all the notes that start with it change too; never past the next note or the bar end). "/" turns its beat into a triplet (its notes move to the 3 triplet places), and "/" again back to 16ths.
 
 Want the lines as in your Guitar Pro page? Select a note in a bar, then press & to pull the first bar of the next line up into this line, or Ctrl+Enter to start a new line after this bar (as in Guitar Pro). The lines after it fill up again by themselves. Your breaks are saved in the project; a line wider than the window gets narrower. Wrong time signature in the tab? Right-click a bar > Time signature...: the new one for this bar or the following bars too; the notes fit into the bar and the bar keeps its time (4/4 at 125 becomes 6/8 at 93.75). Tab dropdown > Layout...: how many bars on each line (Automatic: as many as fit), and Reset to remove your own breaks (breaks need Settings > Tab > Repeats as written on).
 
-A fix changes the bar as it is written, so a repeat of that bar changes too. Made a mistake? Ctrl+Z in this window (or the Undo arrow at the top left) takes it back. Want the file's notes back? Tab dropdown > Undo all fixes (only the track in the window). Ctrl+Z remembers the fixes of this session only: after a restart, Undo all fixes is the way back. Your fixes are green (Settings > Tab > Mark my fixes). Your fixes are saved in the project; the Guitar Pro file and its copy stay as they are. Drum tracks can not be fixed yet.]] },
+A fix changes the bar as it is written, so a repeat of that bar changes too. Made a mistake? Ctrl+Z in this window (or the Undo arrow at the top right) takes it back. Want the file's notes back? Tab dropdown > Undo all fixes (only the track in the window). Ctrl+Z remembers the fixes of this session only: after a restart, Undo all fixes is the way back. Your fixes are green (Settings > Tab > Mark my fixes). Your fixes are saved in the project; the Guitar Pro file and its copy stay as they are. Drum tracks can not be fixed yet.]] },
   { title = "Where your stuff is saved", text = [[
 In the project: its tabs, the region of each one, the track you picked, the bar where the tab starts, your line breaks, the bars per line (Layout...), your time signatures, and your fixes of the tab. Tab Viewer copies each tab into a "Tabs" folder next to the project file, so the project keeps its tab when you move or delete the original. Not saved yet? The copy is made when you save the project.
 
@@ -2432,17 +2432,10 @@ function UI.draw_zoom(H)
   end
 end
 
--- The width of Find tempo with what follows it (Listening... and Cancel, or Set tempo).
-function UI.find_tempo_w()
-  local tm, w = R.tempo, UI.btn_w("Find tempo")
-  if tm and tm.run then return w + CFG.CTRL_GAP + CFG.TB_PROGRESS_W + 4 + UI.btn_w("Cancel") end
-  if tm and tm.beats then return w + CFG.CTRL_GAP + UI.btn_w("Set tempo") end
-  return w
-end
--- Where the parts of the toolbar go (a plain function; from x0, aw wide). w: the widths L (Find tempo, left), Z (the
--- size), T (the transport), S (the speed), U (Undo / Redo, right); PC: the middle of play from the transport's left
--- end; GG: the least gap between groups, NG: the gap of the size and the speed to the transport. Find tempo at x0 and
--- Undo / Redo at the right end on row 0 (no room for both: Undo / Redo on row 1). The center (size, transport, speed)
+-- Where the parts of the toolbar go (a plain function; from x0, aw wide). w: the widths L (the left group: none yet,
+-- 0), Z (the size), T (the transport), S (the speed), U (Undo / Redo, right); PC: the middle of play from the
+-- transport's left end; GG: the least gap between groups, NG: the gap of the size and the speed to the transport. The
+-- left group at x0 and Undo / Redo at the right end on row 0 (no room for both: Undo / Redo on row 1). The center (size, transport, speed)
 -- with play in the middle of the window, on row 0 when it has room between them; else on the next row, centred on
 -- play as far as the window lets it; narrower than the center: the transport alone, the size (left) and the speed
 -- (right) on the row after it (decided 26 November 2026).
@@ -2468,20 +2461,19 @@ function Tabs.toolbar_rows(x0, aw, w, PC, GG, NG, p)
   return p
 end
 local TB_W, TB_POS = {}, {} -- (the toolbar's widths and places: filled every frame, not made)
--- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): at the left Find tempo; in the middle the tab
--- size, |<, <, play / stop, >, >| (play in the middle of the window), the speed; at the right Undo / Redo. A narrow
--- window: 2 or 3 rows. The controls work in the Tab and the Detection tab.
+-- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): in the middle the tab size, |<, <, play / stop,
+-- >, >| (play in the middle of the window), the speed; at the right Undo / Redo (Find tempo: the Detection tab). A
+-- narrow window: 2 or 3 rows. The controls work in the Tab and the Detection tab.
 function UI.draw_toolbar()
   UI.vgap(CFG.SP_EDGE)
   local x0, y0 = ImGui.GetCursorPosX(ctx), ImGui.GetCursorPosY(ctx)
   local aw = ImGui.GetContentRegionAvail(ctx)
   local IW, H = CFG.TB_ICON_W, ImGui.GetFrameHeight(ctx)
   local w = TB_W
-  w.L, w.Z, w.T, w.U = UI.find_tempo_w(), UI.zoom_w(H), UI.transport_w(), 2 * IW + 2
+  w.L, w.Z, w.T, w.U = 0, UI.zoom_w(H), UI.transport_w(), 2 * IW + 2
   w.S = UI.btn_w("100%") + H + CFG.TB_NOTE_W + 2
   local p = Tabs.toolbar_rows(x0, aw, w, UI.transport_mid(), CFG.TB_GROUP_GAP, CFG.TB_NEAR_GAP, TB_POS)
   local RH = H + CFG.TB_ROW_GAP
-  UI.draw_find_tempo(x0, y0, H) -- (also without a tab: before Find notes)
   ImGui.SetCursorPos(ctx, p.ux, y0 + p.urow * RH)
   UI.draw_undo(IW, H)
   ImGui.SetCursorPos(ctx, p.zx, y0 + p.zrow * RH)
@@ -2865,6 +2857,10 @@ function UI.draw_tracks()
     ImGui.SameLine(ctx, 0, 4)
     if UI.repeat_button(">", BW) then Tabs.set_bar(Tabs.bar() + 1) end
     UI.tip("The tab starts 1 bar later.")
+    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP * 2) -- (where the tempo is set now: decided 26 November 2026)
+    UI.row_text("Bars not on the song? Detection > Tempo.", COL.TEXT_DIM)
+    UI.tip(UI.page_shown(UI.PAGE_NOTES) and "Find tempo and Set tempo are at the top of the Detection tab."
+      or "Find tempo and Set tempo are at the top of the Detection tab (hidden now: show it in Settings > Look > Tabs).")
     if R.tempo_warn then
       ImGui.PushTextWrapPos(ctx, 0)
       ImGui.TextColored(ctx, COL.YELLOW, R.tempo_warn)
@@ -2882,63 +2878,60 @@ function UI.import_to_list()
 end
 
 local STYLES = { { "steady", "1 tempo" }, { "follow", "Follow the song" } }
--- Find tempo, at the left of the toolbar (always, also without a tab; the only one: decided 25 November 2026):
--- its menu (From tab, then the tracks: a choice starts
--- at once), while it listens the progress and Cancel, with a result the blue Set tempo (decided 24 November 2026).
-function UI.draw_find_tempo(x, y, H)
-  local tm = R.tempo
-  ImGui.SetCursorPos(ctx, x, y)
-  if UI.button("Find tempo", UI.btn_w("Find tempo"), H) then ImGui.OpenPopup(ctx, "##findtempo") end
-  UI.tip("Put REAPER's bars on the song: from the tab's tempo, or by listening to a track. After a result: fine-tune it here.")
-  local mx = ImGui.GetItemRectMin(ctx)
-  local _, my = ImGui.GetItemRectMax(ctx)
-  if tm and tm.run then
-    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-    ImGui.ProgressBar(ctx, tm.run.done, CFG.TB_PROGRESS_W, H, "Listening...")
-    ImGui.SameLine(ctx, 0, 4)
-    if UI.button("Cancel", UI.btn_w("Cancel"), H) then Tempo.cancel(); R.tempo = nil end
-    UI.tip("Stop. Nothing changes.")
-  elseif tm and tm.beats then
-    ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-    if UI.button("Set tempo", UI.btn_w("Set tempo"), H, "primary") then Tabs.set_tempo() end
-    UI.tip(tm.tab and "Writes the tab's tempo, tempo changes and time signatures into the project from bar 1, and the tab starts on that bar: 1 undo step. The audio stays where it is."
-      or "Writes the tempo of this song into the project, and moves its audio a few ms so the first note is on the beat; the tab starts on bar 1: 1 undo step. Other songs keep their places.")
-  end
-  local ex = ImGui.GetItemRectMax(ctx) -- (the right end of the last control)
-  ImGui.SetNextWindowPos(ctx, mx, my + 4, ImGui.Cond_Appearing())
-  UI.draw_tempo_menu()
-  return ex
-end
-
--- The Find tempo menu: From tab, the tracks, then (with a result) the fine controls (no 1/2,
--- x2, Style or Short bars from the tab: the tab has them).
-function UI.draw_tempo_menu()
-  if not ImGui.BeginPopup(ctx, "##findtempo") then return end
+-- Find tempo listens to: true = From the tab (only a Guitar Pro tab has its own tempo: file; the default with one),
+-- else the track of Tempo.source. pick (R.tsrc_tab): true = you picked From the tab, false = a track, nil = no pick.
+function Tabs.tempo_from_tab(file, pick) return file and pick ~= false end
+local FROM_TAB_TIP = "No listening: the tempo, tempo changes and time signatures of the tab. Bar 1 goes where the tab's first note meets the first sound of the song (the selected item, else the longest one). Nothing changes yet."
+local TRACK_TIP = "Listens to this track while the song plays (the selected item, else the longest one; a click track is best, then the drums). Nothing changes yet."
+-- The Tempo step at the top of the Detection tab (decided 26 November 2026; it was the toolbar's Find tempo with a
+-- menu): Listen to (From the tab, or a track) and Find tempo; while it listens the progress and Cancel; a result keeps
+-- its controls open (UI.draw_tempo_fine; no 1/2, x2, Style or Short bars from the tab: the tab has them) with the
+-- blue Set tempo under them.
+function UI.draw_tempo_step()
   local tm = R.tempo
   local run = tm and tm.run
-  local file = R.doc and not R.doc.found -- (From tab: only a Guitar Pro tab has its own tempo)
-  ImGui.BeginDisabled(ctx, run ~= nil or not file)
-  if ImGui.Selectable(ctx, "From tab", tm and tm.tab ~= nil) then Tabs.find_tempo() end
-  ImGui.EndDisabled(ctx)
-  UI.tip_disabled(file and "No listening: the tempo, tempo changes and time signatures of the tab. Bar 1 goes where the tab's first note meets the first sound of the song (the selected item, else the longest one). Nothing changes yet."
-    or "Open a Guitar Pro tab of the song first (Open tab...): it has the tempo. Or pick a track below.")
-  ImGui.Separator(ctx)
+  UI.heading("Tempo", true)
+  local file = R.doc ~= nil and not R.doc.found
+  local from_tab = Tabs.tempo_from_tab(file, R.tsrc_tab)
+  local src = not from_tab and Tempo.source() or nil
+  UI.field("Listen to")
+  local x = ImGui.GetCursorPosX(ctx)
+  local bw = UI.btn_w(run and "Cancel" or "Find tempo")
   ImGui.BeginDisabled(ctx, run ~= nil)
-  local list = Tempo.sources()
-  if not list[1] then ImGui.TextDisabled(ctx, "No tracks with audio yet.") end
-  for _, e in ipairs(list) do
-    if ImGui.Selectable(ctx, e.label, tm ~= nil and tm.tab == nil and R.tsrc_sel == e.tr) then
-      R.tsrc_sel = e.tr
-      Tabs.find_tempo(e)
+  ImGui.SetNextItemWidth(ctx, math.max(80, math.min(UI.field_w(), (ImGui.GetContentRegionAvail(ctx)) - bw - CFG.CTRL_GAP)))
+  if ImGui.BeginCombo(ctx, "##tsrc", from_tab and "From the tab" or src and src.label or "No tracks with audio yet") then
+    if file then
+      if ImGui.Selectable(ctx, "From the tab", from_tab) then R.tsrc_tab = true end
+      UI.tip(FROM_TAB_TIP)
     end
-    UI.tip("Listens to this track while the song plays (the selected item, else the longest one; a click track is best, then the drums). Nothing changes yet.")
+    for _, e in ipairs(Tempo.sources()) do
+      if ImGui.Selectable(ctx, e.label, src == e) then R.tsrc_tab, R.tsrc_sel = false, e.tr end
+      UI.tip(TRACK_TIP)
+    end
+    ImGui.EndCombo(ctx)
   end
   ImGui.EndDisabled(ctx)
-  if tm and tm.beats and not run then
-    ImGui.Separator(ctx)
-    UI.draw_tempo_fine(tm)
+  UI.tip_disabled(from_tab and FROM_TAB_TIP or TRACK_TIP)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  if run then
+    if UI.button("Cancel", bw) then Tempo.cancel(); R.tempo = nil end
+    UI.tip("Stop. Nothing changes.")
+    ImGui.SetCursorPosX(ctx, x)
+    ImGui.ProgressBar(ctx, run.done, UI.field_w(), 0, "Listening...")
+    return
   end
-  ImGui.EndPopup(ctx)
+  local can = from_tab or src ~= nil
+  ImGui.BeginDisabled(ctx, not can)
+  if UI.button("Find tempo", bw) then Tabs.find_tempo(src) end
+  ImGui.EndDisabled(ctx)
+  UI.tip_disabled(can and "Put REAPER's bars on the song: from the tab's tempo, or by listening to a track. Nothing changes until Set tempo."
+    or "No tab and no track with audio yet: open a Guitar Pro tab (Tab tab > Open tab...) or add the song's tracks.")
+  if not (tm and tm.beats) then return end
+  UI.draw_tempo_fine(tm)
+  ImGui.SetCursorPosX(ctx, x)
+  if UI.button("Set tempo", UI.btn_w("Set tempo"), nil, "primary") then Tabs.set_tempo() end
+  UI.tip(tm.tab and "Writes the tab's tempo, tempo changes and time signatures into the project from bar 1, and the tab starts on that bar: 1 undo step. The audio stays where it is."
+    or "Writes the tempo of this song into the project, and moves its audio a few ms so the first note is on the beat; the tab starts on bar 1: 1 undo step. Other songs keep their places.")
 end
 
 -- The fine controls of a result: Tempo (from a track: 1/2, x2 and Style too), Bar 1, Play with click, Short bars.

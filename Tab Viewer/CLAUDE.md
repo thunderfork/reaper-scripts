@@ -38,7 +38,7 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   > Hide this tab (Settings > Look > Tabs). The tab keys work only in the Tab tab, the list keys only in the
   Detection tab.
 - The toolbar (inspired by Guitar Pro's): `UI.draw_toolbar`, its places from `Tabs.toolbar_rows` (a part without
-  room goes to the next row): left Find tempo; center the size, |<, <, play / stop, >, >| (play in the middle of the
+  room goes to the next row): left nothing yet (the loop: segment 2); center the size, |<, <, play / stop, >, >| (play in the middle of the
   window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Detection tab by lines,
   `Notes.go`), the speed with a note icon; right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes
   `Tabs.undo` or the list `Notes.undo`, then REAPER's; Ctrl+Z too). Icons: `UI.tb_icon`, `ICON` (drawn, as Chart
@@ -47,8 +47,11 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   10% steps (`Tabs.zoom_step`, `CFG.ZOOM_MIN` .. `CFG.ZOOM_MAX`); the sizes: "Rules". The tab's fonts `TF` (per zoom step, made by `UI.zoom_fonts` at the start of
   a frame, used from the next one); `UI.draw_tab` pushes `TF.font` for the layout and the drawing, not for its menus,
   tooltips and the note box.
-- Find tempo (`UI.draw_find_tempo`, its menu `UI.draw_tempo_menu`): "From tab", then the tracks (a choice starts at
-  once); with a result the fine controls (`UI.draw_tempo_fine`) and a blue Set tempo in the toolbar. From the tab:
+- Find tempo: the Tempo rows at the top of the Detection tab (`UI.draw_tempo_step`, in Tab Viewer.lua; Notes.lua
+  calls it): Listen to ("From the tab", the default with a Guitar Pro tab, `Tabs.tempo_from_tab`; then the tracks,
+  `Tempo.sources`) and Find tempo; while it listens the progress and Cancel; with a result the fine controls
+  (`UI.draw_tempo_fine`) and a blue Set tempo under them. The Tab tab's Start row points there with a grey line,
+  and its yellow tempo warning too. From the tab:
   `GP.timeline(doc)`, `Tempo.from_tab` (bar 1 = the first sound of the song less the time to the first note:
   `Tabs.first_qn`), `Beat.tab_plan` (a marker only where the tempo or time signature changes); it does not move the
   audio; then the tab starts on the new bar 1. The song: the selected audio item, else the longest

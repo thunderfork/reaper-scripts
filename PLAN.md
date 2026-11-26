@@ -60,15 +60,14 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-20. Tab Viewer Detection redesign (decided 26 November 2026; segment 1 done: the rename and Lines). Segment 2: Find
-    tempo and Set tempo move from the toolbar into the Detection tab as step 1, its controls always open (no menu to
-    open again); the Tab tab gets a grey line "Bars not on the song? Detection > 1 Tempo.". Segment 3: numbered
+20. Tab Viewer Detection redesign (decided 26 November 2026; segment 1 done: the rename and Lines; segment 2 done:
+    Find tempo and Set tempo at the top of the Detection tab, manual test 22). Segment 3: numbered
     steps (1 Tempo, 2 Notes, 3 Check, 4 Write) with a status line each; blue is always the 1 next step; Find notes
     is grey until the tempo is set, with the reason on the screen, and step 1 has "The project tempo is right";
     "Track" becomes "Bass audio" in Detection. Ask before each segment.
-21. Manual test (Tab Viewer, 26 November 2026): the tab says "Detection"; Lines has only "1 per bar" and "Every
-    note change"; Find tempo, then Set tempo (1 tempo, and Follow the song): REAPER's tempo markers of the song have
-    at most 1 decimal place and the bars stay on the music.
+22. Manual test (Tab Viewer, 26 November 2026): the toolbar has no Find tempo; the Detection tab starts with Tempo
+    (Listen to: From the tab with a tab, else a track; Find tempo; its controls and the blue Set tempo stay open
+    under it); the Tab tab's Start row says "Bars not on the song? Detection > Tempo.".
 
 ## Later
 

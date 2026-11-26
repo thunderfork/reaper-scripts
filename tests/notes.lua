@@ -1456,6 +1456,11 @@ test("tempo: Set tempo puts bar 1 on the song; other songs, items, markers and e
   local function env_t(i) local _, t = r.GetEnvelopePoint(env, i); return t end
   local env_last = env_t(before - 1)
   tempo_by_hand(it, 10, 40, 10.3, 0.4) -- 150 BPM, bar 1 at 10.3 s (between REAPER's bar lines)
+  C.draw(500) -- (the Tempo rows of the Detection tab with a result: its controls and Set tempo; 26 November 2026)
+  local tm = TR.tempo
+  TR.tempo = { song = tm.song, run = { done = 0.5 } }
+  C.draw(500) -- (while it listens: the progress and Cancel)
+  TR.tempo = tm
   Tempo.set()
   eq(where(8), "5.0.00", "the old bar line before the song stays")
   eq(where(8.7), "6.0.00", "a bar at the song tempo before bar 1 (the bass item starts at 10 s, inside it)")
