@@ -2,14 +2,24 @@
 
 ## Handoff (26 November 2026)
 
-- Committed, NOT PUSHED (26 November 2026), all tested: Tab Viewer 1.2 (UI review, toolbar segment 1, Note Detection
+- New workflow (decided 26 November 2026): an automatic commit after each finished change (its checker, tests and
+  deploy passed); at each handoff a push to the private `reaper-scripts-backup` (remote `backup`, no checks, GitHub
+  Actions off there); the public repository only at a release (all checks and tests). The public `work` branch
+  was deleted.
+- Project review (26 November 2026), done: GitHub "Code check" workflow (check.ps1 -All on each push; passed); "another project" tests in Segue,
+  FX Link and MIDI Pilot (Chart Cue had them), and the MIDI Pilot fix for File > Open in the same tab (deployed;
+  manual test Open now 10); Session Prep's bus / return rename rule as `Rules.name_ok` with a test; the copy check
+  (`tools\copy-check.ps1`, in check.ps1). Session Prep manual tests 2, 3, 4, 5 and 7 removed (automatic tests cover
+  their logic; the user's choice). Dev 1 (shared look file) replaced by the copy check, Dev 4 skipped (the user's
+  choice). All committed and backed up.
+- Committed, NOT PUSHED to main (26 November 2026), all tested: Tab Viewer 1.2 (UI review, toolbar segment 1, Note Detection
   layout, 1 mode, .gp5 export; manual tests passed 25-26 November 2026); tools (`check.ps1` only the changed scripts,
   pass stamps `tools\stamp.ps1`); process and skills audits; housekeeping (no script counts in the notes, old Note
   Detective entries removed); the instructions cleanup (26 November 2026: no repeated lines in the
   folder CLAUDE.md files, no dates in the notes, Chart Cue's release checklist removed, a new-script checklist in
   `new-feature`, the docs check reads every .md of a script folder; lesson tags decided; Claude's Tab Viewer
   decisions accepted by the user). Next: commit and release Tab Viewer 1.2 when the user asks; then the
-  toolbar segments 2 and 3 (Later > Tab Viewer).
+  toolbar segments 2 and 3 (`Tab Viewer/CLAUDE.md`, Later).
 - Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
   what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
@@ -25,21 +35,13 @@ skipped or failed test stays here; remove it when it passed.
 
 1. Manual test (Session Prep, 12 November 2026): Mono button on a fake stereo track (grey -> orange on click; Apply
    plays one side; Ctrl+Z undoes it). Skipped twice.
-2. Manual test (Session Prep, 12 November 2026): file check: a 44.1 kHz file in a 48 kHz project (or an item that
-   starts later) shows an orange "44.1k" / "late" tag in the Prep table.
-3. Manual test (Session Prep, 12 November 2026): dual pan: a track in dual pan (or a project whose default pan mode
-   is dual pan) with its knobs not at full L / R shows "kept" and keeps its pans after Apply.
-4. Manual test (Session Prep, 17 November 2026): Gain staging on, Scan with hi-hat / OH / cymbal tracks: no
-   "silent" tag, normal Gain values.
-5. Manual test (Session Prep, 17 November 2026): a client's return (no items, receives a send): no "empty" tag, no
-   Delete button.
 6. Manual test (Session Prep, 17 November 2026): rename a return to empty, then to "Delay" (taken): the old name
    comes back each time.
-7. Manual test (Session Prep, 17 November 2026): "Electric Piano" / "Acoustic Piano" become KEYS / PIANO.
 8. Manual test (Session Prep, 17 November 2026): Scan speed with Gain staging on (a large session; the 1st Scan of
    new files builds peaks).
-10. Lessons rule (`stale-state`, accepted 17 November 2026): add an "another project" test to Chart Cue, Segue,
-    MIDI Pilot and FX Link for the data they keep from a project.
+10. Manual test (MIDI Pilot, 26 November 2026): with MIDI Pilot open in a project with devices, File > Open another
+    project in the same tab: MIDI Pilot shows that project's own devices and tracks (none for a new one); back in
+    the first project, its devices are still there. File > Save as keeps them.
 11. Session Prep feedback, not decided yet (17 November 2026): deleting a return does not ask (a bus does); the Prep
     table does not show a row's bus, sends or Track FX (the Help promises "you see everything first").
 12. SFX Drop, before its release: Find spots reads at 2000 Hz and Soundcheck at 500 Hz, so cymbal parts count too
@@ -59,33 +61,9 @@ skipped or failed test stays here; remove it when it passed.
 
 Ideas, not started.
 
-- Tab Viewer, the toolbar (decided 25 November 2026; segment 1 built): segment 2 = loop (the selected bar or the bar
-  at the cursor / the selected line; on = the look of a selected toggle, not blue), REAPER's metronome and count-in
-  (2 buttons, REAPER's state; a trial of REAPER's actions first); segment 3 = transpose 0 +/- (the tab's frets and the
-  list's note names, not the audio; saved in the project, 1 value, nothing at 0: a new project key; below the open
-  string: the next lower string, on the lowest an octave up, yellow). All work in both tabs; narrow: 2 rows. Ask
-  before each segment.
-- Tab Viewer: the Guitar Pro tab is the main feature, the detection the second; no more detection work until the
-  user brings it up (decided 23 November 2026).
-- Tab Viewer (moved from Open now at the checkup, 24 November 2026):
-  - The song inside a .gp file (its audio and sync points) as the alignment reference: not wanted (the user).
-  - Time signature, "Keep their time (move bar lines)" (segment 3; put here by the user, 24 November 2026): the notes
-    keep their place in the song and the bar lines move; needs new bars that the file does not have (repeats, fixes,
-    line breaks, bar numbers). "Fit into the bar" is built.
-  - From the developer review of 24 November 2026 (Dev 3 and Dev 6, "later", decided 24 November 2026): (Dev 3) 1
-    small trial: does REAPER's undo bring back the project data (ProjExtState) written inside an undo block? If yes,
-    the tab fixes and the Note Detection list use REAPER's undo (also after a close; the Undo buttons stay). (Dev 6)
-    the tab logic (layout, repeats, rhythm, fixes) into its own file, as Tempo.lua: only when the tab view in Chart
-    Cue starts (roadmap step 8). (Dev 4, "later", decided 24 November 2026) 1 project watcher: Tab Viewer's
-    `Project.update` tells the Note Detection tab, so the order (its list first, then the tab) is in code, not in a
-    comment (`stale-state`).
-  - From the full simplify run of 24 November 2026 (skipped: larger, or a change of behaviour): Notes' `Project.save`
-    does not update its `R.state_cc` (with Dev 4). Later, each small: "play from" 3 times (`UI.play_at`,
-    `UI.play_from`, `Tempo.try`), "is it an audio take" 5 times, the start of `GP.tab` copied in `Imp.found_doc`
-    (the 16th count rule twice), `Tabs.start_qn` and text sizes measured every frame, the P.M. runs scanned per line,
-    the `R.doc.found` special cases (with Dev 6).
-  - From the checkup of 24 November 2026 (larger changes, each a segment; ask first): note places as whole numbers
-    (48 per beat); a cached copy of the file's tab, so a fix rebuilds only its bar.
+- Tab Viewer: its ideas (the toolbar segments 2 and 3 first) are in "Later" of `Tab Viewer/CLAUDE.md` (moved there
+  26 November 2026; decided 23-25 November 2026: the toolbar, the tab first and no more detection work until the
+  user brings it up, the developer review items "later").
 - On hold (do NOT ask until the user brings it up):
   - SFX Drop: Find spots "does not work well with what I had in mind; work on it later" (13 November 2026): ask what
     they expect when they bring it up.
@@ -104,3 +82,7 @@ Ideas, not started.
   4 times on 6-7 November 2026. Not in the scripts' code. Workaround: close with the toolbar button. A report for
   the ReaImGui author can be written again from these facts.
 - The roadmap of each script: the "Later" section of its folder CLAUDE.md (moved 24 November 2026).
+- Per script, when its development starts again (decided 26 November 2026, review R1, R3, R4): its "Open findings"
+  bugs (folder CLAUDE.md; 4 need the user's behaviour choice: C5 + S4 Next song after a REAPER pause, P8 a deleted
+  bus, P9 a bus named like a folder, M3 on hold); SFX Drop's WAV tests and flaky test (Open now 12, 13); split
+  Chart Cue and MIDI Pilot into several files at their next large change.

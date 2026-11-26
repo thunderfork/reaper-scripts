@@ -46,7 +46,8 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
 - Saved data: see "Saved data" below for what counts.
 - Deploy is automatic (instead of waiting for "build"): after each finished change to a script (not after each
   edit), run the code checker and the tests of that script 1 time, then `.\tools\deploy.ps1`.
-- Commit, push and release only when I ask (instead of 1 commit after each change).
+- Commit and back up automatically; push to the public repository and release only when I ask ("Git and
+  releases").
 - Ask first, in one line, before screenshots (`.\tools\shots.ps1`) or the UI test (it takes the focus).
 - Prefer 1 session per topic (a feature or a release).
 - A change with many parts or many tests: build it in segments and ask me before each segment.
@@ -120,6 +121,7 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
 
 - Code checker: `.\tools\check.ps1` (only the changed scripts; `-All`: all scripts) must print "Syntax and globals
   OK". A new warning, docs problem or ImGui finding: fix it, or (a false alarm) do what the tool's message says.
+  It also checks that the small helpers copied into several scripts stay the same text (`tools\copy-check.ps1`).
 - Tests: `.\tools\test.ps1 -Script "<the changed script>"` (all scripts only before a release) must end with
   "0 failed". They run in the portable test REAPER `C:\REAPERtest`, in the background; never use, close or save my
   normal REAPER.
@@ -129,7 +131,11 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
 
 - Commit messages: `git commit -m "..." -m "..."` (not from a file written by PowerShell or the Write tool: a
   byte-order mark), ending with the `Co-Authored-By` line.
-- Every time I ask to commit and push: follow the `release` skill without asking again (a changed script gets a
+- After each finished change (its checks, tests and deploy passed): 1 commit at once, without asking (the global
+  "Git" rules). At each handoff: `git push backup main` (the private repository `reaper-scripts-backup`; no checks,
+  the pre-push hook skips it). The public repository (`origin`) gets only releases. Never push work to `origin`
+  outside a release: every branch there is public.
+- Every time I ask to push or release: follow the `release` skill without asking again (a changed script gets a
   new version and a GitHub Release; only other files changed: no version). Never edit `index.xml` by hand.
 - A new script starts on its own branch (`script/<name>`; its setup: the `new-feature` skill); it merges into main at
   its first release. (SFX Drop is the exception: it was on main before this rule.)

@@ -16,8 +16,8 @@ Also a `debug-time` finding in code that was already committed.
 - The regression test goes in the script's test file (`tools\scripts.psd1` names it); run it on the old code with
   `.\tools\test.ps1 -Script "<name>"`: it must fail. No test possible (rendering, scrolling, timing that REAPER
   must show): a manual test under "Open now" in PLAN.md.
-- After the fix: `.\tools\check.ps1` ("Syntax and globals OK"), the tests ("0 failed"), deploy. Commit only when
-  the user asks (CLAUDE.md).
+- After the fix: `.\tools\check.ps1` ("Syntax and globals OK"), the tests ("0 failed"), deploy, the automatic
+  commit (CLAUDE.md "Git and releases").
 - Search the other scripts (`tools\scripts.psd1`) for the same pattern (Segue shares Chart Cue's setlist logic; all scripts copy
   Chart Cue's UI). Report the result in 1 line. A fix in another script follows the same steps.
 - Test gaps: `.\tools\test.ps1 -Script "<name>" -Coverage` lists the functions that the tests never run.

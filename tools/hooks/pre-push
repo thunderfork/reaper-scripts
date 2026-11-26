@@ -1,6 +1,8 @@
 #!/bin/sh
 # Git pre-push hook (git config core.hooksPath tools/hooks): runs the publish check on the committed files.
 # A script that is not released yet (tools/scripts.psd1) must not reach ReaPack or the README with this push.
+# Only for the public repository (remote "origin"); a push to the private backup (remote "backup") is never stopped.
+[ "$1" = "origin" ] || exit 0
 root="$(git rev-parse --show-toplevel)"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$root/tools/publish-check.ps1" -Ref HEAD || {
   echo "Push stopped by the publish check (tools/publish-check.ps1)."

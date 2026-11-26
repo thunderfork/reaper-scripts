@@ -1,6 +1,6 @@
 ---
 name: release
-description: Commit, push and release the scripts of this repository (tools\scripts.psd1) (a new version on ReaPack, and a GitHub Release for each script with a new version). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"), or after "commit only" when they later say push.
+description: Commit, push and release the scripts of this repository (tools\scripts.psd1) (a new version on ReaPack, and a GitHub Release for each script with a new version). Use when the user says "push", "commit and push", "release", "publish" or names a version ("release 1.5"). (The automatic push to the private backup is not a release.)
 ---
 
 # Release
@@ -20,7 +20,9 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
   its `Uses`) = a new version of that script, each with its own GitHub Release; several can change in 1 commit.
   Only other files (CLAUDE.md, PLAN.md, README.md, tools, tests, .claude): commit and push without a
   version or a release, and say so.
-- A commit that is already made (the user said "commit only" before): do not raise the version again.
+- The work is committed already (1 automatic commit after each change, CLAUDE.md "Git and releases"); the
+  version is raised only here, in its own commit. A version raised in an earlier commit that was not released yet:
+  do not raise it again.
 - ReaPack links a version number to the FIRST commit where that number appears in the header. So a version
   that was already in an earlier commit (also a script committed before its first push) must get a new number when
   the file changed since, else ReaPack installs the old file (MIDI Pilot 0.1, 7 November 2026). After the push, check
@@ -59,16 +61,16 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
 
 ## 3. Commit and push
 
-- `git add -A`, the message "<Name> X.Y: <short>" (several scripts: "Chart Cue X.Y and Segue X.Y: ...";
-  the format: CLAUDE.md "Git and releases"). Several finished changes since
-  the last commit: 1 commit for each change group (CLAUDE.md "Git"), the version change in the last one.
-- `git push`.
+- Work that is not committed yet: 1 commit for each change group first (CLAUDE.md "Git").
+- The version change: its own commit, the message "<Name> X.Y: <short>" (several scripts: "Chart Cue X.Y and
+  Segue X.Y: ..."; the format: CLAUDE.md "Git and releases").
+- `git push origin main` (the public repository; the pre-push hook runs the publish check).
 
 ## 4. ReaPack index
 
 - `gh run list --limit 3`: wait for the "ReaPack index" run of this push (`gh run watch <id>` or check
   again); it must succeed, else ReaPack users do not get the update. On failure: `gh run view <id> --log`.
-- `git pull` (the workflow commits the new `index.xml`).
+- `git pull origin main` (the workflow commits the new `index.xml`), then `git push backup main`.
 
 ## 5. GitHub Release
 
