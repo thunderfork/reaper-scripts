@@ -1271,15 +1271,15 @@ function Tabs.new_len(b, q)
   return Tabs.value(math.min(len, next_start(b, q) - q)).len
 end
 -- The length of note i of bar bi and of the notes that start with it (a chord; decided 24 November 2026): op "+"
--- twice as long, "-" half, "." dotted on / off. From a 32nd to a whole note; never past the next note or the bar end.
--- Returns true, or nil and why.
+-- half (the next shorter value, an 8th to a 16th, as in Guitar Pro), "-" twice as long, "." dotted on / off. From a
+-- 32nd to a whole note; never past the next note or the bar end. Returns true, or nil and why.
 function Tabs.length(bi, i, op)
   local b = R.tab.bars[bi]
   local nt = b.notes[i]
   local v = Tabs.value(nt.w or nt.len or 0.25)
-  local len = op == "+" and v.len * 2 or op == "-" and v.len / 2 or (v.dot and v.len / 1.5 or v.len * 1.5)
+  local len = op == "+" and v.len / 2 or op == "-" and v.len * 2 or (v.dot and v.len / 1.5 or v.len * 1.5)
   if len > 4 + 1e-6 then return nil, "A whole note is the longest." end
-  if op == "-" and v.base >= 32 then return nil, "A 32nd note is the shortest." end
+  if op == "+" and v.base >= 32 then return nil, "A 32nd note is the shortest." end
   if nt.q + len > next_start(b, nt.q) + 1e-6 then
     return nil, "There is no room for a longer note (the next note or the end of the bar is there)."
   end
@@ -2091,7 +2091,7 @@ local HELP_TOPICS = {
 - An empty place: type a number for a new note.
 - Double-click: the note's box (a fret, then Enter; Left / Right moves it).
 # Lengths
-- + : twice as long. - : half as long. "." : a dot. "/" : a triplet (again: back).
+- + : half as long (an 8th to a 16th). - : twice as long. "." : a dot. "/" : a triplet (again: back).
 # Lines and bars
 - & : the next bar up into this line. Ctrl+Enter: a new line after this bar.
 - Tab dropdown > Layout...: bars per line, or Reset.
@@ -2433,11 +2433,13 @@ function ICON.next(dl, cx, cy, col) -- >>
 end
 function ICON.play(dl, cx, cy, col) ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 6, cx - 4, cy + 6, cx + 6, cy, col) end
 function ICON.stop(dl, cx, cy, col) ImGui.DrawList_AddRectFilled(dl, cx - 5, cy - 5, cx + 5, cy + 5, col, 1) end
-function ICON.loop(dl, cx, cy, col) -- a round arrow (the Loop button, as in Guitar Pro)
-  ImGui.DrawList_PathArcTo(dl, cx, cy, 6, -0.35 * math.pi, 1.35 * math.pi)
-  ImGui.DrawList_PathStroke(dl, col, 0, 1.6)
-  local ex, ey = cx + 6 * math.cos(-0.35 * math.pi), cy + 6 * math.sin(-0.35 * math.pi) -- (the arrow head at its end)
-  ImGui.DrawList_AddTriangleFilled(dl, ex - 3, ey - 3, ex + 3, ey - 1, ex - 1, ey + 3, col)
+function ICON.loop(dl, cx, cy, col) -- 2 arrows in a loop, as REAPER's Repeat (top: to the right; bottom: to the left)
+  for d = -1, 1, 2 do -- (d = -1 the top arrow, 1 the bottom one: the same arrow turned half around)
+    ImGui.DrawList_PathArcTo(dl, cx + 3 * d, cy, 4, d < 0 and math.pi or 0, d < 0 and 1.5 * math.pi or 0.5 * math.pi)
+    ImGui.DrawList_PathLineTo(dl, cx - 2 * d, cy + 4 * d)
+    ImGui.DrawList_PathStroke(dl, col, 0, 1.6)
+    ImGui.DrawList_AddTriangleFilled(dl, cx - 2 * d, cy + 7 * d, cx - 2 * d, cy + d, cx - 6 * d, cy + 4 * d, col)
+  end
 end
 function ICON.metro(dl, cx, cy, col) -- a metronome: its body and the pendulum
   ImGui.DrawList_AddQuad(dl, cx - 3, cy - 7, cx + 3, cy - 7, cx + 6, cy + 7, cx - 6, cy + 7, col, 1.5)
@@ -3551,27 +3553,29 @@ function UI.tab_pm(dl, tab, ln, ox, top)
   UI.unfont()
 end
 local BEAMS = { [8] = 1, [16] = 2, [32] = 3 }
--- A rest of value v at x (y: the middle of the stems), as Guitar Pro draws it (small and grey).
+-- A rest of value v at x (y: the middle of the stems), as Guitar Pro draws it (grey; bold lines, the user's
+-- choice, 26 November 2026).
 function UI.tab_rest(dl, v, x, y, col)
   local z = TZ.z
+  local th = 2 * z -- (the line width)
   if v.base <= 2 then -- (a whole rest hangs from a line, a half rest sits on it)
-    ImGui.DrawList_AddLine(dl, x - 5 * z, y - 2 * z, x + 5 * z, y - 2 * z, col, 1)
-    if v.base == 1 then ImGui.DrawList_AddRectFilled(dl, x - 3 * z, y - 2 * z, x + 3 * z, y + z, col)
-    else ImGui.DrawList_AddRectFilled(dl, x - 3 * z, y - 5 * z, x + 3 * z, y - 2 * z, col) end
+    ImGui.DrawList_AddLine(dl, x - 6 * z, y - 2 * z, x + 6 * z, y - 2 * z, col, 1.5 * z)
+    if v.base == 1 then ImGui.DrawList_AddRectFilled(dl, x - 4 * z, y - 2 * z, x + 4 * z, y + 2 * z, col)
+    else ImGui.DrawList_AddRectFilled(dl, x - 4 * z, y - 6 * z, x + 4 * z, y - 2 * z, col) end
   elseif v.base == 4 then -- (a zigzag)
-    ImGui.DrawList_AddLine(dl, x - z, y - 7 * z, x + 2 * z, y - 3 * z, col, 1.5)
-    ImGui.DrawList_AddLine(dl, x + 2 * z, y - 3 * z, x - 2 * z, y + z, col, 1.5)
-    ImGui.DrawList_AddLine(dl, x - 2 * z, y + z, x + 2 * z, y + 5 * z, col, 1.5)
-    ImGui.DrawList_AddLine(dl, x + 2 * z, y + 5 * z, x - z, y + 7 * z, col, 1.5)
+    ImGui.DrawList_AddLine(dl, x - z, y - 7 * z, x + 2 * z, y - 3 * z, col, 2.5 * z)
+    ImGui.DrawList_AddLine(dl, x + 2 * z, y - 3 * z, x - 2 * z, y + z, col, 2.5 * z)
+    ImGui.DrawList_AddLine(dl, x - 2 * z, y + z, x + 2 * z, y + 5 * z, col, 2.5 * z)
+    ImGui.DrawList_AddLine(dl, x + 2 * z, y + 5 * z, x - z, y + 7 * z, col, 2.5 * z)
   else -- (a slanted stem with 1, 2 or 3 flags)
-    ImGui.DrawList_AddLine(dl, x + 3 * z, y - 6 * z, x - z, y + 6 * z, col, 1)
+    ImGui.DrawList_AddLine(dl, x + 3 * z, y - 6 * z, x - z, y + 6 * z, col, th)
     for k = 0, BEAMS[v.base] - 1 do
       local fy = y + (k * 4 - 5) * z
-      ImGui.DrawList_AddCircleFilled(dl, x - 2 * z, fy, 1.5 * z, col)
-      ImGui.DrawList_AddLine(dl, x - 2 * z, fy + z, x + (3 - k * 1.3) * z, fy, col, 1)
+      ImGui.DrawList_AddCircleFilled(dl, x - 2 * z, fy, 2 * z, col)
+      ImGui.DrawList_AddLine(dl, x - 2 * z, fy + z, x + (3 - k * 1.3) * z, fy, col, th)
     end
   end
-  if v.dot then ImGui.DrawList_AddCircleFilled(dl, x + 6 * z, y, 1.3 * z, col) end
+  if v.dot then ImGui.DrawList_AddCircleFilled(dl, x + 7 * z, y, 1.6 * z, col) end
 end
 -- The note lengths of 1 bar (b.rh: Tabs.rhythm); lx: the left of the strings, y: the top of the stems. Stems (a half
 -- note: short, a whole note: none), beams over the 8ths and shorter of 1 beat, flags, dots, rests, the "3".
@@ -3598,7 +3602,8 @@ function UI.tab_rhythm(dl, b, lx, y, ym)
       elseif k > 1 and rh[k - 1].join and n > (BEAMS[rh[k - 1].v.base] or 0) then -- (the last of a group: stubs back)
         for l = BEAMS[rh[k - 1].v.base], n - 1 do ImGui.DrawList_AddRectFilled(dl, x - fl, ye - bh - l * bs, x, ye - l * bs, col) end
       end
-      if v.dot then ImGui.DrawList_AddCircleFilled(dl, x + 4 * z, ye - z, 1.3 * z, col) end
+      -- (the dot right of the stem, under its end: at the end it was hidden in a flag or a beam)
+      if v.dot then ImGui.DrawList_AddCircleFilled(dl, x + 3.5 * z, ye + 2.5 * z, 1.6 * z, col) end
     end
     if e.t3 then -- (a triplet group, as Guitar Pro draws it: a bracket from its first to its last note, "3" in a gap
       -- in its middle, the ends turned up to the notes; the user's screenshot, 24 November 2026)

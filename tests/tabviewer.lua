@@ -1053,15 +1053,15 @@ test("note lengths by key: + / - / . for the whole chord, the limits; / a triple
     for _, n in ipairs(R.tab.bars[1].notes) do if math.abs(n.q - q) < 1e-6 then t[#t + 1] = string.format("%g", n.w) end end
     return table.concat(t, " ")
   end
-  ok(Tabs.length(1, 1, "+"), "+"); eq(lens(0), "0.5 0.5", "the whole chord: an 8th")
+  ok(Tabs.length(1, 1, "-"), "-"); eq(lens(0), "0.5 0.5", "the whole chord: an 8th")
   ok(Tabs.length(1, 1, "."), "."); eq(lens(0), "0.75 0.75", "dotted")
-  eq(select(2, Tabs.length(1, 1, "+")), "There is no room for a longer note (the next note or the end of the bar is there).")
-  ok(Tabs.length(1, 1, ".")); ok(Tabs.length(1, 1, "-")); ok(Tabs.length(1, 1, "-"))
+  eq(select(2, Tabs.length(1, 1, "-")), "There is no room for a longer note (the next note or the end of the bar is there).")
+  ok(Tabs.length(1, 1, ".")); ok(Tabs.length(1, 1, "+")); ok(Tabs.length(1, 1, "+"))
   eq(lens(0), "0.125 0.125", "a 32nd"); eq(R.tab.bars[1].fine, true, "the bar with a 32nd: wider")
-  eq(select(2, Tabs.length(1, 1, "-")), "A 32nd note is the shortest.")
+  eq(select(2, Tabs.length(1, 1, "+")), "A 32nd note is the shortest.")
   local i = Tabs.note_at(R.tab, 1, 2.5, 1)
-  ok(Tabs.length(1, i, "+")); ok(Tabs.length(1, i, "+")); ok(Tabs.length(1, i, ".")); eq(lens(2.5), "1.5", "to the bar end")
-  eq(select(2, Tabs.length(1, i, "+")), "There is no room for a longer note (the next note or the end of the bar is there).")
+  ok(Tabs.length(1, i, "-")); ok(Tabs.length(1, i, "-")); ok(Tabs.length(1, i, ".")); eq(lens(2.5), "1.5", "to the bar end")
+  eq(select(2, Tabs.length(1, i, "-")), "There is no room for a longer note (the next note or the end of the bar is there).")
   -- "/": the 3 notes of beat 3 go to the 3 triplet places (8th triplets); the grid of that beat is 1/3
   i = Tabs.note_at(R.tab, 1, 2.25, 2)
   local q = Tabs.triplet(1, i)
