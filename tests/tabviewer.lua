@@ -1792,12 +1792,18 @@ test("the Metronome and Count-in buttons (26 November 2026): REAPER's own switch
   local CMD = C.CFG.CMD
   eq(r.kbd_getTextFromCmd(CMD.METRO, 0), "Options: Toggle metronome", "the action of the Metronome button")
   eq(r.kbd_getTextFromCmd(CMD.COUNT_IN, 0), "Pre-roll: Toggle pre-roll on play", "the Count-in button: REAPER's pre-roll")
+  -- (the value that the Metronome / pre-roll settings window writes: the button follows it, both ways)
+  local VAR = { [CMD.METRO] = "projmetroen", [CMD.COUNT_IN] = "preroll" }
+  local function bit1(name) local _, v = r.get_config_var_string(name); return math.floor(tonumber(v) or -1) & 1 end
   for _, id in ipairs({ CMD.METRO, CMD.COUNT_IN }) do -- (a switch with a state: the button shows it)
     local before = r.GetToggleCommandStateEx(0, id)
+    eq(bit1(VAR[id]), before, VAR[id] .. ": the setting and the button agree")
     r.Main_OnCommand(id, 0)
     eq(r.GetToggleCommandStateEx(0, id), 1 - before, "a click switches it")
+    eq(bit1(VAR[id]), 1 - before, VAR[id] .. ": the setting follows")
     r.Main_OnCommand(id, 0)
     eq(r.GetToggleCommandStateEx(0, id), before, "again: back")
+    eq(bit1(VAR[id]), before, VAR[id] .. ": back")
   end
   R.page = 1
   C.UI.draw_toolbar() -- (the 3 buttons at the left: no error)
