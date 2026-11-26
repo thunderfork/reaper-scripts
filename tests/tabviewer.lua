@@ -1818,6 +1818,8 @@ test("the Metronome and Count-in buttons (26 November 2026): REAPER's own switch
   eq((T.count_in(96, 100, 0, 4)), nil, "no tempo: nothing"); eq((T.count_in(97, 100, 1, 3)), 1, "3/4: 1 2 3")
   R.page = 1
   C.UI.draw_toolbar() -- (the 3 buttons at the left: no error)
+  for i = 1, 20 do R.help_cur = i; C.UI.draw_help() end -- (each Help topic open: its headings and points draw)
+  R.help_cur = nil
 end)
 
 for _, t in ipairs(tests) do

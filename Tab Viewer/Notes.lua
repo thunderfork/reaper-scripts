@@ -2296,76 +2296,62 @@ function N.attach(c) ctx = c end
 -- The Help topics of the Detection tab (Tab Viewer's Help shows them after its own).
 N.HELP_TOPICS = {
   { title = "Detection: markers to learn the part", text = [[
-Want the bass notes as markers, to learn the part in REAPER? That is the Detection tab.
-
-1. Got a Guitar Pro tab of the song? Open it (Tab tab > Open tab...), set the tempo here (Tempo at the top: From the tab, Find tempo, then Set tempo), then click "Import from tab": the list gets the exact notes, strings and frets of the tab.
-2. No tab? Separate the song and put the bass file on a track. Set the tempo here (Tempo at the top: listen to the drums or a click track), then pick the bass track (Track) and click "Find notes": Tab Viewer listens to it.
-3. Check the list. Yellow lines are not sure: click one to hear it in a loop, point at it to see why.
-4. Click "Write". One Ctrl+Z takes it all away again.
-
-No plugins needed: Tab Viewer reads the bass file itself, so an octave shifter or a tuner on the track changes nothing. Set the tempo first (Tempo at the top), so the markers land on the real bars of the song (Set tempo then also moves the list with the audio).]] },
+# With a Guitar Pro tab
+- Open it in the Tab tab.
+- Tempo (at the top): From the tab, Find tempo, then Set tempo.
+- Click Import from tab.
+# Without a tab
+- Put the separated bass on a track.
+- Tempo: listen to the drums or a click, then Set tempo.
+- Track: pick the bass. Click Find notes.
+# Then
+- Check the yellow lines (not sure).
+- Click Write. 1 Ctrl+Z takes it all away.
+- No plugins needed: Tab Viewer reads the audio itself.]] },
   { title = "Checking the list", text = [[
-Click a line: REAPER plays it in a loop, again and again (Space, Escape or a click on another line ends it; Up, Down and N loop the next one). Double-click it (or press F2) to type other notes. You can add anything, for example a string and a fret: F (D 3).
-
-Same mistake in more places? After a correction, Tab Viewer offers to change the other lines with the same notes too. The Repeats column shows how many there are.
-
-Yellow but right? Click "OK" in the line, or right-click > Sure.
-
-Join puts a line together with the next one. Split cuts a line at the edit cursor (or in the middle). "+ Add" makes a new line at the edit cursor (while playing: at the play position). Right-click a line for more.
-
-Made a mistake? The Undo arrow at the top (or Ctrl+Z in this tab) takes back the last step: a change of the list, or Write, Clear or Export. The Redo arrow (Ctrl+Shift+Z) does it again.
-
-Want to start again? More... > Clear... removes the list and what the Detection tab wrote (its markers, the Notes track items, the Bass MIDI item). It asks first; Ctrl+Z (or the Undo arrow) brings it all back.
-
-Keys: Up / Down = previous / next line, N = next line that is not sure, Space = play / stop, F2 = type the notes, Delete = delete the line.]] },
+- Click a line: it plays in a loop. Space or Escape: stop.
+- Up / Down: the line before or after. N: the next yellow line.
+- Double-click (or F2): type other notes, for example F (D 3).
+- After a fix, Tab Viewer offers the same fix for the same notes (the Repeats column).
+- Yellow but right? Click OK, or right-click > Sure.
+- Join, Split (at the edit cursor), + Add, Delete. Right-click a line: more.
+- Undo / Redo arrows: Ctrl+Z / Ctrl+Shift+Z.
+- Start again? More... > Clear... (Undo brings it back).]] },
   { title = "The found notes as a tab", text = [[
-No Guitar Pro tab for the song? After Find notes, the Tab tab shows the found notes as bass tab, with the strings and frets of the list. It works as a Guitar Pro tab: click to play from a note, fix a note while the song is stopped, see the note lengths, loop a bar.
-
-Fixed the tab? Click "Import to list": the list is made again from your tab (Undo in the Detection tab brings the old list back). Your fixes are saved with the list. Find notes again starts a new tab (Undo brings the old one back).]] },
+- After Find notes, the Tab tab shows them as a bass tab.
+- Fix them there, then click Import to list.
+- Find notes again: a new tab (Undo: the old one).]] },
   { title = "How the notes become markers", text = [[
-Lines (under Key) decides how the notes are split into lines; Write makes 1 marker of each line.
-
-1 per bar: each bar gets a marker with its notes. A bar with the same notes as the bar before it gets none, so a long C stays 1 marker. A long part that comes back starts with a marker of its own.
-
-Every note change: each new note gets its own marker.
-
-Each note is in the bar where it starts, as in the tab (a note played up to 30 ms early still counts as the "1" of its bar). A note that still sounds in the next bar is the first note of that line too (often it is played again there, and the detection heard 1 long note). A bar with the same notes as the bar before it gets no line, so a long C stays 1 marker.]] },
+- Lines: 1 per bar, or Every note change. Write makes 1 marker of each line.
+- 1 per bar: a bar with the same notes as the bar before gets none.
+- A note belongs to the bar where it starts (up to 30 ms early counts as the 1).]] },
   { title = "Key and note names", text = [[
-The key comes from the file name (for example "C minor"). Wrong or missing? Pick it, and all the names change with it: Ab instead of G#. Text in brackets stays as you typed it.
-
-The song changes key (the last chorus a step up)? Right-click the first line in the new key > New key from here. A blue line "Key: D major" shows it in the list, and Write puts a marker "Key: D major" there.
-
-Which E is it? A note in the lowest octave of the bass has its plain name ("E" = the open E string). A higher note gets its string and fret: "E (A 7)" is the E on the A string, 7th fret. Tab Viewer puts it on the lowest string with fret 7 or less. Not sure about the octave? The line is yellow.
-
-A fast run (4 notes or more in a bar)? Every note gets its string and fret, chosen for the fewest hand moves: "F (D 3) - Eb (D 1) - C (A 3) - Bb (A 1)".
-
-The same note played again and again (8ths, 16ths)? Tab Viewer listens for each pluck, so the tab and the export get them as separate notes (the markers stay short). Plucks still missed? Set the tempo first, then turn on Settings > Detection > Split repeated notes (off by default): it also checks every 16th of a long note for a pluck it missed.
-
-Rather string numbers, as in tab books ("E (3 7)")? Settings > Detection > String names.
-
-Pick the "Tuning" of the bass for the song: the standard tunings from E down to B, the drop tunings (Drop D to Drop B), then the 5-string tunings. Changed it after Find notes? The list follows at once: the strings and frets, and the low notes that can now be an octave lower are heard again (your corrections stay). Only the names, no frets? Turn off Settings > Detection > String for high notes, and Settings > Detection > Fingering for runs.]] },
+- Key: from the file name. Pick another: all names change (Ab or G#).
+- New key in the song? Right-click its first line > New key from here.
+- Low notes: the plain name ("E"). Higher: string and fret ("E (A 7)").
+- Runs of 4 notes or more: string and fret for each note, with the fewest hand moves.
+- Repeated notes missed? Settings > Detection > Split repeated notes.
+- Numbers as in tab books ("E (3 7)")? Settings > Detection > String names.
+- Only names? Turn off Settings > Detection > String for high notes and Fingering for runs.
+- Tuning: pick the bass tuning of the song. The list follows.]] },
   { title = "Markers or a Notes track", text = [[
-The dropdown next to "Write" decides what it makes: markers, text items on a "Notes" track above the bass, or both. The text items have more room than the marker names, so long lines stay readable.
-
-Write again as often as you like: only the markers and text items of the Detection tab are replaced.]] },
+- The dropdown next to Write: markers, text items on a Notes track, or both.
+- Write again any time: only the Detection tab's markers and items are replaced.]] },
   { title = "Export (Guitar Pro, MIDI)", text = [[
-Want the part in Guitar Pro, or want to hear the notes? Click More... > Export... after Find notes.
-
-Guitar Pro file: a .gp5 file with the notes as the Tab tab shows them: their strings and frets, your fixes there, the tuning, the bars and the tempo. Open it in Guitar Pro (File > Open; Guitar Pro 5 to 8).
-
-MIDI: a MIDI item on a "Bass MIDI" track below the bass (an older export there is replaced; 1 Ctrl+Z takes it back), and a .mid file. Guitar Pro can import the .mid file too (File > Import > MIDI), but then it chooses its own strings and frets. Rhythm moves the MIDI notes to 16th notes (or 8th notes, or not at all).
-
-The files go into the project folder, or into a folder of your own (Folder > Change...; it stays for all songs). Set the tempo first (Tempo at the top of this tab), so the notes land on the right bars.
-
-The export uses the notes of the list (found, or imported from the tab), not the texts of the list: your typed corrections are not in it.]] },
+- More... > Export...
+- Guitar Pro (.gp5): the notes as the Tab tab shows them. Guitar Pro 5 to 8 open it.
+- MIDI: an item on a "Bass MIDI" track, and a .mid file. Rhythm: to 16ths, 8ths, or not.
+- The files go to the project folder, or Folder > Change...
+- Your typed corrections are not in the export.]] },
   { title = "Done: clean up", text = [[
-Done: clean up (in More...) makes a region over the whole song with the artist, the title and the key. If you like, it also removes the plugins from the bass track and deletes the metronome track (you see what before you click).
-
-Then the list leaves the project. The markers and the Notes track stay. Ctrl+Z brings the plugins and tracks back.]] },
+- More... > Done: clean up: a region over the song (artist, title, key).
+- If you like: it removes the bass track's plugins and the metronome track.
+- The list leaves the project. The markers and the Notes track stay.
+- Ctrl+Z brings the plugins and tracks back.]] },
   { title = "Why are some notes wrong?", text = [[
-Fast fills, slides, and drums or guitars that stayed in the bass file. 2 methods listen to every note; where they disagree, the line is yellow. They can also make the same mistake, so always listen once.
-
-A note that fades out can turn into its own overtone (a 5th higher). These lines are yellow too.]] },
+- Fast fills, slides, or other instruments left in the bass file.
+- 2 methods listen. Where they disagree, the line is yellow. Listen once anyway.
+- A fading note can turn into its overtone (a 5th higher): yellow too.]] },
 }
 local MODES = { { "bar", "1 per bar" }, { "change", "Every note change" } }
 -- An example of each Lines choice (the grey line under it).

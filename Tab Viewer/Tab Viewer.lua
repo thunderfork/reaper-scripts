@@ -2035,55 +2035,92 @@ function UI.zoom_fonts()
   Tabs.build()
 end
 
-local HELP_INTRO = "Tab Viewer shows a Guitar Pro tab in your project: pick a track, read its tab, and click to hear "
-  .. "the song from there. The Detection tab turns the bass notes (from the tab, or found in a bass stem) into markers."
+local HELP_INTRO = "Guitar Pro tabs on your song, in REAPER. The Detection tab turns the bass notes into markers."
+-- The Help topics: a line "# ..." is a small heading, "- ..." a point; UI.draw_help shows them (split once: HELP_LINES).
 local HELP_TOPICS = {
   { title = "Open a tab", text = [[
-Got a Guitar Pro tab of the song? Click "Open tab..." and pick the file: .gp (Guitar Pro 7 and 8), .gpx (Guitar Pro 6), .gp5, .gp4 or .gp3 (Guitar Pro 5, 4 and 3).
-
-Several songs in 1 project, each in its own region? Put the edit cursor in a region, then Open tab...: the tab belongs to that region and moves with it. While the song plays, the window shows the tab of the region that plays (stopped: the region at the edit cursor). The Tab dropdown lists the tabs of the project; its Region menu links a tab to another region, and "Remove this tab" takes it out of the project. No region at the edit cursor: the tab is for the whole project.
-
-The Track dropdown has every track of the tab: its name, how many strings it has and its tuning ("Standard", "Drop D", "Eb Standard", or the notes of the open strings), and the capo. Point at a track for its open strings. Tab Viewer starts with the bass (else a guitar), and the project remembers your choice.]] },
-  { title = "Reading the tab", text = [[
-The lines are the strings, the lowest at the bottom; the numbers on them are the frets. Notes 1 above the other are played together (a chord). The chord names above the tab come from the tab; where it has none, Tab Viewer names the chord from its notes (off: Settings > Tab > Chord names). The grey marks show how to play a note, as in Guitar Pro: an arc to the next note is a hammer-on or pull-off, a sloped line a slide, a curved arrow a bend, a wave a vibrato, "P.M. - - -|" a palm mute, <12> a harmonic (off: Settings > Tab > Playing marks). A tremolo-picked note is written out as the notes you pick (off: Settings > Tab > Tremolo as notes; then it gets slashes above it). A note in brackets, (4), is held on from the note before it (an arc joins them). An x is a dead note (muted, no pitch). Under the tab you see how long each note is, as in printed music: stems, joined 8ths and 16ths, dots, rests and the 3 of triplets (off: Settings > Tab > Note lengths). The section names of the tab ("Intro", "Solo") are over their first bar, and the tempo (a quarter note "= 120") where it changes. The time signature (4 over 4) is at the start and where it changes; a double bar ends the song.Repeats look as in Guitar Pro: |: and :| around the bars that repeat, x3 when they play 3 times, and the endings 1. and 2. over the bars of each pass. While the song plays, the blue line jumps back at a repeat. Rather read the bars one after the other, as they play? Turn off Settings > Tab > Repeats as written.
-
-Tab too small to read from where you sit? Click the small + next to the percent at the top (- below it makes it smaller again; right-click: 100%). The size stays for the next time.
-
-Want to hear a part? Click it: the song plays from there. While it plays, a blue line shows where the song is, and the tab scrolls along (off: Settings > Tab > Follow playback). Stopped, the blue line shows the edit cursor.
-
-Does the tab start later than the song (an intro, a count-in)? Set Start (the bar of the song where bar 1 of the tab plays) with < and > (hold for faster). The bar numbers above the tab are then the song's. A tab in a region counts the bars from the first bar of its region ("bar ... of the region"). From that bar on, the tab follows the beats of your project, so set the tempo of the song first.
-
-Want to practise a hard part? Drag over the tab from its first note to its last (or click the first note, then Shift+click the last): a light blue band selects it (REAPER's time selection). Drag a round handle at its ends to make it shorter or longer. Then click the Loop button at the top, right of the play buttons (blue while it loops; no selection: it loops the bar at the edit cursor). Escape: no selection, no loop. Want a click to play along? Metronome switches REAPER's metronome; blue while on. Want a count before the song? Count-in (the hourglass) is REAPER's Count-in before playback: clicks, then the song starts (no audio from before it). Blue while on; during the count a big 1 2 3 4 shows over the tab (off: Settings > Tab > Count-in display). Without the SWS extension, the hourglass opens REAPER's Metronome settings: tick Count-in before playback there.
-
-Your bass tuned lower or higher than the tab? Transpose (the tuning fork, left of the play buttons) moves the tab's frets and the note names of the Detection list by half steps with + and - (the audio stays; saved in the project; a click on the number: 0). A note that has no string left goes an octave up or down and turns yellow. Fixes of the tab need Transpose at 0. Too fast? The speed (the note, right of the play buttons) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
-
-A drum track? Drums come in a later version (a drum grid).]] },
+- Open tab...: pick a .gp, .gpx, .gp5, .gp4 or .gp3 file.
+- The tab belongs to the region at the edit cursor (no region: the whole project).
+- Several songs? While the song plays, you see the tab of the region that plays.
+- Tab dropdown: the tabs of the project. Region: link a tab to another region. Remove this tab.
+- Track: the instrument (strings, tuning, capo). The bass comes first.]] },
+  { title = "Read the tab", text = [[
+- Lines: the strings, the lowest at the bottom. Numbers: the frets.
+- Notes above each other: a chord. Chord names above the tab.
+- Grey marks, as in Guitar Pro: arc = hammer-on or pull-off, sloped line = slide, arrow = bend, wave = vibrato, P.M. = palm mute, <12> = harmonic.
+- (4): held from the note before. x: a dead note.
+- Under the tab: the note lengths.
+- Repeats: |: :|, x3, endings 1. 2. The blue line jumps back.
+- Too much on the screen? Turn parts off in Settings > Tab.
+- Drums: not yet.]] },
+  { title = "Play and practise", text = [[
+# Play
+- Click the tab: the song plays from there.
+- The blue line shows where it plays. The tab scrolls along (Settings > Tab > Follow playback).
+- Tab too small? The magnifying glass: + / - (right-click: 100%).
+# Loop a hard part
+- Drag over the notes (or click 1 note, then Shift+click another).
+- Drag the round handles to change it.
+- Click Loop, right of the play buttons. Escape: no loop.
+# Click and count-in
+- Metronome: REAPER's click.
+- Count-in (the hourglass): clicks, then the song. A big 1 2 3 4 shows over the tab (Settings > Tab > Count-in display).
+- No SWS extension? The hourglass opens REAPER's Metronome settings: tick Count-in before playback.
+# Speed and tuning
+- Too fast? The speed (the note): slower, the same pitch. 100% again when Tab Viewer closes.
+- Bass tuned lower? Transpose (the tuning fork): + / - in half steps. The audio stays. Click the number: 0.
+- A yellow note: no string for it, so it moved an octave.]] },
+  { title = "Line up the tab with the song", text = [[
+- First put REAPER's bars on the song: Find tempo (the next topic).
+- Start: the bar of the song where bar 1 of the tab plays. Change it with < and > (hold: faster).
+- In a region, the bars count from the first bar of the region.]] },
   { title = "Find tempo", text = [[
-Does the tab drift away from the song? Then REAPER's bars are not on the song yet. Go to the Detection tab: Tempo is at the top. Pick what to listen to, then click Find tempo.
-
-From the tab (the first choice with a Guitar Pro tab): Tab Viewer takes the tempo, the tempo changes and the time signatures of the tab, without listening. It puts bar 1 where the first note of the tab meets the first sound of the song (the selected item, else the longest one in the tab's region).
-
-A track (best a metronome or the drums): Find tempo listens to it while the song plays. Then the Tempo dropdown fixes a tempo that came out half or double, and Style is 1 tempo (a steady grid) or Follow the song (a tempo marker on every bar, so the bars stay on the drums; the grey line says which one suits the song).
-
-Got a result? Its rows show under Listen to, and the button becomes the blue Set tempo. Is bar 1 on the first beat of the song? If not, move it with < and >. Then click Set tempo: the tempo goes into the project (1 undo step; at most 1 decimal place, for example 159.9 BPM), and the tab starts on that bar. Play the song with REAPER's metronome to check it; wrong? Ctrl+Z, move Bar 1, and Set tempo again. Want another track to listen to? Pick it in Listen to: the result goes, and Find tempo is back.
-
-REAPER's tempo already right for the song (for example it was recorded to a click)? Click The tempo is right.]] },
+- Does the tab drift away from the song? REAPER's bars are not on the song yet.
+- Detection tab > Tempo. Pick in Listen to, then click Find tempo:
+- From the tab: the tab's tempos and time signatures, no listening. Bar 1 goes on the first sound of the song.
+- A track (best a click or the drums): Tab Viewer listens while the song plays.
+- Check the result: Tempo (half or double?), Style, Bar 1 (< and >).
+- Set tempo: it goes into the project (1 Ctrl+Z takes it back).
+- Tempo already right (recorded to a click)? Click The tempo is right.]] },
   { title = "Fix the tab", text = [[
-A wrong note in the tab? Stop the song, then click the note: a blue box selects it (the edit cursor goes there). Left / Right selects the note before or after it, Up / Down the note (or the empty place) on the next string, as in Guitar Pro. Alt+Up / Alt+Down puts the note on the next string (the same pitch), a number gives it a new fret ("1" "2" quickly = 12), Delete removes it (a rest is left there). On an empty place, type a number: a new note, as long as the note before it. Double-click a note to open its box: type a new fret and press Enter, or move the note with Left / Right (a 16th at a time, inside its bar; never onto another note). A missing note? Double-click an empty place on its string, type the fret and press Enter (a new note is as long as the note before it; in a triplet beat, 1 triplet place). Wrong length? With a note selected, + makes it twice as long and - half as long, "." adds or removes the dot (all the notes that start with it change too; never past the next note or the bar end). "/" turns its beat into a triplet (its notes move to the 3 triplet places), and "/" again back to 16ths.
-
-Want the lines as in your Guitar Pro page? Select a note in a bar, then press & to pull the first bar of the next line up into this line, or Ctrl+Enter to start a new line after this bar (as in Guitar Pro). The lines after it fill up again by themselves. Your breaks are saved in the project; a line wider than the window gets narrower. Wrong time signature in the tab? Right-click a bar > Time signature...: the new one for this bar or the following bars too; the notes fit into the bar and the bar keeps its time (4/4 at 125 becomes 6/8 at 93.75). Tab dropdown > Layout...: how many bars on each line (Automatic: as many as fit), and Reset to remove your own breaks (breaks need Settings > Tab > Repeats as written on).
-
-A fix changes the bar as it is written, so a repeat of that bar changes too. Made a mistake? Ctrl+Z in this window (or the Undo arrow at the top right) takes it back. Want the file's notes back? Tab dropdown > Undo all fixes (only the track in the window). Ctrl+Z remembers the fixes of this session only: after a restart, Undo all fixes is the way back. Your fixes are green (Settings > Tab > Mark my fixes). Your fixes are saved in the project; the Guitar Pro file and its copy stay as they are. Drum tracks can not be fixed yet.]] },
+# Notes (stop the song first)
+- Click a note: it is selected. Arrows: the next note or string.
+- Type a number: the fret ("1" "2" quickly = 12). Delete: remove it.
+- Alt+Up / Down: the same pitch on the next string.
+- An empty place: type a number for a new note.
+- Double-click: the note's box (a fret, then Enter; Left / Right moves it).
+# Lengths
+- + : twice as long. - : half as long. "." : a dot. "/" : a triplet (again: back).
+# Lines and bars
+- & : the next bar up into this line. Ctrl+Enter: a new line after this bar.
+- Tab dropdown > Layout...: bars per line, or Reset.
+- Right-click a bar > Time signature...
+# Undo
+- Ctrl+Z or the Undo arrow (this session only).
+- Tab dropdown > Undo all fixes: the file's notes again.
+# Good to know
+- Your fixes are green and saved in the project. The file stays as it is.
+- A fix changes every repeat of that bar.
+- Transpose must be 0. Drums: not yet.]] },
   { title = "Where your stuff is saved", text = [[
-In the project: its tabs, the region of each one, the track you picked, the bar where the tab starts, your line breaks, the bars per line (Layout...), your time signatures, and your fixes of the tab. Tab Viewer copies each tab into a "Tabs" folder next to the project file, so the project keeps its tab when you move or delete the original. Not saved yet? The copy is made when you save the project.
-
-In the project, also: the Notes list until you click More... > Done: clean up (the found notes, the tuning, the key changes, and your fixes of the found notes' tab). Save the project to keep it.
-
-On this computer: the Light theme, the hidden tabs, the folded Settings sections, Follow playback, Chord names, Mark my fixes, Playing marks, Note lengths, Tremolo as notes, Repeats as written, the window dock, Settings > Detection, the Write choice and the export folder.
-
-Not saved: the loop and the speed (back to 100% when Tab Viewer closes).]] },
+# In the project
+- The tabs (copied into a "Tabs" folder next to the project file when you save), their regions, tracks and Start.
+- Your fixes, line breaks, bars per line, time signatures and Transpose.
+- The Detection list, until More... > Done: clean up.
+# On this computer
+- The Settings, the tab size, the window's place and the export folder.
+# Not saved
+- The loop and the speed.]] },
 }
 for _, tp in ipairs(Notes.HELP_TOPICS) do table.insert(HELP_TOPICS, #HELP_TOPICS, tp) end -- (before "Where your stuff is saved")
+-- The lines of each topic, split once: { kind, text } with kind "#" (a small heading), "-" (a point) or "" (a line).
+for _, tp in ipairs(HELP_TOPICS) do
+  tp.lines = {}
+  for ln in (tp.text .. "\n"):gmatch("(.-)\n") do
+    local k, s = ln:match("^([#-]) (.*)$")
+    if ln ~= "" then tp.lines[#tp.lines + 1] = { k or "", s or ln } end
+  end
+end
 
 -- The theme: the same colours and sizes as Chart Cue (pushed every frame; UI.pop_style pops them).
 local STYLE_COLS = {
@@ -2985,7 +3022,20 @@ function UI.draw_help()
     if open ~= (R.help_cur == i) then R.help_cur = open and i or nil end
     if open then
       ImGui.Indent(ctx, 10)
-      ImGui.Text(ctx, tp.text)
+      for j, l in ipairs(tp.lines) do
+        if l[1] == "#" then
+          if j > 1 then UI.vgap(6) end
+          ImGui.PushFont(ctx, bold)
+          ImGui.Text(ctx, l[2])
+          ImGui.PopFont(ctx)
+        elseif l[1] == "-" then
+          ImGui.Bullet(ctx)
+          ImGui.SameLine(ctx)
+          ImGui.Text(ctx, l[2]) -- (a wrapped line starts under the text, not under the bullet)
+        else
+          ImGui.Text(ctx, l[2])
+        end
+      end
       ImGui.Unindent(ctx, 10)
       UI.vgap(8)
     end
