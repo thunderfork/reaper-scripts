@@ -219,7 +219,7 @@ Tab Viewer shows a Guitar Pro tab inside REAPER, on the bars of your song, and f
 - **Open a tab:** .gp (Guitar Pro 7 / 8), .gpx (6), .gp5, .gp4 and .gp3. Pick the guitar or bass track; you see its tuning and capo. Each region can have its own tab, and the window shows the tab where the song plays.
 - **As Guitar Pro draws it:** note lengths, rests, triplets, ties, hammer-ons, slides, bends, vibrato, palm mutes, harmonics, dead notes, chord names, section names, tempo marks, time signatures and repeats with their endings (1. 2.).
 - **On the song:** a blue line follows playback; click a bar to play from there. Find tempo (at the top of the Detection tab) puts REAPER's tempo and bars on the song, from the tab or from an audio track.
-- **Practise:** Shift+click a bar to loop it, and play slower (pitch kept).
+- **Practise:** drag over the tab to select a part, loop it with the Loop button, and play slower (pitch kept).
 - **Fix the tab:** select a note and type a fret, move it, change its length, or add new notes; your fixes are green and saved in the project (the file never changes). Right-click a bar to correct its time signature.
 - **Your layout:** your own line breaks (& and Ctrl+Enter, as in Guitar Pro) and a fixed number of bars per line.
 - **Detection tab:** the bass notes as markers (or text items on a "Notes" track) to learn the part: "Import to list" takes them from the tab, or "Find notes" listens to a separated bass track (no tab needed; the found notes then show as a tab too). Check the list, then Write; the note names fit the key, high notes get their string and fret. Export to MIDI for Guitar Pro.

@@ -712,7 +712,7 @@ test("your time signature: the notes fit the bar, the tempo keeps its time; this
   eq(Project.serialize(Project.parse("tab=x.gp\nmeter=12 6/8\n")), "tab=x.gp\nmeter=12 6/8\n", "written")
   -- in the window: 1 Undo step; the file's own value removes the change
   Tabs.open(src)
-  Tabs.loop(1); ok(R.loop, "a loop on bar 1")
+  Tabs.loop_toggle(); ok(R.loop, "a loop on bar 1 (the edit cursor's)")
   ok(Tabs.set_meter(1, 6, 8, false), "6/8 on bar 1")
   eq(R.loop, nil, "the bars changed: the loop ends (checkup 24 November 2026)")
   eq(Tabs.cur().meters[R.tab.bars[1].wb][1], 6); eq(R.tab.bars[1].len, 3, "3 quarter notes")
@@ -1136,31 +1136,40 @@ test("bar 1 of the tab = bar N of the song: the times, the play position, the ba
   Project.save()
 end)
 
-test("loop (Shift+click a bar): from the selected note or the edit cursor to the bar end; again: off, as before; speed", function()
+test("the selection and the loop (26 November 2026): from note to note; the Loop button; off as before; speed", function()
   Tabs.open(src) -- (bar 1 of the tab at 0 s, 120 BPM: a 4/4 bar is 2 s)
-  local proj = R.proj
-  eq(select(2, Tabs.loop_start(2, nil, nil)), 0, "no start place: the bar start")
-  eq(Tabs.loop_start(2, 3, 1), 2, "a start after the bar: the bar start")
+  local proj, tab = R.proj, R.tab
+  -- the rules: from the earlier place to the end of the later note's column; a drag; a handle
+  local rg = Tabs.range(tab, { bi = 2, q = 0 }, { bi = 1, q = 1 })
+  eq(rg.bi0 .. " " .. rg.q0 .. " " .. rg.bi1, "1 1 2", "the earlier place first, in any order")
+  eq(rg.q1, Tabs.col_end(tab.bars[2], 0), "to the end of the note at the later place")
+  eq(Tabs.col_end({ len = 4, notes = { { q = 0 }, { q = 1 }, { q = 3 } } }, 1), 3, "the next column of notes")
+  eq(Tabs.col_end({ len = 4, notes = { { q = 0 } } }, 0), 4, "no note after it: the bar end")
+  eq(Tabs.is_drag(3, 0), false, "a small move: a click"); eq(Tabs.is_drag(3, 3), true, "a drag")
+  local moved = Tabs.range(tab, { bi = 1, q = 0 }, Tabs.range_last(rg))
+  eq(moved.bi1 .. " " .. moved.q1, rg.bi1 .. " " .. rg.q1, "a handle moves 1 end: the other stays")
+  -- REAPER: the selection is the time selection; the Loop button repeats it
   r.GetSet_LoopTimeRange2(proj, true, true, 0, 0, false)
   r.GetSetRepeatEx(proj, 0)
-  R.tsel = { bi = 1, q = 1, s = 1 }
-  Tabs.loop(2)
+  Tabs.select_range({ bi0 = 1, q0 = 1, bi1 = 2, q1 = 4 })
   local a, b = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
-  near(a, 0.5, 1e-9, "from the selected note"); near(b, 4, 1e-9, "to the end of bar 2")
-  eq(r.GetSetRepeatEx(proj, -1), 1, "repeat on")
-  Tabs.loop(3) -- (another bar: the loop moves; the state before stays the one before the 1st loop)
+  near(a, 0.5, 1e-9, "from the note at beat 2"); near(b, 4, 1e-9, "to the end of bar 2")
+  eq(r.GetSetRepeatEx(proj, -1), 0, "a selection does not loop yet")
+  Tabs.loop_toggle()
+  eq(r.GetSetRepeatEx(proj, -1), 1, "Loop: repeat on"); ok(Tabs.looping())
+  Tabs.select_range({ bi0 = 3, q0 = 0, bi1 = 3, q1 = 4 }) -- (another selection while it loops)
   a, b = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
-  near(b, 6, 1e-9, "to the end of bar 3")
-  Tabs.loop(3)
-  eq(R.loop, nil, "the same bar again: off")
-  eq(r.GetSetRepeatEx(proj, -1), 0, "repeat as it was")
+  near(a, 4, 1e-9); near(b, 6, 1e-9, "the loop moves to it")
+  Tabs.loop_toggle()
+  eq(r.GetSetRepeatEx(proj, -1), 0, "Loop off: repeat as it was"); ok(R.loop and R.loop.rg, "the selection stays")
+  Tabs.loop_off()
+  eq(R.loop, nil, "Escape: no selection")
   a, b = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
   eq(a, b, "no time selection, as before")
-  R.tsel = nil
-  r.SetEditCurPos2(proj, 9, false, false) -- (after bar 2: the loop of bar 2 is the whole bar)
-  Tabs.loop(2)
-  a = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
-  near(a, 2, 1e-9, "the edit cursor after the bar: the bar start")
+  r.SetEditCurPos2(proj, 2.5, false, false)
+  Tabs.loop_toggle() -- (no selection: the bar at the edit cursor)
+  a, b = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
+  near(a, 2, 1e-9, "the bar at the edit cursor"); near(b, 4, 1e-9)
   Tabs.select(nil)
   eq(R.loop, nil, "another tab: the loop ends")
   Tabs.select(1)
@@ -1177,17 +1186,18 @@ test("checkup 24 November 2026: the loop and the selection end with the bars, th
   local proj = R.proj
   r.GetSet_LoopTimeRange2(proj, true, true, 0, 0, false)
   R.tsel = nil
-  Tabs.loop(2)
+  local bar2 = { bi0 = 2, q0 = 0, bi1 = 2, q1 = 4 }
+  Tabs.select_range(bar2)
   local a0, b0 = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
   Tabs.set_bar(2)
   local a1, b1 = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
-  ok(R.loop and math.abs(a1 - a0 - 2) < 1e-6 and math.abs(b1 - b0 - 2) < 1e-6, "< / >: the loop moves with its bars (1 bar = 2 s)")
+  ok(R.loop and math.abs(a1 - a0 - 2) < 1e-6 and math.abs(b1 - b0 - 2) < 1e-6, "< / >: the selection moves with its bars (1 bar = 2 s)")
   Tabs.set_bar(1)
-  Tabs.loop(2) -- (the same bar again: off)
+  Tabs.loop_off()
   eq(R.loop, nil)
-  Tabs.loop(2)
-  r.GetSet_LoopTimeRange2(proj, true, true, 10, 12, false) -- (my own selection, during the loop)
-  Tabs.loop(2)
+  Tabs.select_range(bar2)
+  r.GetSet_LoopTimeRange2(proj, true, true, 10, 12, false) -- (my own selection, during it)
+  Tabs.loop_off()
   local a, b = r.GetSet_LoopTimeRange2(proj, false, true, 0, 0, false)
   eq(a .. " " .. b, "10.0 12.0", "the loop ends: my own selection stays")
   R.tsel, R.tbox = { bi = 1, q = 0, s = 1 }, { bi = 1, q = 0, s = 1, new = true }
@@ -1516,7 +1526,10 @@ test("a bar loop (Tab tab) and a line loop (Detection tab): 1 at a time; after b
     r.GetSetRepeatEx(0, 0)
     r.GetSet_LoopTimeRange2(0, true, true, 1, 2, false)
     N.set_P(p)
-    if order == "bar first" then Tabs.loop(1); N.UI.play_row(1) else N.UI.play_row(1); Tabs.loop(1) end
+    local function loop_bar1() -- (the selection of bar 1 and the Loop button)
+      Tabs.select_range({ bi0 = 1, q0 = 0, bi1 = 1, q1 = R.tab.bars[1].len }); Tabs.loop_toggle()
+    end
+    if order == "bar first" then loop_bar1(); N.UI.play_row(1) else N.UI.play_row(1); loop_bar1() end
     r.OnStopButtonEx(0)
     eq(r.GetSetRepeatEx(0, -1), 1, order .. ": the loop repeats")
     Tabs.loop_off() -- (as when Tab Viewer closes: the bar loop first, then the line loop)
@@ -1653,7 +1666,13 @@ test("drawing the tab (Dev 1 of the review, 24 November 2026): every test file a
   Tabs.open(src)
   local tab = R.tab
   tab.w, IG.texts = nil, 0
+  Tabs.select_range({ bi0 = 1, q0 = 1, bi1 = 3, q1 = 2 }) -- (the selection drawn over 3 bars, with its handles)
   UI.draw_tab(100000)
+  ok(R.handles[1] and R.handles[3], "both handles drawn")
+  eq(UI.handle_at(R.handles[1], R.handles[2]), 1, "the start handle under the mouse")
+  eq(UI.handle_at(R.handles[3], R.handles[4]), 2, "the end handle")
+  eq(UI.handle_at(R.handles[1] + 100, R.handles[2]), nil, "not near a handle")
+  Tabs.loop_off()
   local texts = IG.texts
   local bad = tab.bars[tab.view[2]]
   bad.sig = { "4", false } -- (the error while the font of the time signature is on: given back)

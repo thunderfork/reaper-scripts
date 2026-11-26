@@ -70,7 +70,8 @@ CFG.CTRL_GAP = 8               -- between 2 controls side by side
 CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = 7, 8, 4 -- spacing (pixels; the same gaps as Chart Cue)
 CFG.ROW_H = 26
 CFG.TB_ICON_W = 32             -- the icons in the toolbar (Undo / Redo, the transport)
-CFG.TEMPO_BEFORE = 5           -- s: a tempo marker this far before the song item still counts as the song's (Tabs.has_song_tempo)
+CFG.DRAG_PX = 4               -- px the mouse moves with the button held: a drag (a selection), not a click
+CFG.TEMPO_BEFORE = 5          -- s: a tempo marker this far before the song item still counts as the song's (Tabs.has_song_tempo)
 CFG.TB_NEAR_GAP = 16           -- between the transport and the size / the speed next to it
 CFG.TB_NOTE_W = 14             -- the note icon before the speed
 CFG.TB_ROW_GAP = 4             -- between the rows of a narrow toolbar
@@ -163,6 +164,8 @@ local R = {
   tsel = nil,        -- the selected note of the tab: { bi, q, s } (stopped only)
   tnum = nil,        -- the digits typed for the selected note ({ txt, t }: "1" "2" = fret 12)
   tlast = nil,       -- the place of the last click on the tab (Tabs.click: a double-click must be on the same place)
+  handles = {},      -- the handles of the selection as drawn (UI.tab_range): x1, y1, x2, y2 (screen), r
+                     -- (also: R.drag, the left button held on the tab, UI.tab_mouse; R.loop, the selection: Tabs.select_range)
   tbox = nil,        -- the open note box ({ txt, focus, new; a new note: bi, q, s }; UI.tab_box)
   tempo = nil,       -- Find tempo (Tempo.lua): the found tempo, bar 1, a running Find tempo
   tsrc = nil,        -- the tracks of Listen to (cached until the project changes); tsrc_sel: the chosen track; tsrc_tab:
@@ -995,31 +998,61 @@ function Tabs.click(tab, bi, q, s, double, last)
   elseif same and s then box = { bi = bi, q = q, s = s, txt = "", focus = true, new = true } end
   return sel, box, nq, here
 end
--- The start of a loop to the end of bar bi (Shift+click): from the place sbi / sq (the selected note or the edit
--- cursor); none there, or after bar bi: from the start of bar bi. Returns the bar and the quarter notes into it.
-function Tabs.loop_start(bi, sbi, sq)
-  if not sbi or sbi > bi then return bi, 0 end
-  return sbi, sq or 0
+-- THE SELECTION AND THE LOOP (decided 26 November 2026, as in Guitar Pro): drag over the tab, or Shift+click, to select
+-- from a note to a note; the selection is REAPER's time selection, and the Loop button repeats it. R.loop = { rg (the
+-- selection: bi0, q0 to bi1, q1, the end of its last note), on (the Loop button), rep and ts (REAPER's repeat and time
+-- selection before it: they come back when it ends), t0, t1 (its time selection) }.
+-- Where the column of notes after place q of bar b starts (any string): the end of the note at q; the bar end without one.
+function Tabs.col_end(b, q)
+  local e = b.len
+  for _, nt in ipairs(b.notes) do if nt.q > q + 1e-6 and nt.q < e then e = nt.q end end
+  return e
 end
--- Shift+click on bar bi: a loop (REAPER's time selection and repeat) from the selected note or the edit cursor to the
--- end of bar bi; the same bar again: the loop ends (decided 24 November 2026).
-function Tabs.loop(bi)
+-- The selection from place a to place c ({ bi, q }, in any order): from the earlier place to the end of the note at
+-- the later one. A plain function (the imgui-input rule).
+function Tabs.range(tab, a, c)
+  local qa, qc = tab.bars[a.bi].q0 + a.q, tab.bars[c.bi].q0 + c.q
+  if qc < qa then a, c = c, a end
+  return { bi0 = a.bi, q0 = a.q, bi1 = c.bi, q1 = Tabs.col_end(tab.bars[c.bi], c.q) }
+end
+-- The place of the last column of a selection (to drag its end handle from).
+function Tabs.range_last(rg) return { bi = rg.bi1, q = rg.q1 - 1e-3 } end
+-- Moved this far (px) with the button held: a drag, not a click.
+function Tabs.is_drag(dx, dy) return dx * dx + dy * dy >= CFG.DRAG_PX * CFG.DRAG_PX end
+-- Selects rg (REAPER's time selection; the edit cursor to its start). The first selection keeps REAPER's repeat and
+-- time selection from before, for Tabs.loop_off.
+function Tabs.select_range(rg)
   local tab = R.tab
-  if not (tab and tab.bars[bi]) then return end
-  if R.loop and R.loop.bi == bi then Tabs.loop_off(); return end
-  local sbi, sq
-  local sel = R.tsel
-  if sel and tab.bars[sel.bi] then sbi, sq = sel.bi, sel.q else sbi, sq = Tabs.place_of(r.GetCursorPositionEx(R.proj)) end
-  sbi, sq = Tabs.loop_start(bi, sbi, sq)
-  Notes.loop_off() -- (the loop of a row of the Detection tab ends first: 1 loop at a time)
-  local old = R.loop or { rep = r.GetSetRepeatEx(R.proj, -1), ts = { r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false) } }
-  local t0, t1 = Tabs.time_of(sbi, sq), Tabs.time_of(bi, tab.bars[bi].len)
-  R.loop = { bi = bi, sbi = sbi, sq = sq, rep = old.rep, ts = old.ts, t0 = t0, t1 = t1 }
-  r.GetSet_LoopTimeRange2(R.proj, true, true, t0, t1, false)
+  if not (tab and tab.bars[rg.bi0] and tab.bars[rg.bi1]) then return end
+  if not R.loop then
+    Notes.loop_off() -- (the loop of a row of the Detection tab ends first: 1 loop at a time)
+    R.loop = { rep = r.GetSetRepeatEx(R.proj, -1), ts = { r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false) } }
+  end
+  local l = R.loop
+  l.rg, l.t0, l.t1 = rg, Tabs.time_of(rg.bi0, rg.q0), Tabs.time_of(rg.bi1, rg.q1)
+  r.GetSet_LoopTimeRange2(R.proj, true, true, l.t0, l.t1, false)
+  if not R.playing then r.SetEditCurPos2(R.proj, l.t0, true, false) end
+end
+-- The Loop button: on = the selection repeats (none: the bar at the edit cursor, else bar 1); off = REAPER's repeat as
+-- before. The selection stays.
+function Tabs.loop_toggle()
+  local tab = R.tab
+  if R.loop and R.loop.on then
+    R.loop.on = false
+    r.GetSetRepeatEx(R.proj, R.loop.rep)
+    return
+  end
+  if not (R.loop and R.loop.rg) then
+    if not (tab and tab.bars[1]) then return end
+    local bi = Tabs.place_of(UI.cursor()) or 1
+    Tabs.select_range({ bi0 = bi, q0 = 0, bi1 = bi, q1 = tab.bars[bi].len })
+  end
+  R.loop.on = true
   r.GetSetRepeatEx(R.proj, 1)
 end
--- Ends the loop: repeat and the time selection as they were before it (the time selection only when it is still the
--- loop's: a selection that you made meanwhile stays).
+function Tabs.looping() return R.loop ~= nil and R.loop.on == true end
+-- Ends the selection and its loop: repeat and the time selection as they were before it (the time selection only
+-- when it is still the selection's: one that you made meanwhile stays).
 function Tabs.loop_off()
   local l = R.loop
   if not l then return end
@@ -1027,7 +1060,7 @@ function Tabs.loop_off()
   if not r.ValidatePtr(R.proj, "ReaProject*") then return end
   r.GetSetRepeatEx(R.proj, l.rep)
   local a, b = r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false)
-  if math.abs(a - l.t0) < 1e-6 and math.abs(b - l.t1) < 1e-6 then
+  if l.t0 and math.abs(a - l.t0) < 1e-6 and math.abs(b - l.t1) < 1e-6 then
     r.GetSet_LoopTimeRange2(R.proj, true, true, l.ts[1], l.ts[2], false)
   end
 end
@@ -1317,12 +1350,13 @@ function Tabs.relabel()
   Tabs.tempo_check()
   Tabs.loop_sync()
 end
--- The loop stays on its bars (another start bar, region or tempo): REAPER's time selection moves with them while it
--- is still the loop's; a time selection that you made meanwhile ends the loop (yours stays).
+-- The selection stays on its notes (another start bar, region or tempo): REAPER's time selection moves with them while
+-- it is still the selection's; a time selection that you made meanwhile ends it (yours stays).
 function Tabs.loop_sync()
   local l, tab = R.loop, R.tab
-  if not (l and tab and tab.bars[l.bi] and tab.bars[l.sbi]) then return end
-  local t0, t1 = Tabs.time_of(l.sbi, l.sq), Tabs.time_of(l.bi, tab.bars[l.bi].len)
+  local rg = l and l.rg
+  if not (rg and tab and tab.bars[rg.bi0] and tab.bars[rg.bi1]) then return end
+  local t0, t1 = Tabs.time_of(rg.bi0, rg.q0), Tabs.time_of(rg.bi1, rg.q1)
   if math.abs(t0 - l.t0) < 1e-6 and math.abs(t1 - l.t1) < 1e-6 then return end
   local a, b = r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false)
   if math.abs(a - l.t0) < 1e-6 and math.abs(b - l.t1) < 1e-6 then
@@ -1960,7 +1994,7 @@ Want to hear a part? Click it: the song plays from there. While it plays, a blue
 
 Does the tab start later than the song (an intro, a count-in)? Set Start (the bar of the song where bar 1 of the tab plays) with < and > (hold for faster). The bar numbers above the tab are then the song's. A tab in a region counts the bars from the first bar of its region ("bar ... of the region"). From that bar on, the tab follows the beats of your project, so set the tempo of the song first.
 
-Want to practise a hard part? Shift+click a bar: the song loops from the selected note (or the edit cursor) to the end of that bar (a blue band over the bar numbers). Shift+click that bar again, or press Escape, to stop. Too fast? The speed dropdown at the top (next to play) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
+Want to practise a hard part? Drag over the tab from its first note to its last (or click the first note, then Shift+click the last): a light blue band selects it (REAPER's time selection). Drag a round handle at its ends to make it shorter or longer. Then click the Loop button at the top left (blue while it loops; no selection: it loops the bar at the edit cursor). Escape: no selection, no loop. Too fast? The speed dropdown at the top (next to play) slows the song down (the pitch stays); it goes back to 100% when Tab Viewer closes.
 
 A drum track? Drums come in a later version (a drum grid).]] },
   { title = "Find tempo", text = [[
@@ -2299,29 +2333,36 @@ function ICON.next(dl, cx, cy, col) -- >>
 end
 function ICON.play(dl, cx, cy, col) ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 6, cx - 4, cy + 6, cx + 6, cy, col) end
 function ICON.stop(dl, cx, cy, col) ImGui.DrawList_AddRectFilled(dl, cx - 5, cy - 5, cx + 5, cy + 5, col, 1) end
+function ICON.loop(dl, cx, cy, col) -- a round arrow (the Loop button, as in Guitar Pro)
+  ImGui.DrawList_PathArcTo(dl, cx, cy, 6, -0.35 * math.pi, 1.35 * math.pi)
+  ImGui.DrawList_PathStroke(dl, col, 0, 1.6)
+  local ex, ey = cx + 6 * math.cos(-0.35 * math.pi), cy + 6 * math.sin(-0.35 * math.pi) -- (the arrow head at its end)
+  ImGui.DrawList_AddTriangleFilled(dl, ex - 3, ey - 3, ex + 3, ey - 1, ex - 1, ey + 3, col)
+end
 function ICON.note(dl, cx, cy, col) -- a quarter note (the speed, as in Guitar Pro)
   ImGui.DrawList_AddCircleFilled(dl, cx - 2, cy + 4, 3, col)
   ImGui.DrawList_AddLine(dl, cx + 0.5, cy + 4, cx + 0.5, cy - 7, col, 1.5)
 end
 
 -- A toolbar icon (Chart Cue's look: a plain icon, a grey background on hover; grey while off). tip: a text, or a
--- function that gives it (made only on hover). True when clicked.
-function UI.tb_icon(id, kind, w, H, on, tip)
+-- function that gives it (made only on hover). active: a switch that is on (Loop, Metronome, Count-in): blue with a
+-- white icon, as in Guitar Pro (the user's choice, 26 November 2026: an exception to "blue is for actions"). True when
+-- clicked.
+function UI.tb_icon(id, kind, w, H, on, tip, active)
   ImGui.BeginDisabled(ctx, not on)
   local hit = ImGui.InvisibleButton(ctx, id, w, H)
   ImGui.EndDisabled(ctx)
   local hov = on and ImGui.IsItemHovered(ctx)
   local ix, iy = ImGui.GetItemRectMin(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
-  if hov then
-    ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand())
-    ImGui.DrawList_AddRectFilled(dl, ix, iy, ix + w, iy + H, COL.BTN_HOVER, 6)
-  end
+  if hov then ImGui.SetMouseCursor(ctx, ImGui.MouseCursor_Hand()) end
+  if active then ImGui.DrawList_AddRectFilled(dl, ix, iy, ix + w, iy + H, hov and COL.ACCENT_HOVER or COL.ACCENT, 6)
+  elseif hov then ImGui.DrawList_AddRectFilled(dl, ix, iy, ix + w, iy + H, COL.BTN_HOVER, 6) end
   if ImGui.IsItemHovered(ctx, ImGui.HoveredFlags_AllowWhenDisabled()) then
     ImGui.SetTooltip(ctx, type(tip) == "function" and tip() or tip)
   end
   ICON[kind](dl, math.floor(ix + w / 2) + 0.5, math.floor(iy + H / 2) + 0.5,
-    not on and COL.TEXT_DIM or hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN)
+    not on and COL.TEXT_DIM or active and COL.WHITE or hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN)
   return hit and on
 end
 
@@ -2500,6 +2541,19 @@ function Tabs.toolbar_rows(x0, aw, w, PC, GG, NG, p)
   return p
 end
 local TB_W, TB_POS = {}, {} -- (the toolbar's widths and places: filled every frame, not made)
+local LOOP_TIPS = {
+  on = "Loop on: the selection repeats. Click: off (the selection stays; Escape: no selection).",
+  off = "Loop: the selection repeats (no selection: the bar at the edit cursor). Select by dragging over the tab, or Shift+click a note.",
+  notes = "In the Detection tab, click a line to loop it.", none = "No tab here.",
+}
+-- The Loop button at the left of the toolbar (the Tab tab: Tabs.loop_toggle; blue while it loops).
+function UI.draw_loop(IW, H)
+  local tab_page = R.page ~= UI.PAGE_NOTES
+  local on = tab_page and R.tab ~= nil
+  local active = on and Tabs.looping()
+  local tip = not tab_page and LOOP_TIPS.notes or not on and LOOP_TIPS.none or active and LOOP_TIPS.on or LOOP_TIPS.off
+  if UI.tb_icon("##loop", "loop", IW, H, on, tip, active) then Tabs.loop_toggle() end
+end
 -- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): in the middle the tab size, |<, <, play / stop,
 -- >, >| (play in the middle of the window), the speed; at the right Undo / Redo (Find tempo: the Detection tab). A
 -- narrow window: 2 or 3 rows. The controls work in the Tab and the Detection tab.
@@ -2509,10 +2563,12 @@ function UI.draw_toolbar()
   local aw = ImGui.GetContentRegionAvail(ctx)
   local IW, H = CFG.TB_ICON_W, ImGui.GetFrameHeight(ctx)
   local w = TB_W
-  w.L, w.Z, w.T, w.U = 0, UI.zoom_w(H), UI.transport_w(), 2 * IW + 2
+  w.L, w.Z, w.T, w.U = IW, UI.zoom_w(H), UI.transport_w(), 2 * IW + 2
   w.S = UI.btn_w("100%") + H + CFG.TB_NOTE_W + 2
   local p = Tabs.toolbar_rows(x0, aw, w, UI.transport_mid(), CFG.TB_GROUP_GAP, CFG.TB_NEAR_GAP, TB_POS)
   local RH = H + CFG.TB_ROW_GAP
+  ImGui.SetCursorPos(ctx, x0, y0)
+  UI.draw_loop(IW, H)
   ImGui.SetCursorPos(ctx, p.ux, y0 + p.urow * RH)
   UI.draw_undo(IW, H)
   ImGui.SetCursorPos(ctx, p.zx, y0 + p.zrow * RH)
@@ -3331,6 +3387,100 @@ function UI.tab_bad(tab, key, what, err, depth)
   UI.notice(what .. " could not be shown: the file has something Tab Viewer can not read yet (" .. tostring(err)
     .. "). Please tell the developer.", true)
 end
+-- The x (from the left of the strings) of place q in drawn bar b: the left of its 16th; at the bar end, the bar line.
+local function range_x(b, q)
+  if q >= b.len - 1e-6 then return Tabs.x_end(b) end
+  return b.x + b.pad + q * 4 * b.sw
+end
+-- The selection on line ln, in front of the tab (as Guitar Pro): a light blue band over the strings with an edge line
+-- and a round handle at each end (R.handles: their places for UI.handle_at, the ones of the last frame).
+function UI.tab_range(dl, tab, ln, lx, y0, yb)
+  local rg = R.loop and R.loop.rg
+  if not rg then return end
+  local v0, v1 = tab.bars[rg.bi0].vp or rg.bi0, tab.bars[rg.bi1].vp or rg.bi1 -- (a later pass: its written bar)
+  if v0 > v1 or v0 > ln.last or v1 < ln.first then return end
+  local z = TZ.z
+  local b0, b1 = tab.bars[Tabs.vbar(tab, math.max(v0, ln.first))], tab.bars[Tabs.vbar(tab, math.min(v1, ln.last))]
+  local x0 = lx + (v0 >= ln.first and range_x(b0, rg.q0) or b0.x)
+  local x1 = lx + (v1 <= ln.last and range_x(b1, rg.q1) or Tabs.x_end(b1))
+  local top, bot = y0 - 6 * z, yb + 6 * z
+  ImGui.DrawList_AddRectFilled(dl, x0, top, x1, bot, COL.HEADER_HOVER)
+  local hr, ym = 6 * z, (top + bot) / 2
+  local function handle(x, k)
+    ImGui.DrawList_AddLine(dl, x, top, x, bot, COL.ACCENT, 1.5)
+    ImGui.DrawList_AddCircleFilled(dl, x, ym, hr, COL.ACCENT)
+    local a = 2.5 * z -- (a small < > in it)
+    ImGui.DrawList_AddTriangleFilled(dl, x - 0.5 * z, ym - a, x - 0.5 * z, ym + a, x - 3.5 * z, ym, COL.WHITE)
+    ImGui.DrawList_AddTriangleFilled(dl, x + 0.5 * z, ym - a, x + 0.5 * z, ym + a, x + 3.5 * z, ym, COL.WHITE)
+    R.handles[k], R.handles[k + 1] = x, ym
+  end
+  if v0 >= ln.first then handle(x0, 1) end
+  if v1 <= ln.last then handle(x1, 3) end
+  R.handles.r = hr + 2 * z
+end
+-- The handle of the selection at the mouse (screen x, y): 1 (its start), 2 (its end), or nil.
+function UI.handle_at(mx, my)
+  local hd = R.handles
+  if not (R.loop and R.loop.rg and hd.r) then return nil end
+  for k = 1, 2 do
+    local x, y = hd[2 * k - 1], hd[2 * k]
+    if x and (mx - x) ^ 2 + (my - y) ^ 2 <= hd.r ^ 2 then return k end
+  end
+end
+-- The left mouse button on the tab (decided 26 November 2026, as in Guitar Pro). A press starts R.drag; moved
+-- CFG.DRAG_PX with the button held: a selection from the pressed note to the one under the mouse (on a handle: that end
+-- moves, the other stays). Released without a move: a click as before (stopped: select and fix a note, Tabs.click;
+-- playing: play from there), and the selection ends unless it loops. Shift+click: a selection from the selected note
+-- (else the selection's start, else the edit cursor) to the clicked note.
+function UI.tab_mouse(tab, ox, oy, playing)
+  local mx, my = ImGui.GetMousePos(ctx)
+  if ImGui.IsItemClicked(ctx, 0) then
+    local bi, q, s = Tabs.hit(tab, mx - ox, my - oy)
+    local l = R.loop
+    if bi and ImGui.GetKeyMods(ctx) == ImGui.Mod_Shift() then
+      local from = R.tsel and tab.bars[R.tsel.bi] and { bi = R.tsel.bi, q = R.tsel.q }
+        or l and l.rg and { bi = l.rg.bi0, q = l.rg.q0 }
+      if not from then
+        local cb, cq = Tabs.place_of(r.GetCursorPositionEx(R.proj))
+        from = cb and { bi = cb, q = cq } or { bi = bi, q = q }
+      end
+      Tabs.select_range(Tabs.range(tab, from, { bi = bi, q = q }))
+      return
+    end
+    local hd = UI.handle_at(mx, my)
+    R.drag = { x = mx, y = my, bi = bi, q = q, s = s, double = ImGui.IsMouseDoubleClicked(ctx, 0) }
+    if hd and l then -- (a handle: from the other end, as a drag)
+      local o = hd == 1 and Tabs.range_last(l.rg) or { bi = l.rg.bi0, q = l.rg.q0 }
+      R.drag.bi, R.drag.q, R.drag.moved = o.bi, o.q, true
+    end
+  end
+  local d = R.drag
+  if not d then return end
+  if ImGui.IsMouseDown(ctx, 0) then
+    if not d.moved and Tabs.is_drag(mx - d.x, my - d.y) then d.moved = true end
+    local bi, q
+    if d.moved then bi, q = Tabs.hit(tab, mx - ox, my - oy) end
+    if bi then
+      if not d.bi then d.bi, d.q = bi, q end
+      local rg, o = Tabs.range(tab, { bi = d.bi, q = d.q }, { bi = bi, q = q }), d.rg
+      if not (o and o.bi0 == rg.bi0 and o.q0 == rg.q0 and o.bi1 == rg.bi1 and o.q1 == rg.q1) then
+        d.rg = rg
+        Tabs.select_range(rg)
+      end
+    end
+    return
+  end
+  R.drag = nil
+  if not ImGui.IsMouseReleased(ctx, 0) or d.moved or not d.bi then return end -- (released here, without a drag: a click)
+  if not Tabs.looping() then Tabs.loop_off() end
+  if playing then -- (a repeated bar: the pass nearest to the one that plays)
+    UI.play_from(Tabs.time_of(Tabs.pass_near(tab, d.bi, (Tabs.place_of(r.GetPlayPositionEx(R.proj)))), d.q))
+  else
+    local nq
+    R.tsel, R.tbox, nq, R.tlast = Tabs.click(tab, d.bi, d.q, d.s, d.double, R.tlast)
+    r.SetEditCurPos2(R.proj, Tabs.time_of(d.bi, nq), true, false)
+  end
+end
 -- The tab of the chosen track (only the lines in view are drawn); a click plays the song from there.
 function UI.draw_tab(h)
   -- (a clear frame around the tab, with room inside it: the user, 24 November 2026)
@@ -3363,20 +3513,9 @@ function UI.draw_tab(h)
   local lx = ox + TZ.LEFT -- (the left of the strings)
   ImGui.InvisibleButton(ctx, "##tabarea", math.max(1, w), math.max(1, tab.h))
   local playing = R.playing
-  UI.tip(playing and "Click: the song plays from there. Shift+click a bar: loop it (Escape: stop)."
-    or "Click a note to select it and fix it (Help: Fix the tab). Double-click: its box, or a new note on an empty place. Shift+click a bar: loop it (Escape: stop). Right-click a bar: its time signature.")
-  if ImGui.IsItemClicked(ctx, 0) then
-    local mx, my = ImGui.GetMousePos(ctx)
-    local bi, q, s = Tabs.hit(tab, mx - ox, my - oy)
-    if bi and ImGui.GetKeyMods(ctx) == ImGui.Mod_Shift() then Tabs.loop(bi)
-    elseif bi and playing then -- (a repeated bar: the pass nearest to the one that plays)
-      UI.play_from(Tabs.time_of(Tabs.pass_near(tab, bi, (Tabs.place_of(r.GetPlayPositionEx(R.proj)))), q))
-    elseif bi then -- (stopped: Tabs.click)
-      local nq
-      R.tsel, R.tbox, nq, R.tlast = Tabs.click(tab, bi, q, s, ImGui.IsMouseDoubleClicked(ctx, 0), R.tlast)
-      r.SetEditCurPos2(R.proj, Tabs.time_of(bi, nq), true, false)
-    end
-  end
+  UI.tip(playing and "Click: the song plays from there. Drag over the tab (or Shift+click a note): select from note to note; the Loop button at the top repeats it (Escape: no selection)."
+    or "Click a note to select it and fix it (Help: Fix the tab). Double-click: its box, or a new note on an empty place. Drag over the tab (or Shift+click a note): select from note to note; the Loop button at the top repeats it (Escape: no selection). Right-click a bar: its time signature.")
+  UI.tab_mouse(tab, ox, oy, playing)
   if ImGui.IsItemClicked(ctx, 1) then -- (right-click a bar: its menu)
     local mx, my = ImGui.GetMousePos(ctx)
     local bi = Tabs.hit(tab, mx - ox, my - oy)
@@ -3399,23 +3538,17 @@ function UI.draw_tab(h)
     ImGui.EndPopup(ctx)
   end
   local sel_bi, sel_i = UI.tab_sel()
+  local hd = R.handles -- (drawn again below: only the handles in view)
+  hd[1], hd[2], hd[3], hd[4], hd.r = nil, nil, nil, nil, nil
   ImGui.PushFont(ctx, TF.font) -- (the tab in the font of its zoom; its menus, tooltips and box in the normal font)
   local dl, fs, z = ImGui.GetWindowDrawList(ctx), ImGui.GetFontSize(ctx), TZ.z
   local sy = ImGui.GetScrollY(ctx)
   local lh = tab.lh
-  local lp = R.loop
   local sh = tab.sec_row and TZ.SECTION or 0 -- (the section names, at the very top)
   local eh = sh + (tab.end_row and TZ.ENDING or 0) -- (then the row of the endings 1. 2.)
   local pmh = eh + (tab.pm_row and TZ.PM or 0) -- (then P.M.; the bar numbers below them)
   for _, ln in ipairs(tab.lines) do
     if ln.y + lh >= sy and ln.y <= sy + h then
-      local v0, v1 = lp and tab.bars[lp.sbi].vp or lp and lp.sbi, lp and tab.bars[lp.bi].vp or lp and lp.bi
-      if v0 and v1 and v0 <= ln.last and v1 >= ln.first then -- (the loop: a blue band over the bar numbers)
-        local b0, b1 = tab.bars[Tabs.vbar(tab, math.max(v0, ln.first))], tab.bars[Tabs.vbar(tab, math.min(v1, ln.last))]
-        local x0 = lx + b0.x + (v0 >= ln.first and b0.pad + lp.sq * 4 * b0.sw or 0)
-        local x1 = lx + Tabs.x_end(b1)
-        ImGui.DrawList_AddRectFilled(dl, x0, oy + ln.y + pmh + z, x1, oy + ln.y + pmh + fs + 3 * z, COL.HEADER_ACTIVE, 3)
-      end
       if tab.pm_row then
         local depth = R.fonts or 0
         local ok, err = pcall(UI.tab_pm, dl, tab, ln, ox, oy + ln.y + eh + z)
@@ -3439,6 +3572,7 @@ function UI.draw_tab(h)
           if b and b.x then ImGui.DrawList_AddText(dl, lx + b.x + 6 * z, (y0 + yb) / 2 - fs / 2, COL.ORANGE, "?") end
         end
       end
+      UI.tab_range(dl, tab, ln, lx, y0, yb)
     end
   end
   local esel = sel_bi and not sel_i and R.tsel -- (a selected empty place: a blue box there, as a selected note has)

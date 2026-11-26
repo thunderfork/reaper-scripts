@@ -129,9 +129,13 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   (move the note), + - . / (lengths and triplets, `UI.len_char`: any keyboard layout), & and Ctrl+Enter (line
   breaks), Space. Each fix is 1 step of `R.undo` (`Tabs.edit`, `Tabs.undo`; this session only, because REAPER's undo
   is thought not to restore ProjExtState: not checked yet, a trial in "Later"). `nt.mine` (green, Mark my fixes). Right-click a bar > Time signature... (`UI.draw_meter`).
-- Loop and speed: Shift+click a bar = `Tabs.loop` (REAPER's time selection from the selected note or the edit cursor
-  to the bar end, repeat on; `Tabs.loop_off` gives back the old ones; 1 loop at a time with the Detection tab);
-  the speed dropdown = `Tabs.speed` (the master play rate, preserve pitch on while slower; yellow below 100%).
+- The selection and the loop (as in Guitar Pro): a drag over the tab (`UI.tab_mouse`, `Tabs.is_drag`) or Shift+click
+  selects from note to note (`Tabs.range`: to the end of the last note's column, `Tabs.col_end`); a light blue band in
+  front of the tab with round handles that move its ends (`UI.tab_range`, `UI.handle_at`). It is REAPER's time
+  selection (`Tabs.select_range`, `R.loop.rg`); the Loop button at the toolbar's left (`UI.draw_loop`,
+  `Tabs.loop_toggle`; blue while on: the user's exception to "blue is for actions") repeats it, or the bar at the
+  edit cursor. A click without a drag ends the selection unless it loops; Escape ends both. `Tabs.loop_off` gives back
+  REAPER's repeat and time selection from before; 1 loop at a time with the Detection tab. The speed dropdown = `Tabs.speed` (the master play rate, preserve pitch on while slower; yellow below 100%).
 - Playing marks (`GP.fx`): hammer-on / pull-off, slides, bends, vibrato, palm mute (the P.M. row), harmonics,
   tremolo picking (slashes, or written out as notes with `S.tremnotes`), dead notes "x". Chord names: from the file,
   else `GP.chord_name` for notes that ring at least 1 beat (a row under the bar numbers; `S.chords`).
