@@ -33,6 +33,9 @@ Songs (with Songs > Tools), Lanes, Presets; Settings sections Devices, Editing, 
   names, .reabank), `Knob` (Lanes controls and pedals), `Midi` (preset, scene and CC changes in the MIDI items, the
   MIDI file export), `UI` (tabs: Songs, Lanes, Presets, Settings, Help).
 - Only the MIDI that REAPER plays is read (no muted items or events); a muted item is never written.
+- Another project in the same tab (File > New / Open): `Project.replaced` (as FX Link and Segue: the file name, the
+  saved text and `Project.fingerprint`) loads its own data; "Save as" keeps it. Known limit (as FX Link): 2 projects
+  without tracks and with the same MIDI Pilot data look the same.
 
 ## Later (ideas)
 
@@ -43,8 +46,7 @@ Songs (with Songs > Tools), Lanes, Presets; Settings sections Devices, Editing, 
 
 ## Open findings (from a checkup; not decided: ask before a fix)
 
-- Bugs: `Project.update` does not see File > Open in the same tab (only the pointer; use the file name / saved text
-  check as FX Link and Segue). `Midi.take_at` extends the first item over all later items (use the nearest item
+- Bugs: `Midi.take_at` extends the first item over all later items (use the nearest item
   before t). `Util.reset_settings` undocks and jumps to Songs (keep S.dock, S.tab, R.dock_req). A track mode change:
   `Dev.apply_latency` with latency 0 wipes the user's playback offset (guard `d.latency > 0` as in
   `Dev.use_selected_track`); the Channel combo in Settings > Devices does not clear `R.pcs`. Empty undo points

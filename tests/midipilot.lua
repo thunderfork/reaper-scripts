@@ -1034,6 +1034,34 @@ test("a muted MIDI item is never written: a scene goes into a playing item (and 
   S.devices = keep
 end)
 
+-- the last test: it opens another project in the same tab (and comes back to the test project)
+test("another project in the same tab (File > Open): no data or regions of the last one, nothing written", function()
+  r.InsertTrackAtIndex(0, false) -- (a project of MIDI Pilot has its device tracks; the other project has none)
+  Project.update()
+  C.get_P().track_mode = "shared"
+  Project.save()
+  r.Main_SaveProjectEx(0, tmp .. "\\saved_as.rpp", 0)
+  Project.update()
+  eq(C.get_P().track_mode, "shared", "Save as keeps the data")
+  r.Main_SaveProjectEx(0, proj_file, 0)
+  Project.update()
+  R.pdirty = true -- (an unsaved change)
+  local other = tmp .. "\\other.rpp"
+  local h = io.open(other, "w"); if h then h:write("<REAPER_PROJECT 0.1\n>\n"); h:close() end
+  r.Main_openProject("noprompt:" .. other)
+  local good, e = pcall(function()
+    Project.update()
+    eq(#R.regions, 0, "no regions of the last project")
+    eq(Project.serialize(), "version=1", "default data")
+    if R.pdirty then Project.save() end -- (what the next frame does)
+    eq((r.GetProjExtState(0, "MIDI Pilot", "cfg")), 0, "nothing written into the other project")
+  end)
+  r.Main_openProject("noprompt:" .. proj_file)
+  if r.CountTracks(0) > 0 then r.DeleteTrack(r.GetTrack(0, 0)) end
+  Project.update()
+  if not good then error(e, 0) end
+end)
+
 ---------------------------------------------------------------------------
 for _, t in ipairs(tests) do
   local good, e = pcall(t[2])

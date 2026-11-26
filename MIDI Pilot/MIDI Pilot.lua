@@ -611,9 +611,32 @@ function Project.save()
   R.plast_txt = txt
 end
 
+-- The content of a project in short: "Save as" keeps it; another project opened in the same tab changes it.
+function Project.fingerprint(proj)
+  local nt = r.CountTracks(proj)
+  local g1 = nt > 0 and r.GetTrackGUID(r.GetTrack(proj, 0)) or ""
+  local g2 = nt > 0 and r.GetTrackGUID(r.GetTrack(proj, nt - 1)) or ""
+  return string.format("%d|%s|%s", nt, g1, g2)
+end
+
+-- True when File > New / Open project replaced the project of MIDI Pilot in the same tab (as in FX Link and
+-- Segue). Switching tabs and "Save as" are no replacement.
+function Project.replaced(proj, fn)
+  if R.proj == nil or proj ~= R.proj or fn == R.projfn then return false end
+  if fn == "" then return true end
+  local n, txt = r.GetProjExtState(proj, CFG.EXT, CFG.PEXT_KEY)
+  if not (n and n > 0) then txt = Project.serialize() end
+  return txt ~= R.plast_txt or Project.fingerprint(proj) ~= R.proj_fp
+end
+
 -- Every frame: another project tab loads its own data; a project change reads the regions and tracks again.
 function Project.update()
-  local proj = r.EnumProjects(-1)
+  local proj, fn = r.EnumProjects(-1)
+  fn = fn or ""
+  if Project.replaced(proj, fn) then
+    R.pdirty, R.proj = false, nil -- (never write the old data into the next project; load the new one below)
+  end
+  if fn ~= R.projfn then R.projfn, R.proj_fp = fn, Project.fingerprint(proj) end
   if proj ~= R.proj then
     if R.pdirty then Project.save() end
     R.proj, R.state_cc = proj, -1
@@ -624,6 +647,7 @@ function Project.update()
   local cc = r.GetProjectStateChangeCount(proj)
   if cc ~= R.state_cc then
     R.state_cc = cc; Project.scan(); Dev.sync_from_tracks(); R.conflicts = nil; Midi.find_new_items()
+    R.proj_fp = Project.fingerprint(proj) -- (kept up to date: "Save as" later compares with it)
     if R.name_sync then R.name_sync = nil; Dev.sync_names() end
   end
 end
