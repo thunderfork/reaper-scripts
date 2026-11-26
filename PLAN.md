@@ -5,7 +5,9 @@
 - New workflow (decided 26 November 2026): an automatic commit after each finished change (its checker, tests and
   deploy passed); at each handoff a push to the private `reaper-scripts-backup` (remote `backup`, no checks, GitHub
   Actions off there); the public repository only at a release (all checks and tests). The public `work` branch
-  was deleted.
+  was deleted. The old commits with the personal email address (2-17 November 2026) stay in the public history
+  (the user's choice, 26 November 2026: no history rewrite); so the backup gets main only, no tags (GitHub refuses
+  the tag v1.7).
 - Project review (26 November 2026), done: GitHub "Code check" workflow (check.ps1 -All on each push; passed); "another project" tests in Segue,
   FX Link and MIDI Pilot (Chart Cue had them), and the MIDI Pilot fix for File > Open in the same tab (deployed;
   manual test Open now 10); Session Prep's bus / return rename rule as `Rules.name_ok` with a test; the copy check
@@ -56,11 +58,6 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-20. Privacy, the user's decision (found 26 November 2026): 67 of the 137 commits on main (2 to 17 November 2026,
-    and the commit of the tag v1.7) carry the personal email address instead of the no-reply address, in the public
-    history. A fix rewrites the history (all commit IDs change: a force push, ReaPack's index rebuilt, the tags and
-    Releases moved); copies that others made keep the old history. Or leave it. The backup push skips the tags
-    (GitHub refused v1.7 for this reason).
 
 ## Later
 
