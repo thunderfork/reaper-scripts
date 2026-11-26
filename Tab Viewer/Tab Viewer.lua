@@ -1,5 +1,5 @@
 -- @description Tab Viewer: Guitar Pro tabs next to the song
--- @version 1.1.1
+-- @version 1.2
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,7 +13,9 @@
 --   [nomain] Tempo.lua
 --   [nomain] Notes.lua
 -- @changelog
---   Fix: a script error while drawing a tab with palm mutes that go on through a repeat.
+--   New toolbar as in Guitar Pro: play buttons, tab size (also Ctrl+wheel), Transpose, speed, Metronome,
+--   Count-in (a big 1 2 3 4 over the tab) and Loop. Select a part by dragging over the tab, then loop it.
+--   Detection: Find tempo at the top, Import from tab, Guitar Pro (.gp5) export, more bass tunings; shorter Help.
 
 -- MIT License
 --
@@ -55,7 +57,7 @@ end
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Tab Viewer"       -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.1.1"            -- keep equal to @version in the header
+CFG.VERSION = "1.2"            -- keep equal to @version in the header
 CFG.EXT = "Tab Viewer"         -- ExtState section (this computer) and the project data section
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.TABS_DIR = "Tabs"          -- the folder next to the project file that keeps the copies of the tabs
@@ -166,9 +168,7 @@ local R = {
   playing = false,   -- the song plays (read once per frame at the start of the loop)
   wait_at = nil,     -- during a count-in or pre-roll: where the song starts (UI.count_step, every frame)
   count_n = nil,     -- during REAPER's count-in: the count 1 .. 4 shown, and count_ph how far into its beat (0 .. 1)
-  count_ph = 0,
-  zoom_at = nil,     -- after Ctrl+wheel: { z, bi, frac, rel }, the line under the mouse, scrolled back there at the new size
-  err = nil,         -- why the tab of the project could not be read (a line in the window)
+  count_ph = 0,  err = nil,         -- why the tab of the project could not be read (a line in the window)
   doc = nil,         -- the opened tab (GP.read)
   rows = nil,        -- the tracks of the Track dropdown: { name, what, tun, tip, label } (Tabs.show; with the tab)
   info = nil,        -- the grey line under Track: bars, time signature, tempo
@@ -1433,22 +1433,6 @@ function Tabs.tempo_check()
   end
 end
 -- The line of the tab that holds bar bi.
--- Ctrl+wheel (plain functions): the line at y (in the tab; below the last line: that one) gives its first bar and how
--- far down y is in it (in line heights); after the new size, the scroll that puts that place at rel (from the top of
--- the view) again. (lessons 26 November 2026: a share of the whole height lands on another line, because the bars
--- per line change with the size)
-function Tabs.zoom_anchor(tab, y)
-  local pick
-  for _, ln in ipairs(tab.lines or {}) do
-    if ln.y <= y or not pick then pick = ln else break end
-  end
-  if not (pick and (tab.lh or 0) > 0) then return nil end
-  return Tabs.vbar(tab, pick.first), (y - pick.y) / tab.lh
-end
-function Tabs.zoom_scroll(tab, bi, frac, rel)
-  local ln = Tabs.line_of(tab, bi)
-  return ln and math.max(0, ln.y + frac * tab.lh - rel)
-end
 function Tabs.line_of(tab, bi)
   local b = tab.bars[bi]
   return b and b.ln and tab.lines and tab.lines[b.ln] -- (b.ln: from Tabs.layout; asked every frame)
@@ -3784,17 +3768,7 @@ function UI.draw_tab(h)
   if ctrl and ImGui.IsWindowHovered(ctx) then
     local wheel = ImGui.GetMouseWheel(ctx)
     local z = wheel ~= 0 and Tabs.zoom_step(S.zoom, wheel > 0 and 1 or -1)
-    if z and z ~= S.zoom then
-      S.zoom = z; R.sdirty = true
-      if R.tab then -- (the line under the mouse stays there: R.zoom_at, used below at the new size)
-        local _, my = ImGui.GetMousePos(ctx)
-        local _, oy = ImGui.GetCursorScreenPos(ctx) -- (the top of the tab, scrolled)
-        local bi, frac = Tabs.zoom_anchor(R.tab, my - oy)
-        local za = R.zoom_at -- (more steps before the new size shows: the first place stays)
-        if bi and not za then R.zoom_at = { z = z, bi = bi, frac = frac, rel = my - oy - ImGui.GetScrollY(ctx) }
-        elseif za then za.z = z end
-      end
-    end
+    if z and z ~= S.zoom then S.zoom = z; R.sdirty = true end
   end
   local tab = R.tab
   if not tab then
@@ -3818,12 +3792,6 @@ function UI.draw_tab(h)
   local ox, oy = ImGui.GetCursorScreenPos(ctx)
   local lx = ox + TZ.LEFT -- (the left of the strings)
   ImGui.InvisibleButton(ctx, "##tabarea", math.max(1, w), math.max(1, tab.h))
-  local za = R.zoom_at
-  if za and math.abs(TZ.z - za.z) < 1e-6 then -- (the tab at the new size: scroll so the place under the mouse stays)
-    local sy = Tabs.zoom_scroll(tab, za.bi, za.frac, za.rel)
-    if sy then ImGui.SetScrollY(ctx, sy) end
-    R.zoom_at = nil
-  end
   local playing = R.playing
   UI.tip(playing and "Click: play from there.\nDrag: select."
     or "Click: select a note.\nDouble-click: edit the note.\nDrag: select.\nRight-click a bar: time signature.")

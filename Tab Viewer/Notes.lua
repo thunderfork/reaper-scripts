@@ -2844,7 +2844,7 @@ function UI.draw_list(v, h)
   end
   local fh = ImGui.GetFrameHeight(ctx)
   local dl = ImGui.GetWindowDrawList(ctx)
-  local now_row = r.GetPlayStateEx(R.proj) & 1 == 1 and List.at(r.GetPlayPositionEx(R.proj)) or nil
+  local now_row = r.GetPlayStateEx(R.proj) & 1 == 1 and List.at(UI.cursor()) or nil -- (a count-in: the song's start)
   local act -- (what changes the list: after the rows are drawn)
   while ImGui.ListClipper_Step(R.clipper) do
     local d0, d1 = ImGui.ListClipper_GetDisplayRange(R.clipper)

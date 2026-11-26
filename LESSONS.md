@@ -43,11 +43,11 @@ YYYY-MM-DD | Script | tag | what the user saw
   line, so that share lands on another line.
   Why the tests missed it: the tests cannot turn the wheel; the scroll was inside the drawing code, not a plain
   function.
-  Test: "Count-in / Ctrl+wheel" lines in the Transpose test (tests\tabviewer.lua): Tabs.zoom_anchor (the line under
-  the mouse, its first bar) and Tabs.zoom_scroll (that line back under the mouse); new functions, so no run on the
-  old code. Fix: anchor on the bar of the line, not on a share of the height.
+  Test: none kept. 2nd try: anchor on the bar of the line (Tabs.zoom_anchor / zoom_scroll); it failed too, and the
+  user declined a measurement (a log).
   Other scripts: searched, no other zoom by wheel.
-  Status: fixed, not confirmed
+  Status: not fixed; the anchor code removed before Tab Viewer 1.2 (the user's choice): the zoom works, the view
+  does not keep the line under the mouse.
 
 2026-11-26 | Tab Viewer | edge-case | a click in the empty start of bar 1 moved the edit cursor to the bar before, into the
   song before (its tab came up)
