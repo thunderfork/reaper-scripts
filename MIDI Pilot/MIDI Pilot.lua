@@ -1,5 +1,5 @@
 -- @description MIDI Pilot: MIDI editor for amp modelers (Quad Cortex, Line 6 Helix / HX)
--- @version 1.4
+-- @version 1.4.1
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -7,9 +7,8 @@
 --   HX Stomp XL or HX Effects in REAPER: presets at the song starts, scenes (snapshots) by name, knob values in real
 --   units, nudges and ramps. The MIDI plays without the script. Requires: the free ReaImGui extension (ReaPack).
 -- @changelog
---   Songs tab: "+ Add" on the title gives a device its track (Create track / Use selected track).
---   Ctrl+Z works in the window; Settings > Devices: right-click, F2 and Delete on a device.
---   Grey hints instead of yellow.
+--   Fix: File > Open of another project in the same tab now shows that project's devices and tracks.
+--   The lists draw with less work (long names are cut to fit once, not every frame).
 
 -- MIT License
 --
@@ -37,7 +36,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "MIDI Pilot"       -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.4"            -- keep equal to @version in the header
+CFG.VERSION = "1.4.1"            -- keep equal to @version in the header
 CFG.EXT = "MIDI Pilot"         -- ExtState section (REAPER's global settings and the project data)
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DEFAULT_W, CFG.DEFAULT_H = 560, 640

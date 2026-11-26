@@ -8,33 +8,16 @@
   was deleted. The old commits with the personal email address (2-17 November 2026) stay in the public history
   (the user's choice, 26 November 2026: no history rewrite); so the backup gets main only, no tags (GitHub refuses
   the tag v1.7).
-- Project review (26 November 2026), done: GitHub "Code check" workflow (check.ps1 -All on each push; passed); "another project" tests in Segue,
-  FX Link and MIDI Pilot (Chart Cue had them), and the MIDI Pilot fix for File > Open in the same tab (deployed;
-  manual test Open now 10); Session Prep's bus / return rename rule as `Rules.name_ok` with a test; the copy check
-  (`tools\copy-check.ps1`, in check.ps1). Session Prep manual tests 2, 3, 4, 5 and 7 removed (automatic tests cover
-  their logic; the user's choice). Dev 1 (shared look file) replaced by the copy check, Dev 4 skipped (the user's
-  choice). All committed and backed up.
-- Committed, NOT PUSHED to main (26 November 2026), all tested: Tab Viewer 1.2 (UI review, toolbar segment 1, Note Detection
-  layout, 1 mode, .gp5 export; manual tests passed 25-26 November 2026); tools (`check.ps1` only the changed scripts,
-  pass stamps `tools\stamp.ps1`); process and skills audits; housekeeping (no script counts in the notes, old Note
-  Detective entries removed); the instructions cleanup (26 November 2026: no repeated lines in the
-  folder CLAUDE.md files, no dates in the notes, Chart Cue's release checklist removed, a new-script checklist in
-  `new-feature`, the docs check reads every .md of a script folder; lesson tags decided; Claude's Tab Viewer
-  decisions accepted by the user). Then (26 November 2026, committed, not released): the toolbar centred on play
-  with >| (tested), Find notes no longer off before Find tempo (confirmed), Import from tab, the rename to
-  "Detection", Lines without "About 2 seconds", Set tempo with at most 1 decimal place (tested), Find tempo moved to
-  the Detection tab (tested), the sections Tempo / Song / Notes (no numbers) that fold, "set" read from REAPER's
-  tempo, the Tempo rows as label + dropdown with Set tempo in Find tempo's place, Play with click and Short bars
-  removed; more tunings in a logical order; the selection by drag / Shift+click with a Guitar Pro style band and
-  handles; the toolbar in Guitar Pro's order (Loop, speed, Count-in, Metronome, Transpose; stacked + / -); Transpose
-  (saved in the project); the bar 1 click bug (confirmed). All manual tests of Tab Viewer passed (26 November 2026);
-  nothing uncommitted; backed up. Next: a Tab Viewer release when the user asks (the `release` skill: version 1.2),
-  or the next topic.
+- Release (26 November 2026): Tab Viewer 1.2 (the toolbar as in Guitar Pro: size, Transpose | transport | speed,
+  Metronome, REAPER's Count-in with the count over the tab, Loop; Ctrl+wheel size; short Help and tooltips; the
+  Detection changes), and the clean-ups of Chart Cue 1.7.1, FX Link 1.1.2, MIDI Pilot 1.4.1 (the File > Open fix;
+  its manual test still Open now 10) and Session Prep 1.0.2. The Ctrl+wheel "keep the line under the mouse" failed
+  twice and was removed (the user's choice; LESSONS.md). Next: the next topic.
 - Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
   what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
-- Versions: Chart Cue 1.7, Segue 1.3.1, MIDI Pilot 1.4, FX Link 1.1.1, Session Prep 1.0.1, Mono Merge 1.0, Tab Viewer
-  1.1.1; SFX Drop 1.0 committed, not released (more work first). The findings of the checkup of 21 November 2026:
+- Versions: Chart Cue 1.7.1, Segue 1.3.1, MIDI Pilot 1.4.1, FX Link 1.1.2, Session Prep 1.0.2, Mono Merge 1.0, Tab
+  Viewer 1.2; SFX Drop 1.0 committed, not released (more work first). The findings of the checkup of 21 November 2026:
   "Open findings" in each folder CLAUDE.md (moved by the user's choice, 26 November 2026).
 - Last checkup: 24 November 2026, Tab Viewer only. The other scripts: none as 1 full run yet.
 

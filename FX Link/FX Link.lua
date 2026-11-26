@@ -1,5 +1,5 @@
 -- @description FX Link: link plugin instances across tracks
--- @version 1.1.1
+-- @version 1.1.2
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -15,9 +15,7 @@
 --   [main] FX Link - Toggle group.lua
 --   [main] FX Link - Group focused plugin on selected tracks.lua
 -- @changelog
---   Automation and LFOs are no longer copied; Pause 1 plugin; Snapshots A / B with Compare, without false "differ".
---   "+ Add" menus: a new group from the focused plugin on the selected tracks (also an action); empty groups ask which plugin.
---   Right-click a plugin row, F2 / Delete keys; short notices instead of OK windows.
+--   The lists draw with less work (long names are cut to fit once, not every frame); no change in use.
 
 -- MIT License
 --
@@ -45,7 +43,7 @@ local r = reaper
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "FX Link"          -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.1.1"           -- keep equal to @version in the header
+CFG.VERSION = "1.1.2"           -- keep equal to @version in the header
 CFG.EXT = "FX Link"            -- ExtState section (this computer) and the project data section
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.DEFAULT_W, CFG.DEFAULT_H = 460, 560
