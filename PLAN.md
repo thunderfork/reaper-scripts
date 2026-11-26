@@ -15,8 +15,12 @@
   twice and was removed (the user's choice; LESSONS.md).
 - After the release, committed, not released (tested by the user, 26 November 2026): Tab Viewer's "+" makes a note
   shorter and "-" longer (as Guitar Pro); the dots right of the stem (over the beams, right of flags); bolder rests,
-  beams and flags; the Loop icon as REAPER's 2 arrows. Next: the next topic (these go into Tab Viewer 1.2.1 at the
-  next release).
+  beams and flags; the Loop icon as REAPER's 2 arrows.
+- Committed, not released, not tested by the user yet (Open now 20): Tab Viewer's songs (decided 26 November 2026:
+  the bottom bar, not a top line; a song = a region, else a bass item; between songs the last list stays; older
+  Detection lists are lost, no migration; segments 1 and 2 at once, no checkup first: the user's choice). Not built
+  (the user's choice): a mark over the active song in REAPER, a warning before a list is replaced. Next: the
+  user's manual test, then the next topic. All of it goes into the next Tab Viewer release (1.3: a new feature).
 - Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
   what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
@@ -53,6 +57,9 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
+20. Manual test (Tab Viewer, songs, 26 November 2026): in a project with 2-3 songs (regions, or bass items in a
+    row): the bottom bar names the song at the edit cursor; a click goes to its start; Find notes in each song
+    keeps the lists of the others; the Song dropdown; Write in song 2 leaves song 1's markers and Notes items.
 
 ## Later
 
