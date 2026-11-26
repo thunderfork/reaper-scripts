@@ -69,8 +69,7 @@ CFG.TEXT_LIFT = 1              -- px the text is raised above the true centre in
 CFG.CTRL_GAP = 8               -- between 2 controls side by side
 CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = 7, 8, 4 -- spacing (pixels; the same gaps as Chart Cue)
 CFG.ROW_H = 26
-CFG.TB_ICON_W = 32             -- the Undo / Redo icons in the toolbar
-CFG.TB_PLAY_W = 44             -- the transport buttons (Chart Cue's CFG.TRANSPORT_W)
+CFG.TB_ICON_W = 32             -- the icons in the toolbar (Undo / Redo, the transport)
 CFG.TB_NEAR_GAP = 16           -- between the transport and the size / the speed next to it
 CFG.TB_NOTE_W = 14             -- the note icon before the speed
 CFG.TB_PROGRESS_W = 100        -- Find tempo's "Listening..." bar
@@ -2243,25 +2242,24 @@ local function arrow(dl, cx, cy, col, d) -- (undo d = -1, redo d = 1: Chart Cue'
 end
 function ICON.undo(dl, cx, cy, col) arrow(dl, cx, cy, col, -1) end
 function ICON.redo(dl, cx, cy, col) arrow(dl, cx, cy, col, 1) end
--- The transport icons: the sizes of Chart Cue's (UI.draw_transport_icon).
 function ICON.first(dl, cx, cy, col) -- |<
-  ImGui.DrawList_AddRectFilled(dl, cx - 7, cy - 6, cx - 5, cy + 6, col)
-  ImGui.DrawList_AddTriangleFilled(dl, cx + 6, cy - 6, cx + 6, cy + 6, cx - 4, cy, col)
+  ImGui.DrawList_AddRectFilled(dl, cx - 5, cy - 5, cx - 3, cy + 5, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx + 5, cy - 5, cx + 5, cy + 5, cx - 3, cy, col)
 end
 function ICON.last(dl, cx, cy, col) -- >|
-  ImGui.DrawList_AddRectFilled(dl, cx + 5, cy - 6, cx + 7, cy + 6, col)
-  ImGui.DrawList_AddTriangleFilled(dl, cx - 6, cy - 6, cx - 6, cy + 6, cx + 4, cy, col)
+  ImGui.DrawList_AddRectFilled(dl, cx + 3, cy - 5, cx + 5, cy + 5, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx - 5, cy - 5, cx - 5, cy + 5, cx + 3, cy, col)
 end
 function ICON.prev(dl, cx, cy, col) -- <<
-  ImGui.DrawList_AddTriangleFilled(dl, cx, cy - 6, cx, cy + 6, cx - 8, cy, col)
-  ImGui.DrawList_AddTriangleFilled(dl, cx + 8, cy - 6, cx + 8, cy + 6, cx, cy, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx, cy - 5, cx, cy + 5, cx - 7, cy, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx + 7, cy - 5, cx + 7, cy + 5, cx, cy, col)
 end
 function ICON.next(dl, cx, cy, col) -- >>
-  ImGui.DrawList_AddTriangleFilled(dl, cx, cy - 6, cx, cy + 6, cx + 8, cy, col)
-  ImGui.DrawList_AddTriangleFilled(dl, cx - 8, cy - 6, cx - 8, cy + 6, cx, cy, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx, cy - 5, cx, cy + 5, cx + 7, cy, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx - 7, cy - 5, cx - 7, cy + 5, cx, cy, col)
 end
-function ICON.play(dl, cx, cy, col) ImGui.DrawList_AddTriangleFilled(dl, cx - 5, cy - 7, cx - 5, cy + 7, cx + 7, cy, col) end
-function ICON.stop(dl, cx, cy, col) ImGui.DrawList_AddRectFilled(dl, cx - 6, cy - 6, cx + 6, cy + 6, col, 1) end
+function ICON.play(dl, cx, cy, col) ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 6, cx - 4, cy + 6, cx + 6, cy, col) end
+function ICON.stop(dl, cx, cy, col) ImGui.DrawList_AddRectFilled(dl, cx - 5, cy - 5, cx + 5, cy + 5, col, 1) end
 function ICON.note(dl, cx, cy, col) -- a quarter note (the speed, as in Guitar Pro)
   ImGui.DrawList_AddCircleFilled(dl, cx - 2, cy + 4, 3, col)
   ImGui.DrawList_AddLine(dl, cx + 0.5, cy + 4, cx + 0.5, cy - 7, col, 1.5)
@@ -2345,30 +2343,18 @@ local GO_TIPS = {
     off = "No lines yet." },
 }
 -- The width of the transport, and the middle of its play button from its left end.
-function UI.transport_w() return 5 * CFG.TB_PLAY_W + 4 * CFG.CTRL_GAP end
-function UI.transport_mid() return 2 * (CFG.TB_PLAY_W + CFG.CTRL_GAP) + CFG.TB_PLAY_W / 2 end
--- 1 transport button (Chart Cue's look, UI.transport_buttons: a grey framed button with a drawn icon; blue: kind
--- "primary"). True when clicked.
-local function transport_btn(id, icon, H, on, tip, kind)
-  ImGui.BeginDisabled(ctx, not on)
-  local hit = UI.button(id, CFG.TB_PLAY_W, H, kind)
-  ImGui.EndDisabled(ctx)
-  local x0, y0 = ImGui.GetItemRectMin(ctx)
-  ICON[icon](ImGui.GetWindowDrawList(ctx), math.floor(x0 + CFG.TB_PLAY_W / 2) + 0.5, math.floor(y0 + H / 2) + 0.5,
-    not on and COL.TEXT_DIM or kind and COL.WHITE or COL.TEXT_MAIN)
-  UI.tip_disabled(tip)
-  return hit and on
-end
+function UI.transport_w() return 5 * CFG.TB_ICON_W + 4 * 2 end
+function UI.transport_mid() return 2 * (CFG.TB_ICON_W + 2) + CFG.TB_ICON_W / 2 end
 function UI.draw_transport(H)
+  local IW = CFG.TB_ICON_W
   local notes = R.page == UI.PAGE_NOTES
   local on = notes and Notes.has_rows() or not notes and R.tab ~= nil
   local tips = notes and GO_TIPS.notes or GO_TIPS.tab
   for k, g in ipairs(GO) do
-    if k > 1 then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP) end
+    if k > 1 then ImGui.SameLine(ctx, 0, 2) end
     if not g then
-      if transport_btn("##play", R.playing and "stop" or "play", H, true, R.playing and "Stop (Space)" or "Play (Space)",
-        R.playing and "primary" or nil) then UI.play_stop() end
-    elseif transport_btn(g[3], g[2], H, on, on and tips[g[1]] or tips.off) then UI.go(g[1]) end
+      if UI.tb_icon("##play", R.playing and "stop" or "play", IW, H, true, R.playing and "Stop (Space)" or "Play (Space)") then UI.play_stop() end
+    elseif UI.tb_icon(g[3], g[2], IW, H, on, on and tips[g[1]] or tips.off) then UI.go(g[1]) end
   end
 end
 

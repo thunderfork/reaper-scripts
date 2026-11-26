@@ -40,9 +40,8 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   room goes to the next row): left Find tempo; center the size, |<, <, play / stop, >, >| (play in the middle of the
   window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Note Detection tab by lines,
   `Notes.go`), the speed with a note icon; right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes
-  `Tabs.undo` or the list `Notes.undo`, then REAPER's; Ctrl+Z too). The transport has Chart Cue's look (framed
-  buttons, play blue while playing); Undo / Redo are plain icons (`UI.tb_icon`). Icons: `ICON` (drawn, as Chart
-  Cue's). Next: loop, metronome and count-in, transpose ("Later" below).
+  `Tabs.undo` or the list `Notes.undo`, then REAPER's; Ctrl+Z too). Icons: `UI.tb_icon`, `ICON` (drawn, as Chart
+  Cue's; plain icons, not Chart Cue's framed transport buttons: the user's choice). Next: loop, metronome and count-in, transpose ("Later" below).
 - The tab size: -, the percent (a click: the list `ZOOMS`), + (only in the Tab tab; right-click: 100%), `S.zoom`,
   10% steps (`Tabs.zoom_step`, `CFG.ZOOM_MIN` .. `CFG.ZOOM_MAX`); the sizes: "Rules". The tab's fonts `TF` (per zoom step, made by `UI.zoom_fonts` at the start of
   a frame, used from the next one); `UI.draw_tab` pushes `TF.font` for the layout and the drawing, not for its menus,
