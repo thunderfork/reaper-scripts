@@ -511,6 +511,17 @@ test("a new name that another track has gets a number", function()
   eq(rows[1].new, "Gtr 2", "Gtr and Gtr 1 are taken"); eq(rows[2].new, "Kick")
 end)
 
+test("a bus or return rename: an empty or taken name goes back", function()
+  local a, b = { name = "Delay" }, { name = "Verb" }
+  local list = { a, b }
+  eq(Rules.name_ok(list, a, ""), false, "empty")
+  eq(Rules.name_ok(list, a, "Verb"), false, "the other return's name")
+  eq(Rules.name_ok(list, a, "VERB"), false, "the other name in another case")
+  eq(Rules.name_ok(list, a, "Delay"), true, "its own name")
+  eq(Rules.name_ok(list, a, "Slap"), true, "a free name")
+  eq(Rules.name_ok({ a }, a, "Verb"), true, "1 item: any name but empty")
+end)
+
 test("Undo per section: steps, quick changes as 1 step, other sections apart", function()
   defaults()
   R.snap, R.hist, R.hist_t = Rules.snapshot(), {}, {}

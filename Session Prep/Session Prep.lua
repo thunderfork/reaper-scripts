@@ -602,6 +602,13 @@ function Rules.free_name(name)
   while used[name .. " " .. n] do n = n + 1 end
   return name .. " " .. n
 end
+-- True when item (a bus or a return of list) can take the cleaned name new: not empty, and no other item of list
+-- has it (any case). Else the rename goes back to the old name.
+function Rules.name_ok(list, item, new)
+  if new == "" then return false end
+  for _, o in ipairs(list) do if o ~= item and o.name:upper() == new:upper() then return false end end
+  return true
+end
 function Rules.copy(p)
   return Rules.parse(Rules.serialize(p)) -- (the text has every part: a full copy)
 end
@@ -3063,9 +3070,7 @@ function UI.draw_bus(p, i, b)
   if chn then b.name = (txt:gsub("[|;~%^]", "")) end
   if ImGui.IsItemDeactivatedAfterEdit(ctx) then
     local new, old = Util.clean(b.name), R.bus_old or b.name
-    local taken = false
-    for _, ob in ipairs(p.buses) do if ob ~= b and ob.name:upper() == new:upper() then taken = true end end
-    if new == "" or taken then b.name = old
+    if not Rules.name_ok(p.buses, b, new) then b.name = old
     else
       b.name = new
       if p.fx[old] and not p.fx[new] then p.fx[new] = p.fx[old] end
@@ -3197,9 +3202,8 @@ function UI.draw_returns(p)
     end
     if chn then rename((txt:gsub("[|;~%^]", ""))); Util.mark_sdirty() end
     if ImGui.IsItemDeactivatedAfterEdit(ctx) then -- (an empty name, or the name of another return: back to the old one)
-      local new, taken = Util.clean(rt.name), false
-      for _, o in ipairs(p.returns) do if o ~= rt and o.name:upper() == new:upper() then taken = true end end
-      rename((new == "" or taken) and (R.ret_old or new) or new)
+      local new = Util.clean(rt.name)
+      rename(Rules.name_ok(p.returns, rt, new) and new or (R.ret_old or new))
       Rules.changed()
     end
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
