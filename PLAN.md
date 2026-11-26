@@ -56,6 +56,11 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
+20. Privacy, the user's decision (found 26 November 2026): 67 of the 137 commits on main (2 to 17 November 2026,
+    and the commit of the tag v1.7) carry the personal email address instead of the no-reply address, in the public
+    history. A fix rewrites the history (all commit IDs change: a force push, ReaPack's index rebuilt, the tags and
+    Releases moved); copies that others made keep the old history. Or leave it. The backup push skips the tags
+    (GitHub refused v1.7 for this reason).
 
 ## Later
 
