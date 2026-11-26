@@ -56,8 +56,8 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
   before a deploy that I will test in REAPER; the checks before a push are in the `release` skill (they replace
   the global `checkup` before a push). `checkup` before a large change and every 30 days ("Last checkup" in PLAN.md).
 - Manual tests in REAPER: remind me to close and start the script again first (it loads the new version).
-- Open the repository folder (`Chart Cue`), not its parent `Reaper Scripts`: else this file, the session-start hook
-  and the project skills do not load.
+- Open the repository folder (`Reaper Scripts`), not a script folder such as `Chart Cue`: else this file, the
+  session-start hook and the project skills do not load.
 
 ## Look and words (all scripts with a window)
 
