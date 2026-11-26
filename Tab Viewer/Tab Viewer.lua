@@ -3608,7 +3608,7 @@ function UI.tab_rhythm(dl, b, lx, y, ym)
       if v.dot then
         local beamed = e.join or (k > 1 and rh[k - 1].join)
         local yd = beamed and ye - bh - (n - 1) * bs - 2.5 * z or ye - 0.5 * z
-        local xd = (e.flag and not beamed) and x + fl + 3 * z or x + 3.5 * z
+        local xd = (e.flag and not beamed) and x + fl + 3 * z or beamed and x + 3.5 * z or x + 6 * z
         ImGui.DrawList_AddCircleFilled(dl, xd, yd, 1.6 * z, col)
       end
     end
