@@ -1074,6 +1074,14 @@ end)
 -- (the Guitar Pro reader itself, and the notes of Tab Viewer's tab: tests\tabviewer.lua)
 test("import to list: the tunings of the list", function()
   eq(C.Imp.tuning({ 24, 31, 36, 41 }).id, "dropc"); eq(C.Imp.tuning({ 1, 2, 3 }), nil)
+  -- the tunings added on 26 November 2026: a D standard or 5-string A standard tab finds its own
+  eq(C.Imp.tuning({ 26, 31, 36, 41 }).id, "dstd"); eq(C.Imp.tuning({ 21, 26, 31, 36, 41 }).id, "five_a")
+  local seen = {}
+  for _, t in ipairs(C.CFG.TUNINGS) do
+    ok(not seen[t.id], "1 id once: " .. t.id); seen[t.id] = true
+    ok(#t.open == 4 or #t.open == 5, t.id .. ": 4 or 5 strings (the string names)")
+    for s = 2, #t.open do ok(t.open[s] > t.open[s - 1], t.id .. ": from the lowest string") end
+  end
   ok(C.GP and C.GP.read, "the shared Guitar Pro reader is loaded")
 end)
 

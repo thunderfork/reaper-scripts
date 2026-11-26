@@ -79,6 +79,15 @@ CFG.TUNINGS = { -- the open strings from the lowest (MIDI numbers); the strings 
   { id = "dropd", label = "Drop D (D A D G)", open = { 26, 33, 38, 43 } },
   { id = "dropc", label = "Drop C (C G C F)", open = { 24, 31, 36, 41 } },
   { id = "five", label = "5-string (B E A D G)", open = { 23, 28, 33, 38, 43 } },
+  -- (more: the user, 26 November 2026; the ids above stay, they are saved in projects)
+  { id = "dstd", label = "D standard (D G C F)", open = { 26, 31, 36, 41 } },
+  { id = "cstd", label = "C standard (C F Bb Eb)", open = { 24, 29, 34, 39 } },
+  { id = "bstd", label = "B standard (B E A D)", open = { 23, 28, 33, 38 } },
+  { id = "dropcs", label = "Drop C# (C# G# C# F#)", open = { 25, 32, 37, 42 } },
+  { id = "dropb", label = "Drop B (B F# B E)", open = { 23, 30, 35, 40 } },
+  { id = "five_half", label = "5-string half step down (Bb Eb Ab Db Gb)", open = { 22, 27, 32, 37, 42 } },
+  { id = "five_a", label = "5-string A standard (A D G C F)", open = { 21, 26, 31, 36, 41 } },
+  { id = "five_dropa", label = "5-string Drop A (A E A D G)", open = { 21, 28, 33, 38, 43 } },
 }
 CFG.STRING_NAMES = { [4] = { "E", "A", "D", "G" }, [5] = { "B", "E", "A", "D", "G" } }
 CFG.OCT_DB = -6                -- the odd harmonics this far below the even ones: the higher octave (Det.octave_limit:

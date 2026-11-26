@@ -63,12 +63,9 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-23. Manual test (Tab Viewer, Detection, 26 November 2026): the headings Tempo, Song, Notes; Tempo and Song fold
-    (still folded after a restart) and show their status; a song without its own tempo: Find tempo is blue, Find
-    notes and Import from tab are grey with the grey line; "The tempo is right" makes Tempo "Set: ... BPM" (1 undo
-    step) and Find notes (or Import from tab, with a tab) turns blue. The Tempo rows: after Find tempo the button is
-    the blue Set tempo; Tempo (found / half / double), Style with its grey line, Bar 1 < >; no Play with click, no
-    Short bars; another Listen to brings Find tempo back.
+24. Manual test (Tab Viewer, 26 November 2026): Detection > Song > Tuning lists the new tunings (D standard, C
+    standard, B standard, Drop C#, Drop B, 5-string half step down, A standard, Drop A); a D standard bass part
+    gets the right frets.
 
 ## Later
 
