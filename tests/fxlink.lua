@@ -483,6 +483,27 @@ test("check again after a copy: a knob that the plugin reset is set again", func
   ok(not (R.noset[g] and R.noset[g][0]), "not marked as a knob that does not follow")
 end)
 
+-- the last test: it opens other projects in the same tab (and comes back to the test project)
+test("another project in the same tab: no groups of the last one, nothing written", function()
+  C.S.close_proj = false
+  make_group("exact")
+  Project.update()
+  R.pdirty = true -- (an unsaved change)
+  r.Main_SaveProject(0, false)
+  local other = tmp .. "\\other.rpp"
+  local h = io.open(other, "w"); if h then h:write("<REAPER_PROJECT 0.1\n>\n"); h:close() end
+  r.Main_openProject("noprompt:" .. other)
+  Project.update()
+  eq(Project.serialize(), "version=1", "default data: no groups")
+  eq((r.GetProjExtState(0, "FX Link", "cfg")), 0, "nothing written into the other project")
+  -- with "close with project" on, FX Link closes instead
+  C.S.close_proj = true
+  r.Main_openProject("noprompt:" .. proj_file)
+  Project.update()
+  ok(R.close, "FX Link closes")
+  R.close = false
+end)
+
 for _, t in ipairs(tests) do
   local good, e = pcall(t[2])
   if good then passed = passed + 1; log("ok    " .. t[1])

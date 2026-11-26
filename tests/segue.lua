@@ -208,6 +208,31 @@ test("outside the setlist songs: the last song stays current; previous / next so
   if not good then error(e, 0) end
 end)
 
+-- the last test: it opens other projects in the same tab (and comes back to the test project)
+test("another project in the same tab: no setlists, regions or song position of the last one", function()
+  C.S.close_proj = false
+  local p = Project.default()
+  p.setlists[1] = Setlist.from_timeline("Show")
+  C.set_P(p)
+  Project.update()
+  R.pdirty, R.sl_pos = true, 2 -- (an unsaved change and a current song)
+  r.Main_SaveProject(0, false)
+  local other = tmp .. "\\other.rpp"
+  local h = io.open(other, "w"); if h then h:write("<REAPER_PROJECT 0.1\n>\n"); h:close() end
+  r.Main_openProject("noprompt:" .. other)
+  Project.update()
+  eq(#R.regions, 0, "no regions of the last project")
+  eq(Project.serialize(), "version=1", "default data")
+  eq(R.sl_pos, nil, "no current song")
+  eq((r.GetProjExtState(0, "Segue", "cfg")), 0, "nothing written into the other project")
+  -- with "close with project" on, Segue closes instead
+  C.S.close_proj = true
+  r.Main_openProject("noprompt:" .. proj_file)
+  Project.update()
+  ok(R.close, "Segue closes")
+  R.close, C.S.close_proj = false, false
+end)
+
 for _, t in ipairs(tests) do
   local good, e = pcall(t[2])
   if good then passed = passed + 1; log("ok    " .. t[1])
