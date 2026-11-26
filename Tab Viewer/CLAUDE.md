@@ -36,12 +36,13 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   saved; `PAGE_NAMES`, `UI.PAGE_NOTES`, `UI.PAGE_SETTINGS`, `UI.PAGE_HELP`); icons when narrow; right-click a text tab
   > Hide this tab (Settings > Look > Tabs). The tab keys work only in the Tab tab, the list keys only in the Note
   Detection tab.
-- The toolbar (inspired by Guitar Pro's): `UI.draw_toolbar`, 3 groups placed by
-  `Tabs.toolbar_rows` (a group without room goes to the next row): left Undo / Redo (`UI.undo`: the open tab's steps
-  first, the tab fixes `Tabs.undo` or the list `Notes.undo`, then REAPER's; Ctrl+Z too), the size, Find tempo; center
-  |<, <, play / stop, > (`UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Note Detection tab by
-  lines, `Notes.go`); right the speed with a note icon. Icons: `UI.tb_icon`, `ICON` (drawn, as Chart Cue's). Next:
-  loop, metronome and count-in, transpose ("Later" below).
+- The toolbar (inspired by Guitar Pro's): `UI.draw_toolbar`, its places from `Tabs.toolbar_rows` (a part without
+  room goes to the next row): left Find tempo; center the size, |<, <, play / stop, >, >| (play in the middle of the
+  window; `UI.go`: by bars, `Tabs.go`, `R.tab_jump` scrolls to the line; in the Note Detection tab by lines,
+  `Notes.go`), the speed with a note icon; right Undo / Redo (`UI.undo`: the open tab's steps first, the tab fixes
+  `Tabs.undo` or the list `Notes.undo`, then REAPER's; Ctrl+Z too). The transport has Chart Cue's look (framed
+  buttons, play blue while playing); Undo / Redo are plain icons (`UI.tb_icon`). Icons: `ICON` (drawn, as Chart
+  Cue's). Next: loop, metronome and count-in, transpose ("Later" below).
 - The tab size: -, the percent (a click: the list `ZOOMS`), + (only in the Tab tab; right-click: 100%), `S.zoom`,
   10% steps (`Tabs.zoom_step`, `CFG.ZOOM_MIN` .. `CFG.ZOOM_MAX`); the sizes: "Rules". The tab's fonts `TF` (per zoom step, made by `UI.zoom_fonts` at the start of
   a frame, used from the next one); `UI.draw_tab` pushes `TF.font` for the layout and the drawing, not for its menus,

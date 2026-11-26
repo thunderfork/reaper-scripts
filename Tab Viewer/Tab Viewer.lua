@@ -69,11 +69,13 @@ CFG.TEXT_LIFT = 1              -- px the text is raised above the true centre in
 CFG.CTRL_GAP = 8               -- between 2 controls side by side
 CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = 7, 8, 4 -- spacing (pixels; the same gaps as Chart Cue)
 CFG.ROW_H = 26
-CFG.TB_ICON_W = 32             -- the icons in the toolbar (Undo / Redo, the transport)
+CFG.TB_ICON_W = 32             -- the Undo / Redo icons in the toolbar
+CFG.TB_PLAY_W = 44             -- the transport buttons (Chart Cue's CFG.TRANSPORT_W)
+CFG.TB_NEAR_GAP = 16           -- between the transport and the size / the speed next to it
 CFG.TB_NOTE_W = 14             -- the note icon before the speed
 CFG.TB_PROGRESS_W = 100        -- Find tempo's "Listening..." bar
 CFG.TB_ROW_GAP = 4             -- between the rows of a narrow toolbar
-CFG.TB_GROUP_GAP = 25          -- between the toolbar groups (a divider in the middle; as in Chart Cue)
+CFG.TB_GROUP_GAP = 25          -- the least gap between the toolbar groups (as in Chart Cue)
 CFG.STRIP_H, CFG.STRIP_GAP, CFG.STRIP_LIFT = 32, 4, 6 -- the tab strip, as in Chart Cue and MIDI Pilot
 CFG.STRIP_GROUP_GAP = 12       -- between the text tabs and the Settings / Help tabs
 CFG.NOTICE_SEC = 4             -- a notice at the bottom of the window shows this long
@@ -1507,11 +1509,12 @@ function Tabs.place_of(t)
   end
   return lo, q - tab.bars[lo].q0
 end
--- The bar (of n) that the toolbar's |< (dir 0: bar 1), < and > (dir -1 / 1) go to from bar bi (nil: before the tab,
--- or after it with after true); nil: none.
+-- The bar (of n) that the toolbar's |< (dir 0: bar 1), < and > (dir -1 / 1) and >| (dir 2: the last bar) go to from
+-- bar bi (nil: before the tab, or after it with after true); nil: none.
 function Tabs.go(n, dir, bi, after)
   if n == 0 then return nil end
   if dir == 0 then return 1 end
+  if dir == 2 then return n end
   local i = (bi or (after and n + 1 or 0)) + dir
   return i >= 1 and i <= n and i or nil
 end
@@ -2240,20 +2243,25 @@ local function arrow(dl, cx, cy, col, d) -- (undo d = -1, redo d = 1: Chart Cue'
 end
 function ICON.undo(dl, cx, cy, col) arrow(dl, cx, cy, col, -1) end
 function ICON.redo(dl, cx, cy, col) arrow(dl, cx, cy, col, 1) end
+-- The transport icons: the sizes of Chart Cue's (UI.draw_transport_icon).
 function ICON.first(dl, cx, cy, col) -- |<
-  ImGui.DrawList_AddRectFilled(dl, cx - 5, cy - 5, cx - 3, cy + 5, col)
-  ImGui.DrawList_AddTriangleFilled(dl, cx + 5, cy - 5, cx + 5, cy + 5, cx - 3, cy, col)
+  ImGui.DrawList_AddRectFilled(dl, cx - 7, cy - 6, cx - 5, cy + 6, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx + 6, cy - 6, cx + 6, cy + 6, cx - 4, cy, col)
+end
+function ICON.last(dl, cx, cy, col) -- >|
+  ImGui.DrawList_AddRectFilled(dl, cx + 5, cy - 6, cx + 7, cy + 6, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx - 6, cy - 6, cx - 6, cy + 6, cx + 4, cy, col)
 end
 function ICON.prev(dl, cx, cy, col) -- <<
-  ImGui.DrawList_AddTriangleFilled(dl, cx, cy - 5, cx, cy + 5, cx - 7, cy, col)
-  ImGui.DrawList_AddTriangleFilled(dl, cx + 7, cy - 5, cx + 7, cy + 5, cx, cy, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx, cy - 6, cx, cy + 6, cx - 8, cy, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx + 8, cy - 6, cx + 8, cy + 6, cx, cy, col)
 end
 function ICON.next(dl, cx, cy, col) -- >>
-  ImGui.DrawList_AddTriangleFilled(dl, cx, cy - 5, cx, cy + 5, cx + 7, cy, col)
-  ImGui.DrawList_AddTriangleFilled(dl, cx - 7, cy - 5, cx - 7, cy + 5, cx, cy, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx, cy - 6, cx, cy + 6, cx + 8, cy, col)
+  ImGui.DrawList_AddTriangleFilled(dl, cx - 8, cy - 6, cx - 8, cy + 6, cx, cy, col)
 end
-function ICON.play(dl, cx, cy, col) ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 6, cx - 4, cy + 6, cx + 6, cy, col) end
-function ICON.stop(dl, cx, cy, col) ImGui.DrawList_AddRectFilled(dl, cx - 5, cy - 5, cx + 5, cy + 5, col, 1) end
+function ICON.play(dl, cx, cy, col) ImGui.DrawList_AddTriangleFilled(dl, cx - 5, cy - 7, cx - 5, cy + 7, cx + 7, cy, col) end
+function ICON.stop(dl, cx, cy, col) ImGui.DrawList_AddRectFilled(dl, cx - 6, cy - 6, cx + 6, cy + 6, col, 1) end
 function ICON.note(dl, cx, cy, col) -- a quarter note (the speed, as in Guitar Pro)
   ImGui.DrawList_AddCircleFilled(dl, cx - 2, cy + 4, 3, col)
   ImGui.DrawList_AddLine(dl, cx + 0.5, cy + 4, cx + 0.5, cy - 7, col, 1.5)
@@ -2311,7 +2319,8 @@ function UI.draw_undo(IW, H)
   if UI.tb_icon("##redo", "redo", IW, H, on, UNDO_TIP[1]) then UI.undo(1) end
 end
 
--- |<, < and > (dir 0, -1, 1): the Tab tab to bar 1 / the bar before / after the one at the cursor, the Note Detection
+-- |<, <, > and >| (dir 0, -1, 1, 2): the Tab tab to bar 1 / the bar before / after the one at the cursor / the last
+-- bar, the Note Detection
 -- tab to its lines. The edit cursor goes there (playing: the song jumps there).
 function UI.go(dir)
   if R.page == UI.PAGE_NOTES then Notes.go(dir); return end
@@ -2325,23 +2334,41 @@ function UI.go(dir)
   r.SetEditCurPos2(R.proj, Tabs.time_of(i, 0), true, R.playing)
   R.tab_jump = true -- (stopped: the tab scrolls to it)
 end
--- The transport in the middle: |<, <, play / stop, >. The tips: [tab or notes][dir].
-local GO = { { 0, "first", "##first" }, { -1, "prev", "##prev" }, false, { 1, "next", "##next" } }
+-- The transport in the middle: |<, <, play / stop, >, >| (play in the middle of the 5). The tips: [tab or notes][dir].
+local GO = { { 0, "first", "##first" }, { -1, "prev", "##prev" }, false, { 1, "next", "##next" }, { 2, "last", "##last" } }
 local GO_TIPS = {
   tab = { [0] = "To bar 1 of the tab.", [-1] = "Back 1 bar (the edit cursor; playing: the song jumps there).",
-    [1] = "On 1 bar (the edit cursor; playing: the song jumps there).", off = "No tab here." },
+    [1] = "On 1 bar (the edit cursor; playing: the song jumps there).", [2] = "To the last bar of the tab.",
+    off = "No tab here." },
   notes = { [0] = "To the first line.", [-1] = "Back 1 line (the edit cursor; playing: the song jumps there).",
-    [1] = "On 1 line (the edit cursor; playing: the song jumps there).", off = "No lines yet." },
+    [1] = "On 1 line (the edit cursor; playing: the song jumps there).", [2] = "To the last line.",
+    off = "No lines yet." },
 }
-function UI.draw_transport(IW, H)
+-- The width of the transport, and the middle of its play button from its left end.
+function UI.transport_w() return 5 * CFG.TB_PLAY_W + 4 * CFG.CTRL_GAP end
+function UI.transport_mid() return 2 * (CFG.TB_PLAY_W + CFG.CTRL_GAP) + CFG.TB_PLAY_W / 2 end
+-- 1 transport button (Chart Cue's look, UI.transport_buttons: a grey framed button with a drawn icon; blue: kind
+-- "primary"). True when clicked.
+local function transport_btn(id, icon, H, on, tip, kind)
+  ImGui.BeginDisabled(ctx, not on)
+  local hit = UI.button(id, CFG.TB_PLAY_W, H, kind)
+  ImGui.EndDisabled(ctx)
+  local x0, y0 = ImGui.GetItemRectMin(ctx)
+  ICON[icon](ImGui.GetWindowDrawList(ctx), math.floor(x0 + CFG.TB_PLAY_W / 2) + 0.5, math.floor(y0 + H / 2) + 0.5,
+    not on and COL.TEXT_DIM or kind and COL.WHITE or COL.TEXT_MAIN)
+  UI.tip_disabled(tip)
+  return hit and on
+end
+function UI.draw_transport(H)
   local notes = R.page == UI.PAGE_NOTES
   local on = notes and Notes.has_rows() or not notes and R.tab ~= nil
   local tips = notes and GO_TIPS.notes or GO_TIPS.tab
   for k, g in ipairs(GO) do
-    if k > 1 then ImGui.SameLine(ctx, 0, 2) end
+    if k > 1 then ImGui.SameLine(ctx, 0, CFG.CTRL_GAP) end
     if not g then
-      if UI.tb_icon("##play", R.playing and "stop" or "play", IW, H, true, R.playing and "Stop (Space)" or "Play (Space)") then UI.play_stop() end
-    elseif UI.tb_icon(g[3], g[2], IW, H, on, on and tips[g[1]] or tips.off) then UI.go(g[1]) end
+      if transport_btn("##play", R.playing and "stop" or "play", H, true, R.playing and "Stop (Space)" or "Play (Space)",
+        R.playing and "primary" or nil) then UI.play_stop() end
+    elseif transport_btn(g[3], g[2], H, on, on and tips[g[1]] or tips.off) then UI.go(g[1]) end
   end
 end
 
@@ -2426,46 +2453,58 @@ function UI.find_tempo_w()
   if tm and tm.beats then return w + CFG.CTRL_GAP + UI.btn_w("Set tempo") end
   return w
 end
--- Where the 3 groups of the toolbar go (a plain function; widths LW, CW, RW, from x0, aw wide): the left group at x0,
--- the center group (the transport) in the middle of the window but after the left group, the right group at the
--- right end; a group without room goes to the next row (decided 25 November 2026). Returns cx, crow, rx, rrow.
-function Tabs.toolbar_rows(x0, aw, LW, CW, RW, GG)
-  local right = x0 + aw
-  local crow, cx = 0, math.max(x0 + LW + GG, x0 + math.floor((aw - CW) / 2))
-  if cx + CW > right then crow, cx = 1, x0 end
-  local rrow, rx = crow, right - RW
-  if rx < cx + CW + GG then rrow, rx = crow + 1, math.max(x0, right - RW) end
-  return cx, crow, rx, rrow
+-- Where the parts of the toolbar go (a plain function; from x0, aw wide). w: the widths L (Find tempo, left), Z (the
+-- size), T (the transport), S (the speed), U (Undo / Redo, right); PC: the middle of play from the transport's left
+-- end; GG: the least gap between groups, NG: the gap of the size and the speed to the transport. Find tempo at x0 and
+-- Undo / Redo at the right end on row 0 (no room for both: Undo / Redo on row 1). The center (size, transport, speed)
+-- with play in the middle of the window, on row 0 when it has room between them; else on the next row, centred on
+-- play as far as the window lets it; narrower than the center: the transport alone, the size (left) and the speed
+-- (right) on the row after it (decided 26 November 2026).
+-- Fills p (a new table without it) with zx, zrow, tx, trow, sx, srow, ux, urow, and returns it.
+function Tabs.toolbar_rows(x0, aw, w, PC, GG, NG, p)
+  p = p or {}
+  local right, mid = x0 + aw, x0 + math.floor(aw / 2)
+  p.urow, p.ux = 0, math.max(x0, right - w.U)
+  if x0 + w.L + GG > p.ux then p.urow = 1 end
+  local CW = w.Z + NG + w.T + NG + w.S
+  local cx = mid - PC - NG - w.Z
+  local row = p.urow + 1
+  if p.urow == 0 and cx >= x0 + w.L + GG and cx + CW + GG <= p.ux then row = 0
+  elseif CW > aw then -- (the transport alone; the size and the speed on the row after it)
+    p.tx, p.trow = math.max(x0, math.min(mid - PC, right - w.T)), row
+    p.zx, p.zrow = x0, row + 1
+    p.sx, p.srow = math.max(x0 + w.Z + NG, right - w.S), row + 1
+    return p
+  else cx = math.max(x0, math.min(cx, right - CW)) end
+  p.zx, p.tx = cx, cx + w.Z + NG
+  p.sx = p.tx + w.T + NG
+  p.zrow, p.trow, p.srow = row, row, row
+  return p
 end
--- The toolbar (decided 25 November 2026, inspired by Guitar Pro's): at the left Undo / Redo, the tab size, Find tempo;
--- in the middle |<, <, play / stop, >; at the right the speed. A narrow window: 2 rows (or 3). The controls work in
--- the Tab and the Note Detection tab.
+local TB_W, TB_POS = {}, {} -- (the toolbar's widths and places: filled every frame, not made)
+-- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): at the left Find tempo; in the middle the tab
+-- size, |<, <, play / stop, >, >| (play in the middle of the window), the speed; at the right Undo / Redo. A narrow
+-- window: 2 or 3 rows. The controls work in the Tab and the Note Detection tab.
 function UI.draw_toolbar()
   UI.vgap(CFG.SP_EDGE)
   local x0, y0 = ImGui.GetCursorPosX(ctx), ImGui.GetCursorPosY(ctx)
   local aw = ImGui.GetContentRegionAvail(ctx)
-  local IW, H, GG = CFG.TB_ICON_W, ImGui.GetFrameHeight(ctx), CFG.TB_GROUP_GAP
-  local UW, ZW = 2 * IW + 2, UI.zoom_w(H)
-  local LW = UW + GG + ZW + GG + UI.find_tempo_w()
-  local CW, SW = 4 * IW + 3 * 2, UI.btn_w("100%") + H + CFG.TB_NOTE_W + 2
-  local cx, crow, rx, rrow = Tabs.toolbar_rows(x0, aw, LW, CW, SW, GG)
+  local IW, H = CFG.TB_ICON_W, ImGui.GetFrameHeight(ctx)
+  local w = TB_W
+  w.L, w.Z, w.T, w.U = UI.find_tempo_w(), UI.zoom_w(H), UI.transport_w(), 2 * IW + 2
+  w.S = UI.btn_w("100%") + H + CFG.TB_NOTE_W + 2
+  local p = Tabs.toolbar_rows(x0, aw, w, UI.transport_mid(), CFG.TB_GROUP_GAP, CFG.TB_NEAR_GAP, TB_POS)
   local RH = H + CFG.TB_ROW_GAP
-  local dl = ImGui.GetWindowDrawList(ctx) -- (the dividers in the left group, as in Chart Cue)
-  local wx, wy = ImGui.GetWindowPos(ctx)
-  for k = 1, 2 do
-    local lx = math.floor(wx + x0 + UW + GG / 2 + (k - 1) * (GG + ZW)) + 0.5
-    ImGui.DrawList_AddLine(dl, lx, wy + y0 + 4, lx, wy + y0 + H - 4, COL.TOGGLE_OFF, 1)
-  end
-  ImGui.SetCursorPos(ctx, x0, y0)
+  UI.draw_find_tempo(x0, y0, H) -- (also without a tab: before Find notes)
+  ImGui.SetCursorPos(ctx, p.ux, y0 + p.urow * RH)
   UI.draw_undo(IW, H)
-  ImGui.SetCursorPos(ctx, x0 + UW + GG, y0)
+  ImGui.SetCursorPos(ctx, p.zx, y0 + p.zrow * RH)
   UI.draw_zoom(H)
-  UI.draw_find_tempo(x0 + UW + GG + ZW + GG, y0, H) -- (also without a tab: before Find notes)
-  ImGui.SetCursorPos(ctx, cx, y0 + crow * RH)
-  UI.draw_transport(IW, H) -- (a click on the window takes the focus from REAPER: Space here is the window's)
-  ImGui.SetCursorPos(ctx, rx, y0 + rrow * RH)
-  UI.draw_speed(SW)
-  ImGui.SetCursorPos(ctx, x0, y0 + rrow * RH + H)
+  ImGui.SetCursorPos(ctx, p.tx, y0 + p.trow * RH)
+  UI.draw_transport(H) -- (a click on the window takes the focus from REAPER: Space here is the window's)
+  ImGui.SetCursorPos(ctx, p.sx, y0 + p.srow * RH)
+  UI.draw_speed(w.S)
+  ImGui.SetCursorPos(ctx, x0, y0 + math.max(p.urow, p.zrow) * RH + H)
   UI.vgap(CFG.SP_EDGE)
 end
 
@@ -2879,7 +2918,7 @@ function UI.draw_find_tempo(x, y, H)
     UI.tip(tm.tab and "Writes the tab's tempo, tempo changes and time signatures into the project from bar 1, and the tab starts on that bar: 1 undo step. The audio stays where it is."
       or "Writes the tempo of this song into the project, and moves its audio a few ms so the first note is on the beat; the tab starts on bar 1: 1 undo step. Other songs keep their places.")
   end
-  local ex = ImGui.GetItemRectMax(ctx) -- (the right end of the last control: the toolbar's speed stays after it)
+  local ex = ImGui.GetItemRectMax(ctx) -- (the right end of the last control)
   ImGui.SetNextWindowPos(ctx, mx, my + 4, ImGui.Cond_Appearing())
   UI.draw_tempo_menu()
   return ex

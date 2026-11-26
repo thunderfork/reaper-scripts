@@ -3056,16 +3056,17 @@ function N.undo(dir)
 end
 function N.has_rows() return P ~= nil and P.rows[1] ~= nil end
 -- The line that the toolbar's |< (dir 0: the first one), < and > (dir -1 / 1: the line before / after the one at t)
--- go to; nil: none.
+-- and >| (dir 2: the last one) go to; nil: none.
 function List.go(dir, t)
   local n = #P.rows
   if n == 0 then return nil end
   if dir == 0 then return 1 end
+  if dir == 2 then return n end
   local cur = List.at(t)
   local i = cur and cur + dir or 1 -- (before the first line: < and > go to the first one)
   return i >= 1 and i <= n and i or nil
 end
--- |<, < and > of the toolbar: the line is selected, the edit cursor goes to its start (playing: the song jumps there).
+-- |<, <, > and >| of the toolbar: the line is selected, the edit cursor goes to its start (playing: the song jumps there).
 function N.go(dir)
   local i = List.go(dir, UI.cursor())
   if not i then return end
