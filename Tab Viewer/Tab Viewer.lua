@@ -2457,6 +2457,11 @@ function UI.icon_field(id, icon, txt, w, H, on, col)
   ImGui.DrawList_AddText(dl, x + IC + math.floor((w - IC - tw) / 2), y + math.floor((H - ImGui.GetTextLineHeight(ctx)) / 2), col, txt)
   return hit and on, x, y + H
 end
+-- The list of a field (call before its BeginPopup): below the field (x, its bottom y), at least the field's width w.
+function UI.list_below(x, y, w)
+  ImGui.SetNextWindowPos(ctx, x, y + 2, ImGui.Cond_Appearing())
+  ImGui.SetNextWindowSizeConstraints(ctx, w, 0, math.max(w, 1000), 10000)
+end
 
 -- Undo / Redo (dir -1 / 1; the toolbar arrows, Ctrl+Z / Ctrl+Shift+Z): the steps of the open tab first (the tab
 -- fixes, or the Detection list), then REAPER's.
@@ -2540,7 +2545,7 @@ function UI.draw_speed(H)
   local hit, lx, ly = UI.icon_field("##speed", "note", cur, UI.speed_w(), H, true, slow and COL.YELLOW or nil)
   if hit then ImGui.OpenPopup(ctx, "##speedlist") end
   UI.tip("Too fast to play along? Slow the song down (the pitch stays); yellow while it is not 100%. Back to 100% when Tab Viewer closes.")
-  ImGui.SetNextWindowPos(ctx, lx, ly + 2, ImGui.Cond_Appearing())
+  UI.list_below(lx, ly, UI.speed_w())
   if ImGui.BeginPopup(ctx, "##speedlist") then
     for i, v in ipairs(SPEEDS) do
       if ImGui.Selectable(ctx, SPEED_TXT[i], i == sk) then Tabs.speed(v) end
@@ -2610,7 +2615,7 @@ function UI.draw_zoom(H)
   if d == 1 then S.zoom = zin; R.sdirty = true
   elseif d == -1 then S.zoom = zout; R.sdirty = true
   elseif d == 0 and not off and S.zoom ~= 1 then S.zoom = 1; R.sdirty = true end
-  ImGui.SetNextWindowPos(ctx, lx, ly + 2, ImGui.Cond_Appearing())
+  UI.list_below(lx, ly, UI.icon_field_w("200%"))
   if ImGui.BeginPopup(ctx, "##zoomlist") then
     for _, e in ipairs(ZOOMS) do
       if ImGui.Selectable(ctx, e.txt, math.abs(e.z - S.zoom) < 1e-6) then S.zoom = e.z; R.sdirty = true end
