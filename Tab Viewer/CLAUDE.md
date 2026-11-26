@@ -73,6 +73,9 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   `Tabs.first_qn`), `Beat.tab_plan` (a marker only where the tempo or time signature changes); it does not move the
   audio; then the tab starts on the new bar 1. The song: the selected audio item, else the longest
   (`Tabs.song_item`).
+- The bottom bar (`UI.draw_status`, as Chart Cue's status line; decided 26 November 2026): "Song 2 of 3: name |
+  12 lines, 2 not sure | Tab: file" (`Notes.status`, `UI.status_text`, cached); a click: the start of the song and
+  its bass item selected (`Notes.song_go`, stopped only). The notice stays above it.
 - The panel rows Tab (the dropdown: the tabs, Region, Undo all fixes, Layout..., Remove; Open tab...), Track (and
   Import to list), the file line, Start (< >) share the label column (`CFG.LABEL_W`, `UI.field`).
 

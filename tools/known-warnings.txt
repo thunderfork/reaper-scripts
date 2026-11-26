@@ -23,4 +23,6 @@ FX Link.lua [need-check-nil] Need check nil.
 FX Link.lua [need-check-nil] Need check nil.
 FX Link.lua [need-check-nil] Need check nil.
 FX Link.lua [need-check-nil] Need check nil.
+Notes.lua [need-check-nil] Need check nil.
+Notes.lua [need-check-nil] Need check nil.
 Tab Viewer.lua [undefined-field] Undefined field `tab`.

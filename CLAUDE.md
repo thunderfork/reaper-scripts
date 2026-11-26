@@ -90,7 +90,7 @@ The global "Do not" rules apply (the Edit tool, no whole-file rewrites, patch sc
 
 - What counts as saved data: the project data (ProjExtState "ChartCue"/"cfg", "Segue"/"cfg", "MIDI Pilot"/"cfg", "FX Link"/"cfg",
   "Tab Viewer"/"cfg" and its copies in the "Tabs" folder next to the project file, "Tab Viewer"/"notes" (the Notes
-  list); Session Prep's track mark `P_EXT:SessionPrep`; Tab Viewer's Notes mark `P_EXT:TabViewer`),
+  lists, 1 per song); Session Prep's track mark `P_EXT:SessionPrep`; Tab Viewer's Notes mark `P_EXT:TabViewer`),
   the settings (Chart Cue's `settings.ini`, the ExtState "Segue", "MIDI Pilot", "FX Link", "Session Prep", "SFX Drop" and "Tab Viewer" keys; SFX Drop's `library.txt` and ProjExtState "SFX Drop"/"soundcheck"), their defaults, and the
   files in Chart Cue's data folder (including the autostart block). Ask me before you change any of them.
 - Current decision (the scripts are public on ReaPack, but I treat them as without other users):

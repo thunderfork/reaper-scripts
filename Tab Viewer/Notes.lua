@@ -129,6 +129,7 @@ local ImGui = host.ImGui
 local ctx                      -- (the window of Tab Viewer: N.attach, before the first frame)
 
 local Util, Key, Det, Group, List, Project, Find, Out, Export, Imp = {}, {}, {}, {}, {}, {}, {}, {}, {}, {}
+local Songs, Lists = {}, {}     -- the songs of the project, and 1 list per song (decided 26 November 2026)
 local UI = setmetatable({}, { __index = host.UI }) -- (the helpers of Tab Viewer: button, toggle, notice ...)
 local N = {}                   -- what Tab Viewer calls (the end of this file)
 
@@ -150,6 +151,13 @@ local R = {
   trk_def = nil,     -- the default track (false: none; nil: not looked for yet)
   finish = nil,      -- the open Done: clean up window (More...)
   export = nil,      -- the open Export window: { item, file, step (Rhythm), open }
+  lists = nil,       -- the saved lists of the songs: { ids = { the song ids in order }, txt = { [id] = the list text } }
+  song = nil,        -- the song of the shown list P (its id; "": a project without songs)
+  hist = {},         -- the Undo and Redo steps of the other songs: { [id] = { undo, redo } } (this session)
+  follow_last = nil, -- the song at the cursor when the list last followed it (Lists.follow)
+  songs = nil,       -- the songs (Songs.get; made again when the project or the Track row changes)
+  st = nil,          -- the text of the bottom bar (N.status)
+  song_lbls = nil,   -- the texts of the Song dropdown
 }
 local P
 local S = {
@@ -175,6 +183,13 @@ function Util.mark_pdirty()
 end
 -- The item of this project with this GUID (nil: none; TP.item_by_guid).
 function Util.item_by_guid(guid) return TP.item_by_guid(R.proj, guid) end
+-- The play position while playing, else the edit cursor (Tab Viewer's, with its count-in; a new project before Tab
+-- Viewer has seen it: the edit cursor).
+function Util.cursor()
+  if host.R.proj == R.proj then return UI.cursor() end
+  return r.GetCursorPositionEx(R.proj)
+end
+function Util.playing() return R.proj ~= nil and r.GetPlayStateEx(R.proj) & 1 == 1 end
 -- A folder picker (as in MIDI Pilot): the js_ReaScriptAPI extension's, else on Windows the Windows folder window
 -- (REAPER waits until it closes). Returns the folder, or nil.
 function Util.browse_folder(title, start)
@@ -1138,14 +1153,17 @@ end
 -- The list moves with the audio by d s (Tempo.align): its lines, notes, key changes and end (Undo of the list: back).
 function List.shift(d)
   List.step()
-  for _, row in ipairs(P.rows) do
+  List.move_all(P, d)
+  Util.mark_pdirty()
+end
+function List.move_all(p, d)
+  for _, row in ipairs(p.rows) do
     row.t = row.t + d
     for k, t in ipairs(row.ts or {}) do row.ts[k] = t + d end
   end
-  for _, n in ipairs(P.notes) do n.t, n.t1 = n.t + d, n.t1 + d end
-  for _, c in ipairs(P.keys) do c.t = c.t + d end
-  if P.t_end then P.t_end = P.t_end + d end
-  Util.mark_pdirty()
+  for _, n in ipairs(p.notes) do n.t, n.t1 = n.t + d, n.t1 + d end
+  for _, c in ipairs(p.keys) do c.t = c.t + d end
+  if p.t_end then p.t_end = p.t_end + d end
 end
 -- 1 Undo step (the Undo button and Ctrl+Z in the tab: 1 undo for both, decided 24 November 2026). An entry is the
 -- list before a change (text), or { reaper = the REAPER undo name of a Write, Clear or Export, list = the list
@@ -1447,18 +1465,31 @@ function Project.read()
   local n, txt = r.GetProjExtState(R.proj, CFG.EXT, CFG.PEXT_KEY)
   return (n and n > 0 and txt) or ""
 end
+-- The lists of the project (1 per song); the list of the song at the cursor shows (none there: the first song with a
+-- list, else the first song).
 function Project.load(txt)
-  P = List.parse(txt)
+  R.lists, R.hist, R.song, R.follow_last, R.songs, R.st = Lists.split(txt), {}, nil, nil, nil, nil
+  P = List.default() -- (never the list of the project before: Songs.get stores the shown list)
   R.plast_txt, R.pdirty = txt, false
   R.sel, R.edit, R.undo, R.redo, R.view, R.finish, R.ask, R.places = nil, nil, {}, {}, nil, nil, nil, nil
+  R.written, R.written_lbl = nil, nil
   Find.cancel()
+  local songs = Songs.get() -- (a list whose song is gone goes to the song at its first line)
+  local i = Songs.at(songs, Util.cursor())
+  local id = i and songs[i].id
+  if not id then for _, s in ipairs(songs) do if R.lists.txt[s.id] then id = s.id; break end end end
+  id = id or (songs[1] and songs[1].id) or ""
+  R.song, R.follow_last = id, i and id or nil
+  P = List.parse(R.lists.txt[id] or "")
   host.notes_changed()
 end
 -- Writes the project data when it changed (an unchanged text does not mark the project modified).
 function Project.save()
   R.pdirty = false
   if not (R.proj and r.ValidatePtr2(0, R.proj, "ReaProject*")) then return end
-  local txt = List.serialize(P)
+  Lists.store()
+  local txt = Lists.join(R.lists)
+  R.song_lbls = nil -- (the line counts of the Song dropdown)
   if txt == R.plast_txt then return end
   r.SetProjExtState(R.proj, CFG.EXT, CFG.PEXT_KEY, txt)
   r.MarkProjectDirty(R.proj)
@@ -1486,6 +1517,218 @@ function Project.update()
     if txt ~= R.plast_txt then Project.load(txt) -- (never write the old list into the next project)
     elseif other and txt == "" then Project.load(txt) end -- (2 projects without a list: the Undo steps go too)
     if R.find then Find.check() end
+  end
+end
+
+---------------------------------------------------------------------------
+-- SONGS (1 notes list per song, decided 26 November 2026): a song is a region; an audio item of the bass track (the
+-- Track row) whose middle is in no region is a song too. The Detection tab shows the list of the song at the play
+-- position (stopped: the edit cursor); between songs the last one stays.
+---------------------------------------------------------------------------
+local SONG_EPS = 1e-3 -- s: a time a hair before a start (rounding) is in that song
+-- The songs { id, name, t0, t1, num (a region's number) or item = true } of the regions and the bass items, sorted
+-- by their start (plain: tested).
+function Songs.make(regions, items)
+  local list = {}
+  for _, g in ipairs(regions) do list[#list + 1] = g end
+  for _, it in ipairs(items) do
+    local mid, inside = (it.t0 + it.t1) / 2, false
+    for _, g in ipairs(regions) do if mid >= g.t0 and mid < g.t1 then inside = true; break end end
+    if not inside then list[#list + 1] = it end
+  end
+  table.sort(list, function(a, b) if a.t0 ~= b.t0 then return a.t0 < b.t0 end return a.id < b.id end)
+  return list
+end
+-- The index of the song at time t (2 songs there: the one that starts later), or nil (between songs).
+function Songs.at(list, t)
+  local best
+  for i, s in ipairs(list) do
+    if t >= s.t0 - SONG_EPS and t < s.t1 - SONG_EPS then best = i end
+  end
+  return best
+end
+-- How long song s and the time t0..t1 overlap (0: not at all).
+function Songs.overlap(s, t0, t1) return math.max(0, math.min(s.t1, t1) - math.max(s.t0, t0)) end
+-- The song that Find notes fills from the audio item it ({ id, t0, t1 }): the item's own song, else the shown song
+-- (cur: its id) when the item is in it (1 long item for several regions), else the song at its middle; nil: none.
+function Songs.for_item(list, it, cur)
+  local shown
+  for _, s in ipairs(list) do
+    if s.id == it.id then return s end
+    if s.id == cur and Songs.overlap(s, it.t0, it.t1) > SONG_EPS then shown = s end
+  end
+  if shown then return shown end
+  local i = Songs.at(list, (it.t0 + it.t1) / 2)
+  return i and list[i]
+end
+-- The songs of the project (cached until the project, the Track row or the number of regions or bass items changes:
+-- a script that adds a region does not change the project's change count). A list whose song is gone goes to the
+-- song at its first line (Lists.adopt).
+function Songs.get()
+  local tr = Find.track()
+  local _, _, nr = r.CountProjectMarkers(R.proj) -- (all, markers, regions)
+  local ni = tr and r.CountTrackMediaItems(tr) or 0
+  local c = R.songs
+  if c and c.proj == R.proj and c.cc == R.state_cc and c.tr == tr and c.nr == nr and c.ni == ni then return c.list end
+  local regions, items = {}, {}
+  Out.each_marker(function(_, rgn, pos, e, name, num, g)
+    if rgn then regions[#regions + 1] = { id = g, name = name ~= "" and name or ("Region " .. num), t0 = pos, t1 = e, num = num } end
+  end)
+  for _, a in ipairs(tr and Find.audio_items(tr) or {}) do
+    local _, g = r.GetSetMediaItemInfo_String(a.item, "GUID", "", false)
+    local nm = Find.name(a.item)
+    items[#items + 1] = { id = g, name = nm ~= "" and nm or ("Item at " .. r.format_timestr_pos(a.pos, "", 0)),
+      t0 = a.pos, t1 = a.pos + a.len, item = true }
+  end
+  local list = Songs.make(regions, items)
+  R.songs, R.st, R.song_lbls = { proj = R.proj, cc = R.state_cc, tr = tr, nr = nr, ni = ni, list = list }, nil, nil
+  Lists.adopt(list)
+  return list
+end
+-- The song of the shown list (nil: none, or it is gone).
+function Songs.cur()
+  for _, s in ipairs(Songs.get()) do if s.id == R.song then return s end end
+end
+-- The bottom bar and the Song dropdown: the edit cursor goes to the start of song s and its bass item is selected.
+-- Only while stopped (false: playing, or no song).
+function Songs.go(s)
+  if not s or Util.playing() then return false end
+  r.SetEditCurPos2(R.proj, s.t0, true, false)
+  local tr, best, bo = Find.track(), nil, 0
+  for _, a in ipairs(tr and Find.audio_items(tr) or {}) do
+    local o = Songs.overlap(s, a.pos, a.pos + a.len)
+    if o > bo then best, bo = a.item, o end
+  end
+  if best then
+    r.SelectAllMediaItems(R.proj, false)
+    r.SetMediaItemSelected(best, true)
+  end
+  r.UpdateArrange()
+  return true
+end
+-- The texts of the Song dropdown: the shown song ("Far Away (2 of 3)") and each song with its line count.
+function Songs.labels()
+  local songs = Songs.get()
+  local c = R.song_lbls
+  if c and c.songs == songs and c.song == R.song and c.n == #P.rows then return c end
+  c = { songs = songs, song = R.song, n = #P.rows, items = {}, cur = "Pick a song" }
+  for k, s in ipairs(songs) do
+    local n = s.id == R.song and #P.rows or Lists.count(R.lists and R.lists.txt[s.id])
+    c.items[k] = string.format("%d: %s", k, s.name) .. (n > 0 and string.format("  (%d %s)", n, n == 1 and "line" or "lines") or "")
+      .. "##song" .. k
+    if s.id == R.song then c.cur = string.format("%s (%d of %d)", s.name, k, #songs) end
+  end
+  R.song_lbls = c
+  return c
+end
+
+---------------------------------------------------------------------------
+-- LISTS (the saved lists of the songs: blocks "song=<id>", then the lines of its list as List.serialize writes them;
+-- an older text without "song=" lines is not read, decided 26 November 2026)
+---------------------------------------------------------------------------
+function Lists.split(txt)
+  local l, cur, buf = { ids = {}, txt = {} }, nil, {}
+  local function close()
+    if cur and buf[1] then Lists.set(l, cur, table.concat(buf, "\n")) end
+  end
+  for line in ((txt or "") .. "\n"):gmatch("([^\n]*)\n") do
+    local id = line:match("^song=(.*)$")
+    if id then close(); cur, buf = id, {}
+    elseif cur and line ~= "" then buf[#buf + 1] = line end
+  end
+  close()
+  return l
+end
+function Lists.join(l)
+  local t = {}
+  for _, id in ipairs(l.ids) do t[#t + 1] = "song=" .. id; t[#t + 1] = l.txt[id] end
+  return table.concat(t, "\n")
+end
+-- The list text of song id ("": the song has no list).
+function Lists.set(l, id, txt)
+  if txt == "" then
+    if l.txt[id] then
+      l.txt[id] = nil
+      for k, x in ipairs(l.ids) do if x == id then table.remove(l.ids, k); break end end
+    end
+    return
+  end
+  if not l.txt[id] then l.ids[#l.ids + 1] = id end
+  l.txt[id] = txt
+end
+function Lists.rename(l, old, new)
+  for k, x in ipairs(l.ids) do if x == old then l.ids[k] = new end end
+  l.txt[new], l.txt[old] = l.txt[old], nil
+end
+-- The time of the first line of a list text (nil: no line and no note).
+function Lists.first_t(txt)
+  local t = txt:match("^row=([%d%.%-]+)") or txt:match("\nrow=([%d%.%-]+)") or txt:match("^note=([%d%.%-]+)")
+    or txt:match("\nnote=([%d%.%-]+)")
+  return tonumber(t)
+end
+-- The number of lines of a list text.
+function Lists.count(txt)
+  if not txt then return 0 end
+  local _, n = txt:gsub("\nrow=", "")
+  return n + (txt:find("^row=") and 1 or 0)
+end
+-- The shown list goes into the saved lists.
+function Lists.store()
+  if R.song and R.lists then Lists.set(R.lists, R.song, List.serialize(P)) end
+end
+-- A list whose song is gone (a region added or deleted, another Track) goes to the song at its first line, when that
+-- song has no list yet; else it stays as it is.
+function Lists.adopt(songs)
+  local l = R.lists
+  if not l then return end
+  local ids, lost = {}, false
+  for _, s in ipairs(songs) do ids[s.id] = true end
+  for _, id in ipairs(l.ids) do if not ids[id] then lost = true end end
+  if not lost then return end
+  Lists.store()
+  for _, id in ipairs({ table.unpack(l.ids) }) do
+    local t = not ids[id] and Lists.first_t(l.txt[id])
+    local i = t and Songs.at(songs, t)
+    local s = i and songs[i]
+    if s and not l.txt[s.id] then
+      Lists.rename(l, id, s.id)
+      if R.song == id then R.song = s.id end
+      if R.follow_last == id then R.follow_last = s.id end
+      R.hist[s.id], R.hist[id] = R.hist[id], nil
+      R.pdirty = true
+    end
+  end
+end
+-- The list of song id shows (its own Undo steps too).
+function Lists.switch(id)
+  if id == R.song then return end
+  Lists.store()
+  if R.song then R.hist[R.song] = { R.undo, R.redo } end
+  local h = R.hist[id]
+  R.song, R.undo, R.redo, R.hist[id] = id, h and h[1] or {}, h and h[2] or {}, nil
+  P = List.parse(R.lists and R.lists.txt[id] or "")
+  R.sel, R.edit, R.view, R.places, R.written, R.written_lbl, R.src_name, R.st = nil, nil, nil, nil, nil, nil, nil, nil
+  host.notes_changed()
+end
+-- Every frame: the list follows the song at the cursor (only when that song changes; not while Find notes listens or
+-- a window of the list is open).
+function Lists.follow()
+  if R.find or R.edit or R.ask or R.finish or R.export or not R.lists then return end
+  local songs = Songs.get()
+  local i = Songs.at(songs, Util.cursor())
+  local id = i and songs[i].id
+  if not id or id == R.follow_last then return end
+  R.follow_last = id
+  Lists.switch(id)
+end
+-- The bass item of any saved list, or the item of a song that is an item (the default of the Track row), or nil.
+function Lists.src_item()
+  local l = R.lists
+  if not l then return nil end
+  for _, id in ipairs(l.ids) do
+    local g = l.txt[id]:match("^src=([^\n]+)") or l.txt[id]:match("\nsrc=([^\n]+)")
+    local item = g and Util.item_by_guid(g) or Util.item_by_guid(id)
+    if item then return item end
   end
 end
 
@@ -1543,17 +1786,20 @@ function Find.retune(notes, old, new)
   return heard
 end
 
--- The item of the Track row to listen to: the selected item on it, else its longest one. cands: { { sel, len } } of
--- its audio items (a plain rule: tested). Returns the index, or nil (no audio item).
+-- The item of the Track row to listen to: the selected item on it, else the one most in the shown song, else its
+-- longest one. cands: { { sel, len, ov (the time in the shown song) } } of its audio items (a plain rule: tested).
+-- Returns the index, or nil (no audio item).
 function Find.pick(cands)
   local best
   for i, c in ipairs(cands) do
     if c.sel then return i end
-    if not best or c.len > cands[best].len then best = i end
+    local b = best and cands[best]
+    local ov, bov = c.ov or 0, b and b.ov or 0
+    if not b or ov > bov or ov == bov and c.len > b.len then best = i end
   end
   return best
 end
--- The audio items of track tr: { { item, take, sel, len } }.
+-- The audio items of track tr: { { item, take, sel, pos, len } }.
 function Find.audio_items(tr)
   local list = {}
   for k = 0, r.CountTrackMediaItems(tr) - 1 do
@@ -1561,18 +1807,20 @@ function Find.audio_items(tr)
     local take = r.GetActiveTake(item)
     if take and not r.TakeIsMIDI(take) then
       list[#list + 1] = { item = item, take = take, sel = r.IsMediaItemSelected(item),
-        len = r.GetMediaItemInfo_Value(item, "D_LENGTH") }
+        pos = r.GetMediaItemInfo_Value(item, "D_POSITION"), len = r.GetMediaItemInfo_Value(item, "D_LENGTH") }
     end
   end
   return list
 end
--- The Track row: your choice (R.trk; not saved), else the track of the bass item of the last Find notes, else the
--- track of the selected item. nil: none yet. fresh: look again (Find notes), not the cached default (every frame).
+-- The Track row: your choice (R.trk; not saved), else the track of the bass item of the shown list (or of another
+-- song's list), else the track of the selected item. nil: none yet. fresh: look again (Find notes), not the cached
+-- default (every frame).
 function Find.track(fresh)
   if R.trk and r.ValidatePtr2(R.proj, R.trk, "MediaTrack*") then return R.trk end
   R.trk = nil
+  if R.trk_def and not r.ValidatePtr2(R.proj, R.trk_def, "MediaTrack*") then R.trk_def = nil end -- (deleted)
   if R.trk_def == nil or fresh then -- (cached: Find.item looks through all items; cleared when the project changes)
-    local item = Find.item() or r.GetSelectedMediaItem(R.proj, 0)
+    local item = Find.item() or Lists.src_item() or r.GetSelectedMediaItem(R.proj, 0)
     R.trk_def = item and r.GetMediaItem_Track(item) or false
   end
   return R.trk_def or nil
@@ -1595,6 +1843,8 @@ function Find.source()
   local tr = Find.track(true)
   if not tr then return nil, "Pick the bass track first (Track)." end
   local list = Find.audio_items(tr)
+  local s = Songs.cur()
+  if s then for _, c in ipairs(list) do c.ov = Songs.overlap(s, c.pos, c.pos + c.len) end end
   local i = Find.pick(list)
   if not i then return nil, "The track " .. Find.track_label(tr) .. " has no audio item. Pick the bass track (Track)." end
   local item, take = list[i].item, list[i].take
@@ -1629,13 +1879,21 @@ function Find.grid(t0, t1)
   return g
 end
 
-function Find.begin()
-  local item, take = Find.source()
+-- Listens to item (nil, or gone: Find.source). A song that is a region: only its part of the item (1 long bass item
+-- for several songs).
+function Find.begin(item, take)
+  if not (item and r.ValidatePtr2(R.proj, item, "MediaItem*")) then item, take = Find.source() end
   if not item then UI.notice(take, true); return end
   local _, guid = r.GetSetMediaItemInfo_String(item, "GUID", "", false)
   local pos, len = r.GetMediaItemInfo_Value(item, "D_POSITION"), r.GetMediaItemInfo_Value(item, "D_LENGTH")
+  local a, b = Find.part(Songs.cur(), pos, pos + len)
   R.find = { item = item, take = take, proj = R.proj, guid = guid, name = Find.name(item), done = 0,
-    pos = pos, t_end = pos + len, rd = TP.reader(take, len) } -- (the shared audio reader: Tempo.lua)
+    pos = a, t_end = b, rd = TP.reader(take, b - a, a - pos) } -- (the shared audio reader: Tempo.lua)
+end
+-- The part of an item (t0..t1) that Find notes reads for song s: a region's part, else all of it.
+function Find.part(s, t0, t1)
+  if s and not s.item and Songs.overlap(s, t0, t1) > SONG_EPS then return math.max(t0, s.t0), math.min(t1, s.t1) end
+  return t0, t1
 end
 -- false when the item is gone (or in another project): Find stops.
 function Find.check()
@@ -1744,12 +2002,15 @@ function Out.make_track(name, mark, below)
   r.GetSetMediaTrackInfo_String(tr, CFG.TAG, mark, true)
   return tr
 end
--- Deletes the items of a track that the Detection tab made (other items stay).
+-- Deletes the items of a track that the Detection tab made for the shown song (their middle in the song; no songs:
+-- all of them). Other items stay.
 function Out.delete_marked(tr)
+  local s = Songs.cur()
   for i = r.CountTrackMediaItems(tr) - 1, 0, -1 do
     local it = r.GetTrackMediaItem(tr, i)
     local _, v = r.GetSetMediaItemInfo_String(it, CFG.TAG, "", false)
-    if v == "1" then r.DeleteTrackMediaItem(tr, it) end
+    local mid = r.GetMediaItemInfo_Value(it, "D_POSITION") + r.GetMediaItemInfo_Value(it, "D_LENGTH") / 2
+    if v == "1" and (not s or mid >= s.t0 and mid < s.t1) then r.DeleteTrackMediaItem(tr, it) end
   end
 end
 -- Removes the text items of the Detection tab (other items on the track stay), and the track when nothing is on it.
@@ -1770,12 +2031,14 @@ function Out.delete_track(tr)
   end
   r.DeleteTrack(tr)
 end
--- The end of the song: the end of the bass item (or 2 s after the last row).
+-- The end of the song: the end of the bass item, in a region at most its end (or 2 s after the last row).
 function Out.song_end()
-  local item = Find.item()
+  local item, s = Find.item(), Songs.cur()
   local last = P.rows[#P.rows]
   local t = last and last.t + 2 or 0
-  if item then t = math.max(t, r.GetMediaItemInfo_Value(item, "D_POSITION") + r.GetMediaItemInfo_Value(item, "D_LENGTH")) end
+  local e = item and r.GetMediaItemInfo_Value(item, "D_POSITION") + r.GetMediaItemInfo_Value(item, "D_LENGTH")
+  if s and not s.item then e = e and math.min(e, s.t1) or s.t1 end
+  if e then t = math.max(t, e) end
   return t
 end
 -- The text of a Notes track item: the line, and a key change on its first line when no markers show it.
@@ -1898,20 +2161,22 @@ function Out.finish_begin()
   R.finish = f
 end
 -- Makes (or updates) the song region, removes what is ticked, and removes the list from the project. 1 undo step.
+-- A song that is a region: that region gets the name (its place stays).
 function Out.finish(f)
   local name = Out.region_name(f.artist, f.title, P.key)
-  local item = Find.item()
+  local item, s = Find.item(), Songs.cur()
   local t0 = item and r.GetMediaItemInfo_Value(item, "D_POSITION") or (P.rows[1] and P.rows[1].t or 0)
   local _, m0 = r.TimeMap2_timeToBeats(R.proj, t0)
   t0 = r.TimeMap2_beatsToTime(R.proj, 0, m0)
   local stop = Out.song_end()
   local _, m1 = r.TimeMap2_timeToBeats(R.proj, stop)
   stop = r.TimeMap2_beatsToTime(R.proj, 0, m1 + 1)
+  local num
+  if s and not s.item then t0, stop, num = s.t0, s.t1, s.num end
   r.Undo_BeginBlock2(R.proj)
   r.PreventUIRefresh(1)
-  local num
   if name ~= "" then
-    Out.each_marker(function(_, rgn, _, _, nm, n) if rgn and nm == name then num = num or n end end)
+    if not num then Out.each_marker(function(_, rgn, _, _, nm, n) if rgn and nm == name then num = num or n end end) end
     if num then r.SetProjectMarker2(R.proj, num, true, t0, stop, name)
     else r.AddProjectMarker2(R.proj, true, t0, stop, name, -1, 0) end
   end
@@ -2271,7 +2536,23 @@ function N.first_note(tm)
   for _, n in ipairs(P.notes) do if not n.man and (not first or n.t < first) then first = n.t end end
   return first
 end
-function N.shift(d, tm) if P.src == tm.song.guid and #P.notes > 0 then List.shift(d) end end -- (the list too)
+-- The list moves with the audio; the lists of other songs on the same bass item too (1 long item for several songs).
+function N.shift(d, tm)
+  if P.src == tm.song.guid and #P.notes > 0 then List.shift(d) end
+  local l, key = R.lists, "src=" .. tostring(tm.song.guid) .. "\n"
+  if not l then return end
+  for _, id in ipairs(l.ids) do
+    local txt = l.txt[id]
+    if id ~= R.song and (txt .. "\n"):find(key, 1, true) then
+      local h = R.hist[id] or { {}, {} }
+      R.hist[id], h[1][#h[1] + 1], h[2] = h, txt, {} -- (its Undo brings it back)
+      local p = List.parse(txt)
+      List.move_all(p, d)
+      Lists.set(l, id, List.serialize(p))
+      R.pdirty = true
+    end
+  end
+end
 function N.set_extra(d)
   local s = ""
   if d and math.abs(d) >= 0.0005 and #P.mk > 0 then s = s .. " Write again: the markers follow the audio." end
@@ -2284,8 +2565,9 @@ function N.written() R.view = nil end -- (the bar numbers of the list)
 -- TESTS: tests\notes.lua (through Tab Viewer's TabViewerTest.Notes) gets the modules
 ---------------------------------------------------------------------------
 N.test = { CFG = CFG, S = S, R = R, Util = Util, Key = Key, Det = Det, Group = Group, List = List, Project = Project,
-  Find = Find, Out = Out, Export = Export, Imp = Imp, GP = GP, TP = TP, UI = UI,
-  get_P = function() return P end, set_P = function(p) P = p end, draw = function(h) N.draw(h) end }
+  Find = Find, Out = Out, Export = Export, Imp = Imp, GP = GP, TP = TP, UI = UI, Songs = Songs, Lists = Lists,
+  get_P = function() return P end, set_P = function(p) P = p end, draw = function(h) N.draw(h) end,
+  status = function() return N.status() end }
 
 ---------------------------------------------------------------------------
 -- UI (the Detection tab of Tab Viewer's window)
@@ -2308,6 +2590,13 @@ N.HELP_TOPICS = {
 - Check the yellow lines (not sure).
 - Click Write. 1 Ctrl+Z takes it all away.
 - No plugins needed: Tab Viewer reads the audio itself.]] },
+  { title = "Several songs in 1 project", text = [[
+- Each song has its own list. A song is a region, or a bass item outside the regions.
+- The list follows the edit cursor (playing: the play position). Between songs the last list stays.
+- Which song is it? The bar at the bottom of the window. Click it: the start of the song.
+- Song (in the Detection tab): pick another song (stop first).
+- 1 long bass item for several regions? Find notes listens only to the part in the song.
+- Write, Clear and Export change only that song.]] },
   { title = "Checking the list", text = [[
 - Click a line: it plays in a loop. Space or Escape: stop.
 - Up / Down: the line before or after. N: the next yellow line.
@@ -2344,7 +2633,7 @@ N.HELP_TOPICS = {
 - The files go to the project folder, or Folder > Change...
 - Your typed corrections are not in the export.]] },
   { title = "Done: clean up", text = [[
-- More... > Done: clean up: a region over the song (artist, title, key).
+- More... > Done: clean up: a region over the song (artist, title, key). Is the song a region? That region gets the name.
 - If you like: it removes the bass track's plugins and the metronome track.
 - The list leaves the project. The markers and the Notes track stay.
 - Ctrl+Z brings the plugins and tracks back.]] },
@@ -2486,11 +2775,19 @@ function UI.split(i)
     UI.notice("1 note only: put the edit cursor where the new line starts, then Split.", true)
   end
 end
+-- Find notes: the item of the Track row (Find.source) fills the list of its song (another song: that list shows first).
 function UI.find()
+  local item, take = Find.source()
+  if not item then UI.notice(take, true); return end
+  local pos = r.GetMediaItemInfo_Value(item, "D_POSITION")
+  local _, g = r.GetSetMediaItemInfo_String(item, "GUID", "", false)
+  local s = Songs.for_item(Songs.get(), { id = g, t0 = pos, t1 = pos + r.GetMediaItemInfo_Value(item, "D_LENGTH") }, R.song)
+  if s then Lists.switch(s.id) end
+  local function go() Find.begin(item, take) end
   if #P.rows > 0 then
-    UI.ask("Find the notes again? The new list replaces this one (Undo brings it back).", "Find notes", Find.begin)
+    UI.ask("Find the notes again? The new list replaces this one (Undo brings it back).", "Find notes", go)
   else
-    Find.begin()
+    go()
   end
 end
 
@@ -2704,6 +3001,8 @@ local FIND_TIP = "Listens to the bass track and fills the list."
 local FIND_AGAIN_TIP = "Listen again: a new list (Undo brings this one back)."
 local IMPORT_TIP = "The notes of the Tab tab become the list."
 local NEED_TEMPO = "Set the tempo first (Tempo, above): the notes go on the song's bars."
+local SONG_TIP = "Each song has its own list. The list follows the edit cursor (playing: the play position)."
+local SONG_PLAYING = "Stop first to go to another song."
 -- The "Song" section of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work; folding:
 -- 26 November 2026): Track with Find notes and Import from tab (both wait for the Tempo section;
 -- the blue one is the next step: Import from tab with a tab, else Find notes, only without a list; while it listens:
@@ -2715,6 +3014,21 @@ function UI.draw_song()
   if not open then return end
   local fw = UI.field_w()
   local ok = UI.tempo_ok()
+  -- Song: the song of the list (only when the project has songs); a choice goes there (stopped only)
+  if Songs.get()[1] then
+    UI.field("Song")
+    local lb, playing = Songs.labels(), Util.playing()
+    ImGui.BeginDisabled(ctx, playing or R.find ~= nil)
+    ImGui.SetNextItemWidth(ctx, fw)
+    if ImGui.BeginCombo(ctx, "##ndsong", lb.cur) then
+      for k, s in ipairs(lb.songs) do
+        if ImGui.Selectable(ctx, lb.items[k], s.id == R.song) and s.id ~= R.song then Songs.go(s) end
+      end
+      ImGui.EndCombo(ctx)
+    end
+    ImGui.EndDisabled(ctx)
+    UI.tip_disabled(playing and SONG_PLAYING or SONG_TIP)
+  end
   -- Track: the bass track that Find notes listens to, then Find notes
   UI.field("Track")
   local tr = Find.track()
@@ -3047,6 +3361,7 @@ end
 function N.step()
   Project.update()
   Find.step()
+  Lists.follow()
   local l = R.loop -- (stopped: the loop ends; not in its first 0.5 s, while REAPER starts to play)
   if l and (l.proj ~= R.proj or r.GetPlayStateEx(R.proj) & 1 == 0 and r.time_precise() - l.since > 0.5) then UI.loop_off() end
 end
@@ -3097,6 +3412,22 @@ function N.exit()
   if R.sdirty then Util.save_settings() end
 end
 function N.busy() return R.find ~= nil end -- (Find notes listens)
+-- The bottom bar of Tab Viewer: "Song 2 of 3: Far Away  |  12 lines, 2 not sure" (made again only when it changes).
+function N.status()
+  local songs, v = Songs.get(), UI.view()
+  local c = R.st
+  if c and c.songs == songs and c.song == R.song and c.v == v and c.find == (R.find ~= nil) then return c.txt end
+  local parts = {}
+  for k, s in ipairs(songs) do
+    if s.id == R.song then parts[1] = string.format("Song %d of %d: %s", k, #songs, s.name) end
+  end
+  parts[#parts + 1] = R.find and "Listening..." or v.status ~= "" and v.status or "No notes yet"
+  c = { songs = songs, song = R.song, v = v, find = R.find ~= nil, txt = table.concat(parts, "  |  ") }
+  R.st = c
+  return c.txt
+end
+-- A click on the bottom bar: the start of the song of the list (false: playing, or no song).
+function N.song_go() return Songs.go(Songs.cur()) end
 -- Import to list (Tab Viewer's Tab tab; list and open: Imp.apply): asks first when the list has notes. done(n): after
 -- the import (n: the number of notes).
 function N.import(list, open, done)

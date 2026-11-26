@@ -21,12 +21,24 @@ The history of every decision: git.
 
 ## Data
 
-- `P` (ProjExtState "Tab Viewer"/"notes"; nothing saved when empty): `key=`, `mode=` (only when not "bar"), `tuning=`
+- 1 list per song (decided 26 November 2026; `Songs`, `Lists`): ProjExtState "Tab Viewer"/"notes" holds a block per
+  song, `song=<id>` (a region's GUID, a bass item's GUID, or "" in a project without songs), then the lines of its
+  list. An older text without `song=` lines is not read (no migration). A song is a region, or an audio item of the
+  Track row's track whose middle is in no region (`Songs.make`). `R.lists` (the saved blocks), `R.song` (the shown
+  list `P`), `R.hist` (the Undo steps of the other songs, this session). `Lists.follow` (every frame): the list of the
+  song at the play position (stopped: the edit cursor), only when that song changes; not while Find notes listens or
+  a window of the list is open; between songs the last one stays. `Lists.adopt`: a list whose song is gone goes to
+  the song at its first line, when that song has none (a lost list stays saved). Find notes (`UI.find`) fills the
+  song of the item (`Songs.for_item`; another song: its list shows first); a region song reads only its part of the
+  item (`Find.part`). Write, Clear and Export delete only the marked items whose middle is in the song
+  (`Out.delete_marked`). Done: clean up of a region song renames that region. `N.shift` moves the lists of other
+  songs on the same item too.
+- `P` (the list of 1 song; nothing saved when empty): `key=`, `mode=` (only when not "bar"), `tuning=`
   (only when not "std"), `src=` (the GUID of the bass item), `row=` (time, doubtful 0 / 1, the time of each note, the
   text), `keyat=` (a key change from the line at that time), `note=` (t, t1, pc, midi, doubt, slide, s (a string you
   chose), man (from a tab: Export.delay leaves it)), `tend=`, `mk=` (the GUIDs of the written markers, also of older
   writes: Ctrl+Z brings those back), `tab.<key>=` (the tab of the found notes, an entry as Tab Viewer's tabs: `P.tab`).
-  Done: clean up removes all of it. `P_EXT:TabViewer` = 1 on the Notes track and its items ("midi": the Bass MIDI track).
+  Done: clean up removes the list of its song. `P_EXT:TabViewer` = 1 on the Notes track and its items ("midi": the Bass MIDI track).
 - `S` (ExtState "Tab Viewer"; keys that do not meet Tab Viewer's): `out` ("markers", "track", "both"), `frets`
   (String for high notes, on), `finger` (Fingering for runs, on), `strings` ("letters" / "numbers"), `splits` (Split
   repeated notes, OFF by default), `export_dir` ("" = the project folder).
@@ -114,7 +126,8 @@ The history of every decision: git.
   Set tempo (a result, in Find tempo's place), Import from tab (with a tab) or Find notes (no list), Write. The Tempo
   section is done when the song has a tempo marker of its own (`Tabs.tempo_state`, `UI.tempo_ok`; "The tempo is
   right" puts one at the song start); until then Find notes and Import from tab are grey, with a grey line.
-- Song: Track with Find notes (while it listens: Cancel, the progress under the Notes heading) and Import
+- Song: Song (only with songs: the songs and their line counts, `Songs.labels`; a choice = `Songs.go`, stopped only),
+  Track with Find notes (while it listens: Cancel, the progress under the Notes heading) and Import
   from tab, Key and Tuning on 1 row (`CFG.KEY_W`, `CFG.TUNE_LABEL_W`; narrower than `CFG.TUNE_MIN_W`: 2 rows), Lines
   with an example. Notes: the count and Next not sure at its right. Without a list: the grey hint, no bottom
   rows. With a list: Join, Split, + Add, Delete; then the blue Write, its dropdown, More... (Export, Done, Clear).

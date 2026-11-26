@@ -2107,7 +2107,7 @@ local HELP_TOPICS = {
 # In the project
 - The tabs (copied into a "Tabs" folder next to the project file when you save), their regions, tracks and Start.
 - Your fixes, line breaks, bars per line, time signatures and Transpose.
-- The Detection list, until More... > Done: clean up.
+- The Detection lists (1 for each song), until More... > Done: clean up.
 # On this computer
 - The Settings, the tab size, the window's place and the export folder.
 # Not saved
@@ -4109,12 +4109,36 @@ end
 
 -- The window: the toolbar, the tab strip, then the panel of the open tab (a rounded area): the Tab tab has the Track
 -- dropdown and the tab, the Detection tab is Notes.draw; Settings and Help scroll.
+-- The bottom bar (as Chart Cue's status line, decided 26 November 2026): the song, its notes list and the tab
+-- (Notes.status); a click goes to the start of the song (stopped only).
+local STATUS_TIP = "Click: go to the start of this song (and select its bass item)."
+function UI.status_text(w)
+  local base, e = Notes.status(), Tabs.file_tab()
+  local file = e and e.file
+  local c = R.status
+  if c and c.base == base and c.file == file and c.w == w then return c.txt end
+  local txt = file and (base .. "  |  Tab: " .. file:match("([^/\\]+)$")) or base
+  R.status = { base = base, file = file, w = w, txt = UI.trunc(txt, w), tip = txt .. "\n\n" .. STATUS_TIP,
+    tip_play = txt .. "\n\nStop first to go to the song." }
+  return R.status.txt
+end
+function UI.draw_status(x, y, w, h)
+  local txt = UI.status_text(w - 16)
+  ImGui.SetCursorScreenPos(ctx, x, y)
+  local hit = ImGui.InvisibleButton(ctx, "##status", math.max(1, w), h)
+  local hov = ImGui.IsItemHovered(ctx)
+  ImGui.DrawList_AddText(ImGui.GetWindowDrawList(ctx), x + 8, y + 3, hov and COL.TEXT_MAIN or COL.TEXT_DIM, txt)
+  if hov then ImGui.SetTooltip(ctx, R.playing and R.status.tip_play or R.status.tip) end
+  if hit and not Notes.song_go() and R.playing then UI.notice("Stop first: then a click goes to the start of the song.") end
+end
+
 function UI.draw_main()
   UI.draw_toolbar()
   UI.draw_tabs()
   local aw, ah = ImGui.GetContentRegionAvail(ctx)
   local nh = UI.notice_h(aw - 16)
-  ah = ah - CFG.SP_EDGE - nh
+  local bh = ImGui.GetTextLineHeight(ctx) + 6 -- (the bottom bar)
+  ah = ah - CFG.SP_EDGE - nh - bh
   local px, py = ImGui.GetCursorScreenPos(ctx)
   ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), px, py, px + aw, py + ah, COL.PANEL_BG, 8,
     ImGui.DrawFlags_RoundCornersBottom())
@@ -4141,6 +4165,7 @@ function UI.draw_main()
     ImGui.TextColored(ctx, n.warn and COL.ORANGE or COL.TEXT_DIM, n.text)
     ImGui.PopTextWrapPos(ctx)
   end
+  UI.draw_status(px, py + ah + nh, aw, bh)
   UI.draw_panel_menu()
   if R.page == 1 then UI.tab_keys() elseif R.page == UI.PAGE_NOTES then Notes.keys() end
   Notes.draw_popups()
