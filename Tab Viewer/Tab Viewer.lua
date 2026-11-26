@@ -70,6 +70,7 @@ CFG.CTRL_GAP = 8               -- between 2 controls side by side
 CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = 7, 8, 4 -- spacing (pixels; the same gaps as Chart Cue)
 CFG.ROW_H = 26
 CFG.TB_ICON_W = 32             -- the icons in the toolbar (Undo / Redo, the transport)
+CFG.TEMPO_BEFORE = 5           -- s: a tempo marker this far before the song item still counts as the song's (Tabs.has_song_tempo)
 CFG.TB_NEAR_GAP = 16           -- between the transport and the size / the speed next to it
 CFG.TB_NOTE_W = 14             -- the note icon before the speed
 CFG.TB_ROW_GAP = 4             -- between the rows of a narrow toolbar
@@ -192,7 +193,7 @@ local S = {
   written = true,    -- Settings > Tab > Repeats as written (|: :|, 1. 2. as in Guitar Pro; off: played out)
   zoom = 1,          -- the size of the tab (the toolbar's - / +; CFG.ZOOM_MIN .. CFG.ZOOM_MAX)
   tab_hide = {},     -- Settings > Look > Tabs: the hidden text tabs ({ [1] Tab, [2] Detection = true }; Settings and Help always show)
-  closed = {},       -- the folded Settings sections ({ [i] = true }, i in SETTINGS_SECTIONS)
+  closed = {},       -- the folded sections ({ [i] = true }: i in SETTINGS_SECTIONS, then UI.FOLD_TEMPO, UI.FOLD_SONG)
 }
 
 ---------------------------------------------------------------------------
@@ -270,7 +271,7 @@ function Util.load_settings()
   if v ~= "" then S.dock = math.floor(tonumber(v) or 0) end
   R.dock_req = S.dock -- the window opens where it was (floating or in its docker)
   S.tab_hide = Util.load_set("tab_hide", 2) -- (the hidden text tabs: "2" = Detection)
-  S.closed = Util.load_set("closed", 4)     -- (the folded Settings sections: "1" = Tab ... "4" = Window)
+  S.closed = Util.load_set("closed", 6)     -- (the folded sections: "1" = Tab ... "4" = Window in Settings; "5" Tempo, "6" Song in Detection)
   S.zoom = Tabs.zoom_step(tonumber(r.GetExtState(CFG.EXT, "zoom")) or 1, 0)
 end
 -- A set of numbers 1..max saved as "1 3" (tab_hide, closed).
@@ -291,7 +292,7 @@ function Util.save_settings()
   for _, k in ipairs(ON_OFF) do r.SetExtState(CFG.EXT, k, S[k] and "1" or "0", true) end
   r.SetExtState(CFG.EXT, "dock", tostring(S.dock), true)
   Util.save_set("tab_hide", S.tab_hide, 2)
-  Util.save_set("closed", S.closed, 4)
+  Util.save_set("closed", S.closed, 6)
   if S.zoom ~= 1 or r.HasExtState(CFG.EXT, "zoom") then r.SetExtState(CFG.EXT, "zoom", string.format("%.1f", S.zoom), true) end
   R.sdirty = false
 end
@@ -1606,6 +1607,48 @@ function Tabs.song_item()
   local pos = r.GetMediaItemInfo_Value(best, "D_POSITION")
   return best, pos, pos + r.GetMediaItemInfo_Value(best, "D_LENGTH")
 end
+-- Has the song its own tempo (step 1 of the Detection tab is done; decided 26 November 2026: from REAPER's tempo, no
+-- saved mark)? times: the times of the tempo markers; the song item from t0 to t1. Set tempo always puts one on bar 1
+-- (a bar before the item at most: CFG.TEMPO_BEFORE), "The tempo is right" one at t0.
+function Tabs.has_song_tempo(times, t0, t1)
+  for _, t in ipairs(times) do if t >= t0 - CFG.TEMPO_BEFORE and t < t1 then return true end end
+  return false
+end
+-- The state of step 1 { ok, txt (the heading's "Set: 160 BPM") }, made again only when the project, the selected
+-- item or the tab changes (asked every frame).
+local function bpm_txt(b)
+  b = TP.Beat.round(b)
+  return b == math.floor(b) and string.format("%d BPM", b) or string.format("%.1f BPM", b)
+end
+function Tabs.tempo_state()
+  local proj, sel, c = R.proj, r.GetSelectedMediaItem(R.proj, 0), R.tset
+  if c and c.proj == proj and c.cc == R.state_cc and c.sel == sel and c.cur == R.cur then return c end
+  c = { proj = proj, cc = R.state_cc, sel = sel, cur = R.cur, ok = false }
+  R.tset = c
+  local item, t0, t1 = Tabs.song_item()
+  if not item then return c end
+  local times = {}
+  for k = 0, r.CountTempoTimeSigMarkers(proj) - 1 do
+    local _, t = r.GetTempoTimeSigMarker(proj, k)
+    times[#times + 1] = t
+  end
+  c.ok = Tabs.has_song_tempo(times, t0, t1)
+  if c.ok then c.txt = "Set: " .. bpm_txt(select(3, r.TimeMap_GetTimeSigAtTime(proj, t0 + 0.01))) end
+  return c
+end
+function UI.tempo_ok() return Tabs.tempo_state().ok end -- (for the Detection tab: Find notes waits for it)
+-- "The tempo is right" (the project has the song's tempo already, for example from a click track): 1 tempo marker at
+-- the start of the song item with the tempo it has there, so step 1 counts as done (1 undo step).
+function Tabs.tempo_is_right()
+  local item, t0 = Tabs.song_item()
+  if not item then UI.notice(t0, true); return end
+  local _, _, bpm = r.TimeMap_GetTimeSigAtTime(R.proj, t0)
+  r.Undo_BeginBlock2(R.proj)
+  r.SetTempoTimeSigMarker(R.proj, -1, t0, -1, -1, bpm, 0, 0, false)
+  r.Undo_EndBlock2(R.proj, "Tab Viewer: the tempo is right", -1)
+  r.UpdateTimeline()
+  R.tset = nil
+end
 -- The quarter note (from the start of the tab) of the first note of the chosen track (0: no notes).
 function Tabs.first_qn()
   for _, b in ipairs(R.tab and R.tab.bars or {}) do
@@ -2493,6 +2536,8 @@ local SETTINGS_SECTIONS = {
 -- The text tabs of the window (UI.draw_tabs), then Settings and Help.
 local PAGE_NAMES = { "Tab", "Detection" }
 UI.PAGE_NOTES, UI.PAGE_SETTINGS, UI.PAGE_HELP = 2, #PAGE_NAMES + 1, #PAGE_NAMES + 2
+-- The sections of the Detection tab that fold (S.closed after the 4 Settings sections; decided 26 November 2026).
+UI.FOLD_TEMPO, UI.FOLD_SONG = 5, 6
 function UI.page_shown(i) return not S.tab_hide[i] end
 -- The Settings tab (the gear): Tab, Detection (Notes.lua), Look (with Tabs: the text tabs shown), Window.
 function UI.draw_settings()
@@ -2890,7 +2935,13 @@ local TRACK_TIP = "Listens to this track while the song plays (the selected item
 function UI.draw_tempo_step()
   local tm = R.tempo
   local run = tm and tm.run
-  UI.heading("Tempo", true)
+  local st = Tabs.tempo_state()
+  local note, col = "Not set yet", COL.TEXT_DIM -- (the status, also when folded)
+  if run then note = "Listening..."
+  elseif tm and tm.beats then note = "Found: check bar 1, then Set tempo"
+  elseif st.ok then note, col = st.txt, COL.GREEN end
+  local _, open = UI.heading("1 Tempo", true, nil, UI.FOLD_TEMPO, note, col)
+  if not open then return end
   local file = R.doc ~= nil and not R.doc.found
   local from_tab = Tabs.tempo_from_tab(file, R.tsrc_tab)
   local src = not from_tab and Tempo.source() or nil
@@ -2921,12 +2972,20 @@ function UI.draw_tempo_step()
     return
   end
   local can = from_tab or src ~= nil
+  local found = tm ~= nil and tm.beats ~= nil
   ImGui.BeginDisabled(ctx, not can)
-  if UI.button("Find tempo", bw) then Tabs.find_tempo(src) end
+  if UI.button("Find tempo", bw, nil, not (st.ok or found) and "primary" or nil) then Tabs.find_tempo(src) end
   ImGui.EndDisabled(ctx)
   UI.tip_disabled(can and "Put REAPER's bars on the song: from the tab's tempo, or by listening to a track. Nothing changes until Set tempo."
     or "No tab and no track with audio yet: open a Guitar Pro tab (Tab tab > Open tab...) or add the song's tracks.")
-  if not (tm and tm.beats) then return end
+  if not (tm and tm.beats) then
+    if not st.ok then -- (the project has the right tempo already: say so, and go on)
+      ImGui.SetCursorPosX(ctx, x)
+      if UI.button("The tempo is right", UI.btn_w("The tempo is right")) then Tabs.tempo_is_right() end
+      UI.tip("Is REAPER's tempo already right for this song (for example it was recorded to a click)? Click here: Tab Viewer puts 1 tempo marker at the start of the song with the tempo it has there (1 undo step), and you can go on to step 2.")
+    end
+    return
+  end
   UI.draw_tempo_fine(tm)
   ImGui.SetCursorPosX(ctx, x)
   if UI.button("Set tempo", UI.btn_w("Set tempo"), nil, "primary") then Tabs.set_tempo() end

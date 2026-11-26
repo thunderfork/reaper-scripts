@@ -47,8 +47,8 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   10% steps (`Tabs.zoom_step`, `CFG.ZOOM_MIN` .. `CFG.ZOOM_MAX`); the sizes: "Rules". The tab's fonts `TF` (per zoom step, made by `UI.zoom_fonts` at the start of
   a frame, used from the next one); `UI.draw_tab` pushes `TF.font` for the layout and the drawing, not for its menus,
   tooltips and the note box.
-- Find tempo: the Tempo rows at the top of the Detection tab (`UI.draw_tempo_step`, in Tab Viewer.lua; Notes.lua
-  calls it): Listen to ("From the tab", the default with a Guitar Pro tab, `Tabs.tempo_from_tab`; then the tracks,
+- Find tempo: step "1 Tempo" at the top of the Detection tab (`UI.draw_tempo_step`, in Tab Viewer.lua; Notes.lua
+  calls it; the steps: NOTES.md "The screen"): Listen to ("From the tab", the default with a Guitar Pro tab, `Tabs.tempo_from_tab`; then the tracks,
   `Tempo.sources`) and Find tempo; while it listens the progress and Cancel; with a result the fine controls
   (`UI.draw_tempo_fine`) and a blue Set tempo under them. The Tab tab's Start row points there with a grey line,
   and its yellow tempo warning too. From the tab:
@@ -99,8 +99,8 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   " (2)"); the 1st save and Save as copy it into the new folder (`Tabs.moved`). A missing file: a grey line; a file
   that can not be read at Open tab...: an orange notice, nothing changes.
 - `S` (ExtState "Tab Viewer"): `light`, `dock`, `follow`, `chords`, `marks`, `pmarks`, `lengths`, `written`,
-  `tremnotes`, `tab_hide`, `zoom` (only when not 100%), `closed` (the folded Settings sections: Tab, Detection,
-  Look, Window). The Detection tab keeps its own keys in the same section (NOTES.md).
+  `tremnotes`, `tab_hide`, `zoom` (only when not 100%), `closed` (the folded sections: Tab, Detection,
+  Look, Window in Settings; 1 Tempo and 2 Song in the Detection tab). The Detection tab keeps its own keys in the same section (NOTES.md).
 - Not saved: the loop and the speed (100% again at close), the selection, `R.page`.
 
 ## The tab

@@ -37,7 +37,7 @@ The history of every decision: git.
 
 ## Detection (`Find`, `Det`)
 
-- `Find.source`: the track of the Track row (`Find.track`: your choice, else the track of the last bass item, else
+- `Find.source`: the track of the Bass audio row (`Find.track`: your choice, else the track of the last bass item, else
   of the selected item), its selected audio item, else the longest. The samples are read outside the coroutine (the
   audio accessor gives silence inside one); only `Det.analyse` runs in it. A 3:42 song: about 16 s.
 - `Det.analyse`: mono at 4000 Hz. Onsets: `Det.onsets_of` (the band flux of 9 bands 50-800 Hz, relative to the
@@ -101,16 +101,21 @@ The history of every decision: git.
   `Imp.grid` and `Imp.legato`, with the places of the list; `over` = the part after the bar line). `R.found_e` =
   `P.tab`: the fixes, line breaks and start bar of that tab are saved with the list (`N.touch`), so the list's Undo
   brings them back too. The list or the tempo changed: `host.notes_changed` -> `Tabs.notes_step` makes it again.
-- Import to list (the Tab tab, next to Track; the same as Import from tab on the Detection tab's Track row, shown
+- Import to list (the Tab tab, next to Track; the same as Import from tab on the Detection tab's Bass audio row, shown
   only with a tab): `Tabs.notes_of_tab` -> `N.import` (asks when the list has lines) ->
   `Imp.apply` (the notes with `man`, the strings of the tab, the tuning); it bakes the found tab's fixes into the
   notes (`P.tab` goes). Find notes and Clear start a new tab.
 
 ## The screen
 
-- Song: Track with Find notes (blue only without a list; while it listens: Cancel, the progress under the Notes
-  heading), Key and Tuning on 1 row (`CFG.KEY_W`, `CFG.TUNE_LABEL_W`; narrower than `CFG.TUNE_MIN_W`: 2 rows), Lines
-  with an example. Notes heading: the count and Next not sure at its right. Without a list: the grey hint, no bottom
+- The steps (decided 26 November 2026): "1 Tempo" (Tab Viewer's `UI.draw_tempo_step`), "2 Song", "3 Notes"; 1 and 2
+  fold (`UI.FOLD_TEMPO`, `UI.FOLD_SONG` in `S.closed`) and show their status at the right of the heading. Blue is
+  the 1 next step: Find tempo (no tempo yet), Set tempo (a result), Import from tab (with a tab) or Find notes (no
+  list), Write. Step 1 is done when the song has a tempo marker of its own (`Tabs.tempo_state`, `UI.tempo_ok`; "The
+  tempo is right" puts one at the song start); until then Find notes and Import from tab are grey, with a grey line.
+- 2 Song: Bass audio with Find notes (while it listens: Cancel, the progress under the 3 Notes heading) and Import
+  from tab, Key and Tuning on 1 row (`CFG.KEY_W`, `CFG.TUNE_LABEL_W`; narrower than `CFG.TUNE_MIN_W`: 2 rows), Lines
+  with an example. 3 Notes: the count and Next not sure at its right. Without a list: the grey hint, no bottom
   rows. With a list: Join, Split, + Add, Delete; then the blue Write, its dropdown, More... (Export, Done, Clear).
 - Settings > Detection: String for high notes, Fingering for runs, Split repeated notes, String names.
 

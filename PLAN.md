@@ -22,8 +22,10 @@
   `new-feature`, the docs check reads every .md of a script folder; lesson tags decided; Claude's Tab Viewer
   decisions accepted by the user). Then (26 November 2026, committed, not released): the toolbar centred on play
   with >| (tested), Find notes no longer off before Find tempo (confirmed), Import from tab, the rename to
-  "Detection", Lines without "About 2 seconds", Set tempo with at most 1 decimal place. Next: the Detection
-  redesign, segments 2 and 3 (Open now 20); the toolbar segments 2 and 3 (`Tab Viewer/CLAUDE.md`, Later) after it.
+  "Detection", Lines without "About 2 seconds", Set tempo with at most 1 decimal place (tested), Find tempo moved to
+  the Detection tab (tested), the numbered steps with folding sections and "set" read from REAPER's tempo (the
+  user's choice; manual test Open now 23). Next: Open now 23; then the toolbar segments 2 and 3
+  (`Tab Viewer/CLAUDE.md`, Later), or a Tab Viewer release when the user asks.
 - Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
   what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
@@ -60,14 +62,10 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-20. Tab Viewer Detection redesign (decided 26 November 2026; segment 1 done: the rename and Lines; segment 2 done:
-    Find tempo and Set tempo at the top of the Detection tab, manual test 22). Segment 3: numbered
-    steps (1 Tempo, 2 Notes, 3 Check, 4 Write) with a status line each; blue is always the 1 next step; Find notes
-    is grey until the tempo is set, with the reason on the screen, and step 1 has "The project tempo is right";
-    "Track" becomes "Bass audio" in Detection. Ask before each segment.
-22. Manual test (Tab Viewer, 26 November 2026): the toolbar has no Find tempo; the Detection tab starts with Tempo
-    (Listen to: From the tab with a tab, else a track; Find tempo; its controls and the blue Set tempo stay open
-    under it); the Tab tab's Start row says "Bars not on the song? Detection > Tempo.".
+23. Manual test (Tab Viewer, Detection steps, 26 November 2026): the headings 1 Tempo, 2 Song, 3 Notes; 1 and 2
+    fold (still folded after a restart) and show their status; a song without its own tempo: Find tempo is blue,
+    Find notes and Import from tab are grey with the grey line; "The tempo is right" makes step 1 "Set: ... BPM"
+    (1 undo step) and Find notes (or Import from tab, with a tab) turns blue; "Bass audio" in place of "Track".
 
 ## Later
 

@@ -678,7 +678,7 @@ test("loop: a line loops from its start to the next line; the last one to the en
   eq(List.row_span(4), nil, "no such line")
 end)
 
-test("find: the Track row: the selected audio item on the track, else its longest; your choice of track", function()
+test("find: the Bass audio row: the selected audio item on the track, else its longest; your choice of track", function()
   eq(Find.pick({}), nil, "no audio item")
   eq(Find.pick({ { len = 2 }, { len = 9 }, { len = 4 } }), 2, "the longest")
   eq(Find.pick({ { len = 2 }, { len = 9 }, { len = 4, sel = true } }), 3, "the selected one")
@@ -1456,12 +1456,20 @@ test("tempo: Set tempo puts bar 1 on the song; other songs, items, markers and e
   local function env_t(i) local _, t = r.GetEnvelopePoint(env, i); return t end
   local env_last = env_t(before - 1)
   tempo_by_hand(it, 10, 40, 10.3, 0.4) -- 150 BPM, bar 1 at 10.3 s (between REAPER's bar lines)
+  TR.tset = nil
+  eq(TV.Tabs.tempo_state().ok, false, "step 1 not done: the song has no tempo marker (song 2's at 60 s is not its)")
   C.draw(500) -- (the Tempo rows of the Detection tab with a result: its controls and Set tempo; 26 November 2026)
+  TV.S.closed[TV.UI.FOLD_TEMPO], TV.S.closed[TV.UI.FOLD_SONG] = true, true
+  C.draw(500) -- (folded: only the headings with their status)
+  TV.S.closed[TV.UI.FOLD_TEMPO], TV.S.closed[TV.UI.FOLD_SONG] = nil, nil
   local tm = TR.tempo
   TR.tempo = { song = tm.song, run = { done = 0.5 } }
   C.draw(500) -- (while it listens: the progress and Cancel)
   TR.tempo = tm
   Tempo.set()
+  TR.tset = nil
+  ok(TV.Tabs.tempo_state().ok, "step 1 done: Set tempo gave the song its tempo")
+  eq(TV.Tabs.tempo_state().txt, "Set: 150 BPM")
   eq(where(8), "5.0.00", "the old bar line before the song stays")
   eq(where(8.7), "6.0.00", "a bar at the song tempo before bar 1 (the bass item starts at 10 s, inside it)")
   near(r.TimeMap_GetDividedBpmAtTime(9.5), 150, 0.01, "the count-in has the song tempo")
@@ -1483,6 +1491,16 @@ test("tempo: Set tempo puts bar 1 on the song; other songs, items, markers and e
   it = r.GetMediaItem(0, 0)
   near(r.GetMediaItemInfo_Value(it, "D_POSITION"), 10, 1e-6, "undo: the bass item")
   eq(markers(), "in the song@25.0 [Song 2 60.0-80.0]")
+  -- The tempo is right (26 November 2026): 1 marker at the song start with the tempo it has, 1 undo step
+  TR.tset = nil
+  eq(TV.Tabs.tempo_state().ok, false, "undo: step 1 not done again")
+  TV.Tabs.tempo_is_right()
+  ok(TV.Tabs.tempo_state().ok, "The tempo is right: step 1 done")
+  near(r.TimeMap_GetDividedBpmAtTime(20), 120, 0.01, "the tempo stays")
+  eq(r.Undo_CanUndo2(0), "Tab Viewer: the tempo is right")
+  eq(TV.Tabs.has_song_tempo({}, 10, 40), false, "no markers")
+  eq(TV.Tabs.has_song_tempo({ 4, 41 }, 10, 40), false, "before (more than 5 s) and after the song")
+  eq(TV.Tabs.has_song_tempo({ 6 }, 10, 40), true, "bar 1 a little before the item")
 end)
 
 test("tempo: Set tempo moves the song's audio so its first bass note is on the nearest beat; the list too; Ctrl+Z", function()

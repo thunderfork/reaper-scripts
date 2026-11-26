@@ -132,10 +132,10 @@ local R = {
   redo = {},         -- the Redo arrow: the texts that Undo took back
   view = nil,        -- the texts of the list rows (UI.view; rebuilt after a change)
   src_name = nil,    -- the name of the bass item (cached until the project changes)
-  trk = nil,         -- the Track row: your choice (not saved; Find.track)
+  trk = nil,         -- the Bass audio row: your choice (not saved; Find.track)
   written_lbl = nil, -- "Written (12 markers)" next to Write, until the list changes (Out.written_text)
   loop = nil,        -- the loop of a row (UI.play_row): { proj, rep, ts (before it), t0, t1 }
-  trk_lbl = nil,     -- the text of the Track row (of the track trk_for; cached until the project changes)
+  trk_lbl = nil,     -- the text of the Bass audio row (of the track trk_for; cached until the project changes)
   trk_for = nil,
   trk_def = nil,     -- the default track (false: none; nil: not looked for yet)
   finish = nil,      -- the open Done: clean up window (More...)
@@ -1524,7 +1524,7 @@ function Find.retune(notes, old, new)
   return heard
 end
 
--- The item of the Track row to listen to: the selected item on it, else its longest one. cands: { { sel, len } } of
+-- The item of the Bass audio row to listen to: the selected item on it, else its longest one. cands: { { sel, len } } of
 -- its audio items (a plain rule: tested). Returns the index, or nil (no audio item).
 function Find.pick(cands)
   local best
@@ -1547,7 +1547,7 @@ function Find.audio_items(tr)
   end
   return list
 end
--- The Track row: your choice (R.trk; not saved), else the track of the bass item of the last Find notes, else the
+-- The Bass audio row: your choice (R.trk; not saved), else the track of the bass item of the last Find notes, else the
 -- track of the selected item. nil: none yet. fresh: look again (Find notes), not the cached default (every frame).
 function Find.track(fresh)
   if R.trk and r.ValidatePtr2(R.proj, R.trk, "MediaTrack*") then return R.trk end
@@ -1558,7 +1558,7 @@ function Find.track(fresh)
   end
   return R.trk_def or nil
 end
--- The tracks with an audio item, for the Track dropdown (made when it opens): { { tr, label } }.
+-- The tracks with an audio item, for the Bass audio dropdown (made when it opens): { { tr, label } }.
 function Find.tracks()
   local list = {}
   for k = 0, r.CountTracks(R.proj) - 1 do
@@ -1574,10 +1574,10 @@ end
 
 function Find.source()
   local tr = Find.track(true)
-  if not tr then return nil, "Pick the bass track first (Track)." end
+  if not tr then return nil, "Pick the bass track first (Bass audio)." end
   local list = Find.audio_items(tr)
   local i = Find.pick(list)
-  if not i then return nil, "The track " .. Find.track_label(tr) .. " has no audio item. Pick the bass track (Track)." end
+  if not i then return nil, "The track " .. Find.track_label(tr) .. " has no audio item. Pick the bass track (Bass audio)." end
   local item, take = list[i].item, list[i].take
   local src = r.GetMediaItemTake_Source(take)
   if not src or r.GetMediaSourceSampleRate(src) <= 0 then
@@ -1657,7 +1657,7 @@ function Find.cancel()
 end
 -- The found notes become the list (the Undo button brings the old list back).
 function Find.done(f, notes, tune, t_end)
-  if #notes == 0 then UI.notice("No notes found. Is this the bass track (Track)?", true); return end
+  if #notes == 0 then UI.notice("No notes found. Is this the bass track (Bass audio)?", true); return end
   List.step()
   P.notes, P.t_end, P.tab = notes, t_end, nil -- (the fixes of the tab were for the notes before)
   P.src = f.guid
@@ -2280,7 +2280,7 @@ N.HELP_TOPICS = {
 Want the bass notes as markers, to learn the part in REAPER? That is the Detection tab.
 
 1. Got a Guitar Pro tab of the song? Open it (Tab tab > Open tab...), set the tempo here (Tempo at the top: From the tab, Find tempo, then Set tempo), then click "Import from tab": the list gets the exact notes, strings and frets of the tab.
-2. No tab? Separate the song and put the bass file on a track. Set the tempo here (Tempo at the top: listen to the drums or a click track), then pick the bass track (Track) and click "Find notes": Tab Viewer listens to it.
+2. No tab? Separate the song and put the bass file on a track. Set the tempo here (Tempo at the top: listen to the drums or a click track), then pick the bass track (Bass audio) and click "Find notes": Tab Viewer listens to it.
 3. Check the list. Yellow lines are not sure: click one to hear it in a loop, point at it to see why.
 4. Click "Write". One Ctrl+Z takes it all away again.
 
@@ -2517,17 +2517,17 @@ function UI.row_menu()
   ImGui.EndPopup(ctx)
 end
 
--- The "Notes" heading: the count of the lines and Next not sure at its right (while Find notes listens: the
+-- The "3 Notes" heading: the count of the lines and Next not sure at its right (while Find notes listens: the
 -- progress under it), then the bass item.
 local HEAD_NEXT = { "Next not sure", "ghost", false, "Go to the next yellow line and play it (N)." } -- (made once)
 function UI.draw_top(v)
   if R.find then
-    UI.heading("Notes")
+    UI.heading("3 Notes")
     ImGui.ProgressBar(ctx, R.find.done or 0, ImGui.GetContentRegionAvail(ctx), ImGui.GetFrameHeight(ctx), "Listening...")
     return
   end
   local doubt = v.n_doubt > 0
-  if UI.heading("Notes", false, doubt and HEAD_NEXT or nil, nil, v.status, doubt and COL.YELLOW or COL.TEXT_DIM) then
+  if UI.heading("3 Notes", false, doubt and HEAD_NEXT or nil, nil, v.status, doubt and COL.YELLOW or COL.TEXT_DIM) then
     UI.select(List.next_doubtful(R.sel), true)
   end
   if #P.rows == 0 then return end -- (the empty list says what to do)
@@ -2695,17 +2695,23 @@ function UI.draw_export()
   ImGui.EndPopup(ctx)
 end
 
-local FIND_TIP = "Tab Viewer listens to the bass track (Track) and fills the list. Nothing is written to the project yet."
+local FIND_TIP = "Tab Viewer listens to the bass track (Bass audio) and fills the list. Nothing is written to the project yet."
 local FIND_AGAIN_TIP = "Listen again: the new list replaces this one (it asks first; Undo brings it back)."
 local IMPORT_TIP = "Have the Guitar Pro tab of the song? Its notes become the list (the track picked in the Tab tab, with your fixes, the repeats played out). It asks first when the list has notes; Undo brings the old list back."
--- The rows of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work): Track with
--- Find notes (blue only without a list; while it listens: Cancel), Key and Tuning on 1 row (2 rows when narrow),
--- Lines. Find tempo: the Tempo rows above (Tab Viewer's UI.draw_tempo_step).
+local NEED_TEMPO = "Set the tempo first (1 Tempo): the notes go on the song's bars."
+-- The "2 Song" section of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work; numbered
+-- and folding: 26 November 2026): Bass audio with Find notes and Import from tab (both wait for the tempo of step 1;
+-- the blue one is the next step: Import from tab with a tab, else Find notes, only without a list; while it listens:
+-- Cancel), Key and Tuning on 1 row (2 rows when narrow), Lines. Step 1: Tab Viewer's UI.draw_tempo_step.
 function UI.draw_song()
-  UI.heading("Song")
+  local has = #P.rows > 0
+  local _, open = UI.heading("2 Song", false, nil, UI.FOLD_SONG, R.find and "Listening..." or has and "Notes found" or "No notes yet",
+    has and not R.find and COL.GREEN or COL.TEXT_DIM)
+  if not open then return end
   local fw = UI.field_w()
-  -- Track: the bass track that Find notes listens to, then Find notes
-  UI.field("Track")
+  local ok = UI.tempo_ok()
+  -- Bass audio: the bass track that Find notes listens to, then Find notes
+  UI.field("Bass audio")
   local tr = Find.track()
   if R.trk_for ~= tr then R.trk_for, R.trk_lbl = tr, nil end
   R.trk_lbl = R.trk_lbl or (tr and Find.track_label(tr) or "Pick the bass track")
@@ -2730,17 +2736,21 @@ function UI.draw_song()
     UI.tip("Stop. The list stays as it was.")
   else
     local busy = host.R.tempo ~= nil and host.R.tempo.run ~= nil -- (true or false: BeginDisabled takes nil as true)
-    ImGui.BeginDisabled(ctx, busy)
-    if UI.button("Find notes", bw, nil, #P.rows == 0 and "primary" or nil) then UI.find() end
+    ImGui.BeginDisabled(ctx, busy or not ok)
+    if UI.button("Find notes", bw, nil, ok and not has and not iw and "primary" or nil) then UI.find() end
     ImGui.EndDisabled(ctx)
-    UI.tip_disabled(busy and "Wait for Find tempo." or #P.rows == 0 and FIND_TIP or FIND_AGAIN_TIP)
+    UI.tip_disabled(not ok and NEED_TEMPO or busy and "Wait for Find tempo." or has and FIND_AGAIN_TIP or FIND_TIP)
   end
   if iw then -- Import from tab: as Import to list in the Tab tab (the track picked there)
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-    ImGui.BeginDisabled(ctx, R.find ~= nil)
-    if UI.button("Import from tab", iw) then UI.import_to_list() end
+    ImGui.BeginDisabled(ctx, R.find ~= nil or not ok)
+    if UI.button("Import from tab", iw, nil, ok and not has and "primary" or nil) then UI.import_to_list() end
     ImGui.EndDisabled(ctx)
-    UI.tip_disabled(IMPORT_TIP)
+    UI.tip_disabled(not ok and NEED_TEMPO or IMPORT_TIP)
+  end
+  if not ok then -- (why they are grey: on the screen, not only in the tooltip)
+    ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + host.CFG.LABEL_W)
+    ImGui.TextColored(ctx, COL.TEXT_DIM, NEED_TEMPO)
   end
   -- Key and Tuning: 1 row, the Tuning dropdown ends where the others end; no room: 2 rows
   UI.field("Key")
@@ -2805,7 +2815,7 @@ function UI.draw_song()
 end
 
 function UI.draw_list(v, h)
-  if #P.rows == 0 then -- (Find notes is on the Track row above, blue)
+  if #P.rows == 0 then -- (Find notes is on the Bass audio row above, blue)
     ImGui.Dummy(ctx, 0, 4)
     ImGui.PushTextWrapPos(ctx, 0)
     ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the bass..." or "No notes yet. Pick the bass track above, then click Find notes. Works with bass only (for now): guitar or other audio gives wrong notes. Have a Guitar Pro tab? Open it in the Tab tab, then click Import from tab.")
@@ -2980,8 +2990,8 @@ function UI.draw_foot()
   end
 end
 
--- The Detection tab (in Tab Viewer's panel; h: the height it has): the Tempo rows (Tab Viewer's), the Song rows
--- (Track, Key, Tuning, Lines), the Notes heading with Find notes, the list, then the foot (Join ... Undo, Write, More...).
+-- The Detection tab (in Tab Viewer's panel; h: the height it has): 1 Tempo (Tab Viewer's), 2 Song (Bass audio with
+-- Find notes, Key, Tuning, Lines), 3 Notes (the count), the list, then the foot (Join ... Undo, Write, More...).
 function N.draw(h)
   local v = UI.view()
   local y0 = ImGui.GetCursorPosY(ctx)
