@@ -1292,6 +1292,14 @@ test("tabs per region: Open tab for the region at the edit cursor, the tab moves
   eq(#C.get_P().tabs, n0 + 1, "a new tab"); ok(Tabs.cur().rgn, "linked by GUID")
   near(Tabs.time_of(1, 0), 8, 1e-9, "bar 1 of the tab on the region's start")
   eq(R.bar_txt, "Bar 1 of the region")
+  -- a time a hair before the start (beats to seconds and back round it) is still the region's and bar 1 (lessons 26
+  -- November 2026: a click at the start of bar 1 moved the edit cursor into the song before, and its tab came up)
+  eq(Tabs.place_of(8 - 1e-12), 1, "a hair before bar 1: bar 1")
+  local rg0 = R.rgns
+  R.rgns = { list = { { pos = 0, rend = 8, guid = "a" }, { pos = 8, rend = 20, guid = "b" } } }
+  eq(Tabs.region_at(8 - 1e-12).guid, "b", "a hair before a region's start: that region, not the one before")
+  eq(Tabs.region_at(7.9).guid, "a"); eq(Tabs.region_at(19.9).guid, "b")
+  R.rgns = rg0
   Tabs.set_bar(2)
   near(Tabs.time_of(1, 0), 10, 1e-9, "bar 2 of the region"); eq(R.tab.bars[1].label, "2", "the region's bar numbers")
   r.SetEditCurPos2(proj, 22, false, false)

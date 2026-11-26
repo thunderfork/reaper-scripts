@@ -70,7 +70,8 @@ CFG.CTRL_GAP = 8               -- between 2 controls side by side
 CFG.SP_ROW, CFG.SP_EDGE, CFG.SP_PANEL = 7, 8, 4 -- spacing (pixels; the same gaps as Chart Cue)
 CFG.ROW_H = 26
 CFG.TB_ICON_W = 32             -- the icons in the toolbar (Undo / Redo, the transport)
-CFG.DRAG_PX = 4               -- px the mouse moves with the button held: a drag (a selection), not a click
+CFG.TIME_EPS = 1e-6           -- s (or quarter notes): a time this close before a start (rounding) still counts as in it
+CFG.DRAG_PX = 4              -- px the mouse moves with the button held: a drag (a selection), not a click
 CFG.TEMPO_BEFORE = 5          -- s: a tempo marker this far before the song item still counts as the song's (Tabs.has_song_tempo)
 CFG.TB_NEAR_GAP = 16           -- between the transport and the size / the speed next to it
 CFG.TB_NOTE_W = 14             -- the note icon before the speed
@@ -379,8 +380,9 @@ end
 -- The region of tab e (nil: none, or it was deleted).
 function Tabs.region(e) return e and e.rgn and R.rgns and R.rgns.by[e.rgn] end
 -- The region at time t (the first one), or nil.
-function Tabs.region_at(t)
-  for _, g in ipairs(R.rgns and R.rgns.list or {}) do if t >= g.pos and t < g.rend then return g end end
+function Tabs.region_at(t) -- (CFG.TIME_EPS: a time a hair before a start, from rounding, is that region's)
+  local e = CFG.TIME_EPS
+  for _, g in ipairs(R.rgns and R.rgns.list or {}) do if t >= g.pos - e and t < g.rend - e then return g end end
 end
 -- The tab for time t: the tab of the region there (a region without a tab: nil), outside the regions the tab
 -- without a region; nil: none. Second value: the region at t.
@@ -1534,7 +1536,8 @@ function Tabs.place_of(t)
   if not tab then return nil end
   local q = r.TimeMap2_timeToQN(R.proj, t) - Tabs.start_qn()
   local last = tab.bars[#tab.bars]
-  if not last or q < 0 or q >= last.q0 + last.len then return nil end
+  if not last or q < -CFG.TIME_EPS or q >= last.q0 + last.len then return nil end
+  q = math.max(0, q) -- (a hair before bar 1, from rounding: bar 1)
   local lo, hi = 1, #tab.bars -- (the bar: a binary search, the place is asked every frame)
   while lo < hi do
     local mid = (lo + hi + 1) // 2
