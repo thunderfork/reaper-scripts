@@ -1,6 +1,15 @@
 # Thunderfork scripts: plan
 
-## Handoff (26 November 2026)
+## Handoff (27 November 2026)
+
+- Session 27 November 2026, Tab Viewer, all committed and backed up, not released: the repeat fix (passes = the
+  highest ending; LESSONS.md, Open now 21); < > as icons and the Time signature window tidied; the user's Detection
+  feedback (decided 27 November 2026): a click on a line plays from it, the toolbar's Loop loops the line; Clear and
+  Delete red next to Join...; Export in place of More...; Done: clean up merged into Write (the list stays; region
+  only for a bass item song, region songs keep their names; Settings: Write removes the bass plugins / deletes the
+  metronome track, both off); all windows in the middle, fixed; the Bar column from the song (Settings: Bar
+  numbers). Open Tab Viewer tests: 3 (20, 21, 22): no new Tab Viewer feature until they are tested. Paused: the
+  progress bars (23). Unanswered: making "never search my folders" global (24).
 
 - New workflow (decided 26 November 2026): an automatic commit after each finished change (its checker, tests and
   deploy passed); at each handoff a push to the private `reaper-scripts-backup` (remote `backup`, no checks, GitHub
@@ -67,6 +76,14 @@ skipped or failed test stays here; remove it when it passed.
     (right-click a bar): tidier, + / - half buttons next to the beats.
 21. Manual test (Tab Viewer, repeats, 27 November 2026): Sun plays and shows the 3rd ending (bar 106); a "1. 3." /
     "2. 4." repeat plays 4 times (LESSONS.md, fixed, not confirmed).
+22. Manual test (Tab Viewer, Detection, 27 November 2026): a click on a line plays from it; Loop (toolbar) on: the
+    clicked line loops, Loop off: REAPER's repeat as before; Delete and Clear... red next to Join, Clear asks;
+    Export... at the bottom right; Write makes the song region (a bass item song; your region names stay) and the
+    list stays; Settings > Detection: the 2 Write switches and Bar numbers; the windows stay in the middle.
+23. Paused (the user's choice, 27 November 2026): the Find tempo / Find notes progress bars in a bottom bar. The
+    user explains what they mean by the bottom toolbar first.
+24. Make this rule global? "Never search my folders for files. When you need a file of a kind, ask me to provide
+    it." (asked 27 November 2026; project rule already): Yes / Project only / No.
 
 ## Later
 
