@@ -170,6 +170,7 @@ local S = {
   song_follow = true, -- Settings > Detection > Follow the song (the list follows the edit cursor; 26 November 2026)
   write_fx = false,  -- Settings > Detection > Write removes the bass plugins (the old Done: clean up; 27 November 2026)
   write_clicks = false, -- Settings > Detection > Write deletes the metronome track (the same)
+  bars = "song",     -- Settings > Detection > Bar numbers: "song" (from the song's start) or "project" (27 November 2026)
 }
 
 ---------------------------------------------------------------------------
@@ -217,10 +218,11 @@ function Util.settings_lines()
   return { "out=" .. S.out, "frets=" .. (S.frets and "1" or "0"), "finger=" .. (S.finger and "1" or "0"),
     "strings=" .. S.strings, "export_dir=" .. S.export_dir, "splits=" .. (S.splits and "1" or "0"),
     "song_follow=" .. (S.song_follow and "1" or "0"), "write_fx=" .. (S.write_fx and "1" or "0"),
-    "write_clicks=" .. (S.write_clicks and "1" or "0") }
+    "write_clicks=" .. (S.write_clicks and "1" or "0"), "bars=" .. S.bars }
 end
 function Util.apply_setting(k, v)
   if k == "splits" then S.splits = (v ~= "0")
+  elseif k == "bars" then S.bars = v == "project" and v or "song"
   elseif k == "write_fx" then S.write_fx = (v == "1")
   elseif k == "write_clicks" then S.write_clicks = (v == "1")
   elseif k == "song_follow" then S.song_follow = (v ~= "0")
@@ -916,10 +918,20 @@ function Group.project_bars(proj, t0, t1)
   return bars
 end
 -- The bar and beat of a time ("7.1"); a 32nd before a beat counts as that beat.
-function Group.bar_text(proj, t)
+-- "bar.beat" of time t; base: REAPER's measure (from 0) that is bar 1 (nil: REAPER's bar numbers).
+function Group.bar_text(proj, t, base)
   local q = r.TimeMap2_timeToQN(proj, t) + 0.125
   local beat, m = r.TimeMap2_timeToBeats(proj, r.TimeMap2_QNToTime(proj, q))
-  return string.format("%d.%d", m + 1, math.floor(beat + 0.001) + 1)
+  return string.format("%d.%d", m - (base or 0) + 1, math.floor(beat + 0.001) + 1)
+end
+-- The measure that is bar 1 of the list's Bar column (decided 27 November 2026): the first bar line at or after the
+-- start of the shown song, as the Tab tab counts in a region (a pickup before it: bar 0); nil: REAPER's bar numbers
+-- (Settings > Detection > Bar numbers, or no song).
+function Group.bar_base()
+  local s = S.bars == "song" and Songs.cur()
+  if not s then return nil end
+  local beats, m = r.TimeMap2_timeToBeats(R.proj, s.t0)
+  return beats > 1e-6 and m + 1 or m
 end
 -- "Every note change": each new note has its own bar (octave: also the same name in another octave). A long silence
 -- also starts a new one.
@@ -2600,7 +2612,8 @@ N.HELP_TOPICS = {
 - It follows the edit cursor (playing: the play position); its frame flashes when it changes. Between songs the last song stays.
 - Rather pick it yourself? Turn off Settings > Detection > Follow the song.
 - 1 long bass item for several regions? Find tempo and Find notes listen only to the part in the song.
-- Write, Clear and Export change only that song.]] },
+- Write, Clear and Export change only that song.
+- The Bar column counts from the song's first bar. REAPER's bars instead? Settings > Detection > Bar numbers.]] },
   { title = "Checking the list", text = [[
 - Click a line: it plays from there. Loop (the toolbar) on: that line plays again and again. Space: stop. Escape: no loop.
 - Up / Down: the line before or after. N: the next yellow line.
@@ -2693,8 +2706,9 @@ function UI.view()
   for _, row in ipairs(P.rows) do count[row.text] = (count[row.text] or 0) + 1 end
   -- the lines of the table: the rows, and a "Key: D major" line before the row where a key change starts
   v.items, v.item_of = {}, {}
+  local base = Group.bar_base()
   for i, row in ipairs(P.rows) do
-    v[i] = { num = tostring(i), bar = Group.bar_text(R.proj, row.t), places = tostring(count[row.text]) }
+    v[i] = { num = tostring(i), bar = Group.bar_text(R.proj, row.t, base), places = tostring(count[row.text]) }
     if row.doubt then v.n_doubt = v.n_doubt + 1 end
     local k = List.key_change(i)
     if k then v.items[#v.items + 1] = { key = "Key: " .. P.keys[k].key, row = i } end
@@ -2865,6 +2879,7 @@ function UI.draw_top(v)
 end
 
 local STRING_STYLES = { { "letters", "Letters (E A D G)" }, { "numbers", "Numbers (4 3 2 1)" } }
+local BAR_STYLES = { { "song", "From the song" }, { "project", "Project bars" } }
 -- Settings > Detection (Tab Viewer's Settings tab draws its heading). 1 mode (decided 25 November 2026).
 function N.draw_settings()
   local ch, pick
@@ -2884,6 +2899,9 @@ function N.draw_settings()
   pick = UI.set_combo("String names", S.strings, STRING_STYLES,
     "\"E (A 7)\" or, as in tab books, \"E (3 7)\". For the next Find notes.")
   if pick then S.strings = pick; R.sdirty = true end
+  pick = UI.set_combo("Bar numbers", S.bars, BAR_STYLES,
+    "The Bar column of the list. From the song (the default): bar 1 is the song's first bar. Project bars: as REAPER's ruler.")
+  if pick then S.bars, R.view, R.sdirty = pick, nil, true end
   ch, S.write_fx = UI.set_toggle("Write removes the bass plugins", S.write_fx,
     "Off (the default). On: Write also removes all the plugins on the bass track (1 Ctrl+Z brings them back).")
   dirty(ch)

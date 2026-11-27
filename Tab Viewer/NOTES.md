@@ -42,7 +42,9 @@ The history of every decision: git.
 - `S` (ExtState "Tab Viewer"; keys that do not meet Tab Viewer's): `out` ("markers", "track", "both"), `frets`
   (String for high notes, on), `finger` (Fingering for runs, on), `strings` ("letters" / "numbers"), `splits` (Split
   repeated notes, OFF by default), `export_dir` ("" = the project folder), `song_follow` (Follow the song, on),
-  `write_fx` and `write_clicks` (Write removes the bass plugins / deletes the metronome track, both off).
+  `write_fx` and `write_clicks` (Write removes the bass plugins / deletes the metronome track, both off), `bars`
+  ("song": the Bar column from the song's first bar line, `Group.bar_base`, as the Tab tab counts in a region;
+  "project": REAPER's bars).
 - 1 mode: no Simple mode, no beat count, no slide mark.
 - `R` (runtime): the selection, the edit box, `undo` / `redo` (`List.step`: the list text, or `{ reaper = the undo
   name, list }` for Write, Clear and Export: their undo is REAPER's undo too, when that step is REAPER's next one), the
@@ -141,7 +143,7 @@ The history of every decision: git.
   rows. With a list: Join, Split, + Add, Delete, Clear... (Delete and Clear red: `UI.button` kind "danger"); then the
   blue Write, its dropdown, Export... at the right (no More... menu: decided 27 November 2026).
 - Settings > Detection: Follow the song, String for high notes, Fingering for runs, Split repeated notes, String
-  names, Write removes the bass plugins, Write deletes the metronome track.
+  names, Bar numbers, Write removes the bass plugins, Write deletes the metronome track.
 
 ## REAPER facts
 

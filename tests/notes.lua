@@ -893,7 +893,7 @@ test("settings: defaults and bad values", function()
   C.Util.apply_setting("finger", "1")
   C.Util.apply_setting("strings", "x"); eq(C.S.strings, "letters")
   C.Util.apply_setting("simple", "1"); eq(C.S.simple, nil, "a removed setting (Simple mode) is not read")
-  eq(table.concat(C.Util.settings_lines(), " "), "out=markers frets=1 finger=1 strings=letters export_dir= splits=0 song_follow=1 write_fx=0 write_clicks=0")
+  eq(table.concat(C.Util.settings_lines(), " "), "out=markers frets=1 finger=1 strings=letters export_dir= splits=0 song_follow=1 write_fx=0 write_clicks=0 bars=song")
   C.Util.apply_setting("export_dir", " D:\\Songs ")
   eq(C.S.export_dir, "D:\\Songs")
   C.Util.apply_setting("export_dir", "")
@@ -1742,6 +1742,12 @@ test("songs: 1 long bass item for 2 regions; Find notes fills each song's list f
   eq(texts(), "C", "song One")
   go_to(4)
   eq(texts(), "F (D 3)", "song Two's list was not replaced")
+  -- the Bar column (decided 27 November 2026): from the song's first bar line (region Two from 3 s: bar 1 at 4 s)
+  R.view = nil
+  eq(C.UI.view()[1].bar, "1.1", "from the song")
+  C.S.bars, R.view = "project", nil
+  eq(C.UI.view()[1].bar, "3.1", "Settings: project bars")
+  C.S.bars, R.view = "song", nil
   eq(C.song_head().i, 2, "the Song row: song 2"); eq(C.song_head().n, 2)
   eq(Songs.labels().cur, "2: Two  (1 line)", "its dropdown text")
   -- the arrows of the Song row: the song before, its list, the edit cursor at its start
