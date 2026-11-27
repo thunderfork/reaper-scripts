@@ -32,6 +32,10 @@ PATH was updated), use `"/c/Program Files/GitHub CLI/gh.exe"`, and tell the user
 
 - `@version` and `CFG.VERSION` together: a patch step for fixes and text changes only (1.0 -> 1.0.1), a minor step
   for new features (1.4 -> 1.5), a major step only when the user says so.
+- The Help topics (the "?" tab; decided 27 November 2026: tooltips, labels and notices change with each change, the
+  Help topics only here): read every visible change since the last release (`git log <last tag>..HEAD` of the
+  script, and its code), then the `help-sync` skill for them: each Help topic says what the script does now (names,
+  steps, Settings paths, defaults). A fix of the Help: its own commit before the version commit.
 - `@changelog`: 1-3 user-facing lines (what the user gets, plain words), replacing the old lines.
 - `@provides`: every action script of the script's folder is listed.
 - A first release: merge its branch into main (when it has one); `Released = $true` in `tools\scripts.psd1`;

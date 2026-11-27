@@ -84,6 +84,8 @@ skipped or failed test stays here; remove it when it passed.
     user explains what they mean by the bottom toolbar first.
 24. Make this rule global? "Never search my folders for files. When you need a file of a kind, ask me to provide
     it." (asked 27 November 2026; project rule already): Yes / Project only / No.
+25. After a few sessions with them (decided 27 November 2026): propose the 3 speed rules (1 test run per change,
+    batches of about 3, the notes at the end of a topic) for the global CLAUDE.md.
 
 ## Later
 

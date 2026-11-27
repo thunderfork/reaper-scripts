@@ -7,6 +7,9 @@ description: Find and fix every text in the scripts of this repository (tools\sc
 
 Read and follow the global skill first: `%USERPROFILE%\.claude\skills\help-sync\SKILL.md`. This project adds:
 
+- When: with each change, the tooltips, labels, notices, menus and comments; the Help topics (the "?" tab) only
+  before a release (the `release` skill, step 1; decided 27 November 2026).
+
 ## Where to search (step 2 of the global skill)
 
 - `Chart Cue/Chart Cue.lua`: Help topics (HELP_TOPICS, also "more" texts), UI.tip / tooltips,

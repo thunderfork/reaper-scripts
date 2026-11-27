@@ -55,8 +55,8 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
 - A change with many parts or many tests: build it in segments and ask me before each segment. A request with more
   than 3 changes: build about 3, report them, then go on with the next ones.
 - The notes for later sessions (`NOTES.md`, the folder and project `CLAUDE.md`): update them 1 time at the end of
-  the topic, with the handoff, not after each change. Help texts, tooltips and code comments stay part of each
-  change (`help-sync`).
+  the topic, with the handoff, not after each change. Tooltips, labels, notices and code comments stay part of each
+  change; the Help topics (the "?" tab) are updated 1 time before a release (the `release` skill).
 - The limit of open manual tests (more than 3: no new feature) counts only the tests of the script being developed.
 - The checks of the global rules, in this project: `debug-time` is the `debug-round` (bugs); "before a build" means
   before a deploy that I will test in REAPER; the checks before a push are in the `release` skill (they replace
