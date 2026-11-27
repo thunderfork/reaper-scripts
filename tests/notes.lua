@@ -1701,13 +1701,14 @@ test("songs: 1 long bass item for 2 regions; Find notes fills each song's list f
   eq(texts(), "C", "song One")
   go_to(4)
   eq(texts(), "F (D 3)", "song Two's list was not replaced")
-  eq(C.song_head().txt, "Song 2 of 2: Two", "the song header")
-  -- the arrows of the song header: the song before, its list, the edit cursor at its start
+  eq(C.song_head().i, 2, "the Song row: song 2"); eq(C.song_head().n, 2)
+  eq(Songs.labels().cur, "2: Two  (1 line)", "its dropdown text")
+  -- the arrows of the Song row: the song before, its list, the edit cursor at its start
   ok(C.song_go(-1), "the song before")
   eq(texts(), "C"); near(r.GetCursorPosition(), 0, 1e-6, "the edit cursor at its start")
-  eq(C.song_head().txt, "Song 1 of 2: One")
+  eq(C.song_head().i, 1)
   eq(C.song_go(-1), false, "no song before the first")
-  ok(C.song_go(0, 2), "the song list: song 2")
+  ok(C.song_go(0, 2), "the dropdown: song 2")
   eq(texts(), "F (D 3)")
   -- Follow the song off: the cursor moves, the list stays
   C.S.song_follow = false

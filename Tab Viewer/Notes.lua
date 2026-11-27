@@ -1593,7 +1593,7 @@ end
 function Songs.cur()
   for _, s in ipairs(Songs.get()) do if s.id == R.song then return s end end
 end
--- The song header's arrows and list: song s shows, the edit cursor goes to its start and its bass item is selected.
+-- The Song row's dropdown and arrows: song s shows, the edit cursor goes to its start and its bass item is selected.
 -- Only while stopped (false: playing, or no song).
 function Songs.go(s)
   if not s or Util.playing() then return false end
@@ -1612,16 +1612,17 @@ function Songs.go(s)
   r.UpdateArrange()
   return true
 end
--- The texts of the song list of the song header: each song with its line count.
+-- The texts of the Song row's dropdown: each song with its line count (cur: the shown song, without the id).
 function Songs.labels()
   local songs = Songs.get()
   local c = R.song_lbls
   if c and c.songs == songs and c.song == R.song and c.n == #P.rows then return c end
-  c = { songs = songs, song = R.song, n = #P.rows, items = {} }
+  c = { songs = songs, song = R.song, n = #P.rows, items = {}, cur = "None here: pick a song" }
   for k, s in ipairs(songs) do
     local n = s.id == R.song and #P.rows or Lists.count(R.lists and R.lists.txt[s.id])
-    c.items[k] = string.format("%d: %s", k, s.name) .. (n > 0 and string.format("  (%d %s)", n, n == 1 and "line" or "lines") or "")
-      .. "##song" .. k
+    local txt = string.format("%d: %s", k, s.name) .. (n > 0 and string.format("  (%d %s)", n, n == 1 and "line" or "lines") or "")
+    c.items[k] = txt .. "##song" .. k
+    if s.id == R.song then c.cur = txt end
   end
   R.song_lbls = c
   return c
@@ -1725,7 +1726,7 @@ function Lists.follow()
   local id = i and songs[i].id
   if not id or id == R.follow_last then return end
   R.follow_last = id
-  if id ~= R.song then R.flash = Util.now() end -- (the song header flashes: the list changed by itself)
+  if id ~= R.song then R.flash = Util.now() end -- (the Song row flashes: the list changed by itself)
   Lists.switch(id)
 end
 -- The bass item of any saved list, or the item of a song that is an item (the default of the Track row), or nil.
@@ -2599,8 +2600,8 @@ N.HELP_TOPICS = {
 - No plugins needed: Tab Viewer reads the audio itself.]] },
   { title = "Several songs in 1 project", text = [[
 - Each song has its own list and tempo. A song is a region, or a bass item outside the regions.
-- Which song is it? The line at the top: "Song 2 of 3". The arrows: the song before or after. Click the name: all songs (stop first).
-- It follows the edit cursor (playing: the play position), and flashes when it changes. Between songs the last song stays.
+- Which song is it? The Song row at the top. Pick another song there, or use < and > (stop first).
+- It follows the edit cursor (playing: the play position); its frame flashes when it changes. Between songs the last song stays.
 - Rather pick it yourself? Turn off Settings > Detection > Follow the song.
 - 1 long bass item for several regions? Find tempo and Find notes listen only to the part in the song.
 - Write, Clear and Export change only that song.]] },
@@ -3402,24 +3403,22 @@ function N.exit()
   if R.sdirty then Util.save_settings() end
 end
 function N.busy() return R.find ~= nil end -- (Find notes listens)
--- The song header at the top of Tab Viewer's Tab and Detection tabs (decided 26 November 2026): { txt = "Song 2 of 3:
--- Far Away", i, n, flash (the time the list last followed the cursor to this song) }; nil: the project has no songs.
--- Made again only when the song or the songs change.
+-- The Song row at the top of Tab Viewer's Tab and Detection tabs (decided 27 November 2026): { i (the shown song;
+-- nil: none of them), n, flash (the time the list last followed the cursor to this song) }; nil: the project has no
+-- songs. Made again only when the song or the songs change.
 function N.song_head()
   local songs = Songs.get()
   if not songs[1] then return nil end
   local c = R.st
   if c and c.songs == songs and c.song == R.song then c.flash = R.flash; return c end
-  c = { songs = songs, song = R.song, n = #songs, txt = "No song here yet: use the arrows, or move the edit cursor into a song." }
-  for k, s in ipairs(songs) do
-    if s.id == R.song then c.i, c.txt = k, string.format("Song %d of %d: %s", k, #songs, s.name) end
-  end
+  c = { songs = songs, song = R.song, n = #songs }
+  for k, s in ipairs(songs) do if s.id == R.song then c.i = k end end
   c.flash = R.flash
   R.st = c
   return c
 end
--- The arrows of the song header (dir -1 / 1) and its list (k): that song shows, the edit cursor goes to its start and
--- its bass item is selected (false: playing, Find notes listens, or no such song).
+-- The Song row's arrows (dir -1 / 1) and dropdown (k): that song shows, the edit cursor goes to its start and its
+-- bass item is selected (false: playing, Find notes listens, or no such song).
 function N.song_go(dir, k)
   local c = R.st
   if not c or R.find then return false end
@@ -3428,7 +3427,7 @@ function N.song_go(dir, k)
 end
 -- The texts of the song list (Songs.labels: each song with its line count).
 function N.song_list() return Songs.labels() end
--- The song of the header for Tab Viewer's Tempo section: its id (every frame), and its start and end (nil: none).
+-- The song of the Song row for Tab Viewer's Tempo section: its id (every frame), and its start and end (nil: none).
 function N.song_id() return R.song end
 function N.song_range()
   local s = Songs.cur()

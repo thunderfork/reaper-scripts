@@ -71,12 +71,13 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   and its yellow tempo warning too. From the tab:
   `GP.timeline(doc)`, `Tempo.from_tab` (bar 1 = the first sound of the song less the time to the first note:
   `Tabs.first_qn`), `Beat.tab_plan` (a marker only where the tempo or time signature changes); it does not move the
-  audio; then the tab starts on the new bar 1. The song (`Tabs.song_item`): in the song of the song header (else the
+  audio; then the tab starts on the new bar 1. The song (`Tabs.song_item`): in the song of the Song row (else the
   tab's region), the selected audio item, else the longest, cut to the song's range (1 tempo per song).
-- The song header (`UI.draw_song_head`, at the top of the Tab and Detection tabs; the UI/UX review, decided 26
-  November 2026): < "Song 2 of 3: name" > and the song list at the right (a click on the name too); the arrows and
-  the list show that song, move the edit cursor to its start and select its bass item (`Notes.song_go`, stopped
-  only). It flashes (`CFG.SONG_FLASH`) when the Detection list followed the cursor into another song. The songs and
+- The Song row (`UI.draw_song_row`, at the top of the Tab and Detection tabs; the UI/UX review, option 2, decided
+  27 November 2026; a header band was tried first and not liked): "Song", the dropdown of the songs with their line
+  counts, [<] [>]; a choice or an arrow shows that song, moves the edit cursor to its start and selects its bass
+  item (`Notes.song_go`, stopped only). The dropdown's frame flashes (`CFG.SONG_FLASH`) when the Detection list
+  followed the cursor into another song. The songs and
   their lists: NOTES.md. Headings (`UI.heading`): the status after the title, the section's button(s) at the right.
 - The panel rows Tab (the dropdown: the tabs, Region, Undo all fixes, Layout..., Remove; Open tab...), Track (and
   Import to list), the file line, Start (< >) share the label column (`CFG.LABEL_W`, `UI.field`).

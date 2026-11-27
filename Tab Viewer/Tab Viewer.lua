@@ -93,7 +93,7 @@ CFG.TB_GROUP_GAP = 25          -- the least gap between the toolbar groups (as i
 CFG.STRIP_H, CFG.STRIP_GAP, CFG.STRIP_LIFT = 32, 4, 6 -- the tab strip, as in Chart Cue and MIDI Pilot
 CFG.STRIP_GROUP_GAP = 12       -- between the text tabs and the Settings / Help tabs
 CFG.NOTICE_SEC = 4             -- a notice at the bottom of the window shows this long
-CFG.SONG_FLASH = 0.8           -- s: the song header flashes this long when the list followed the cursor to another song
+CFG.SONG_FLASH = 0.8           -- s: the Song row flashes this long when the list followed the cursor to another song
 CFG.TIP_DELAY = 0.5            -- seconds on an item before its tooltip shows (as in Chart Cue)
 CFG.TIP_WRAP_EM = 32           -- tooltip lines wrap at this many font sizes
 CFG.TRACK_W = 320              -- the Track dropdown
@@ -265,7 +265,7 @@ end
 -- (Project.entry_line, Project.entry_text). Its list changed: R.notes_dirty (the tab of the found notes again).
 Notes = NotesNew({ GP = GP, TP = TP, CFG = CFG, COL = COL, ImGui = ImGui, UI = UI, R = R,
   notes_changed = function() R.notes_dirty = true end,
-  song_changed = function() -- (another song in the song header: a Find tempo run or result was for the song before)
+  song_changed = function() -- (another song in the Song row: a Find tempo run or result was for the song before)
     if R.tempo then Tempo.cancel(); R.tempo = nil end
     R.tset = nil
   end,
@@ -1684,7 +1684,7 @@ function Tabs.song_item()
     local tk = it and r.GetActiveTake(it)
     return tk and not r.TakeIsMIDI(tk)
   end
-  -- the song: the song of the song header (Notes.song_range: a region, or a bass item), else the tab's region
+  -- the song: the song of the Song row (Notes.song_range: a region, or a bass item), else the tab's region
   local s0, s1 = Notes.song_range()
   if not s0 then
     local g = Tabs.region(Tabs.cur())
@@ -4133,66 +4133,49 @@ end
 
 -- The window: the toolbar, the tab strip, then the panel of the open tab (a rounded area): the Tab tab has the Track
 -- dropdown and the tab, the Detection tab is Notes.draw; Settings and Help scroll.
--- The song header (the UI/UX review, decided 26 November 2026): at the top of the Tab and Detection tabs, the song of
--- the Detection list (Notes.song_head): < "Song 2 of 3: Far Away" > and the song list at the right (a click on the
--- name too); the arrows and the list go to that song (stopped only). It flashes when the list followed the cursor
--- into another song. Returns its height with the gap under it (0: the project has no songs).
-local SONG_ARROW_W = 26
-local SONG_TIP = "Each song has its own list and tempo. Click: all songs.\nSettings > Detection > Follow the song: it follows the edit cursor."
--- An arrow of the song header (dir -1 left, 1 right, 0 down: the list); true when clicked and on.
-function UI.song_arrow(id, dir, on, x, y, h)
-  ImGui.SetCursorScreenPos(ctx, x, y)
-  local hit = ImGui.InvisibleButton(ctx, id, SONG_ARROW_W, h)
-  local hov = on and ImGui.IsItemHovered(ctx)
-  local col = not on and COL.TOGGLE_OFF or hov and COL.TEXT_MAIN or COL.HEADING
-  local dl, cx, cy = ImGui.GetWindowDrawList(ctx), x + SONG_ARROW_W / 2, y + h / 2
-  if dir < 0 then ImGui.DrawList_AddTriangleFilled(dl, cx + 4, cy - 6, cx + 4, cy + 6, cx - 4, cy, col)
-  elseif dir > 0 then ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 6, cx - 4, cy + 6, cx + 4, cy, col)
-  else ImGui.DrawList_AddTriangleFilled(dl, cx - 6, cy - 3, cx + 6, cy - 3, cx, cy + 4, col) end
-  return hit and on
-end
-function UI.draw_song_head(w)
+-- The Song row (the UI/UX review, option 2, decided 27 November 2026): at the top of the Tab and Detection tabs, as
+-- the Tab and Track rows: "Song", a dropdown of the songs with their line counts (Notes.song_list), [<] [>]. A choice
+-- or an arrow goes to that song (stopped only, Notes.song_go). The dropdown's frame flashes when the list followed the
+-- cursor into another song. Returns its height (0: the project has no songs).
+local SONG_TIP = "Each song has its own list and tempo. A song is a region, or a bass item outside the regions.\n"
+  .. "Settings > Detection > Follow the song: it follows the edit cursor."
+function UI.draw_song_row()
   local c = Notes.song_head()
   if not c then return 0 end
-  local x, y = ImGui.GetCursorScreenPos(ctx)
-  local h = ImGui.GetFrameHeight(ctx) + 8
-  local dl = ImGui.GetWindowDrawList(ctx)
-  ImGui.DrawList_AddRectFilled(dl, x, y, x + w, y + h, COL.ACTIVE_BG, 6)
-  local ft = c.flash and Util.now() - c.flash
-  if ft and ft >= 0 and ft < CFG.SONG_FLASH then
-    ImGui.DrawList_AddRectFilled(dl, x, y, x + w, y + h, (COL.ACCENT & 0xFFFFFF00) | math.floor(0x99 * (1 - ft / CFG.SONG_FLASH)), 6)
-  end
-  local free = not R.playing and not Notes.busy()
+  local y0 = ImGui.GetCursorPosY(ctx)
+  local free = not R.playing and not Notes.busy() -- (true or false: BeginDisabled takes nil as true)
   local why = R.playing and "Stop first to go to another song." or "Wait for Find notes."
-  if UI.song_arrow("##song_prev", -1, free and (c.i or 2) > 1, x + 4, y, h) then Notes.song_go(-1) end
-  UI.tip_disabled(free and "The song before." or why)
-  ImGui.PushFont(ctx, head_font)
-  local tw = w - 3 * SONG_ARROW_W - 24
-  if c.tw ~= tw then
-    c.tw, c.short = tw, UI.trunc(c.txt, tw)
-    c.sw, c.tip = (ImGui.CalcTextSize(ctx, c.short)), c.short ~= c.txt and (c.txt .. "\n\n" .. SONG_TIP) or SONG_TIP
-  end
-  local tx = x + 4 + SONG_ARROW_W + 4
-  ImGui.SetCursorScreenPos(ctx, tx, y)
-  local open = ImGui.InvisibleButton(ctx, "##song_name", math.max(1, c.sw), h)
-  local hov = ImGui.IsItemHovered(ctx)
-  ImGui.DrawList_AddText(dl, tx, y + math.floor((h - ImGui.GetFontSize(ctx)) / 2), hov and COL.TEXT_BRIGHT or COL.TEXT_MAIN, c.short)
-  ImGui.PopFont(ctx)
-  UI.tip(c.tip)
-  if UI.song_arrow("##song_next", 1, free and (c.i or 0) < c.n, tx + c.sw + 4, y, h) then Notes.song_go(1) end
-  UI.tip_disabled(free and "The song after." or why)
-  open = UI.song_arrow("##song_list", 0, free, x + w - SONG_ARROW_W - 4, y, h) or (open and free)
-  UI.tip_disabled(free and "All songs." or why)
-  if open then ImGui.OpenPopup(ctx, "##songlist") end
-  if ImGui.BeginPopup(ctx, "##songlist") then
-    local lb = Notes.song_list()
+  local bw = UI.btn_w("<")
+  UI.field("Song")
+  ImGui.SetNextItemWidth(ctx, math.max(80, math.min(UI.field_w(), (ImGui.GetContentRegionAvail(ctx)) - 2 * (bw + CFG.CTRL_GAP))))
+  local lb = Notes.song_list()
+  ImGui.BeginDisabled(ctx, not free)
+  if ImGui.BeginCombo(ctx, "##songs", lb.cur) then
     for k, txt in ipairs(lb.items) do
       if ImGui.Selectable(ctx, txt, k == c.i) and k ~= c.i then Notes.song_go(0, k) end
     end
-    ImGui.EndPopup(ctx)
+    ImGui.EndCombo(ctx)
   end
-  ImGui.SetCursorScreenPos(ctx, x, y + h + CFG.SP_ROW)
-  return h + CFG.SP_ROW
+  ImGui.EndDisabled(ctx)
+  UI.tip_disabled(free and SONG_TIP or why)
+  local ft = c.flash and Util.now() - c.flash
+  if ft and ft >= 0 and ft < CFG.SONG_FLASH then -- (followed the cursor: a blue frame that fades)
+    local x0, y0r = ImGui.GetItemRectMin(ctx)
+    local x1, y1 = ImGui.GetItemRectMax(ctx)
+    ImGui.DrawList_AddRect(ImGui.GetWindowDrawList(ctx), x0, y0r, x1, y1,
+      (COL.ACCENT & 0xFFFFFF00) | math.floor(0xFF * (1 - ft / CFG.SONG_FLASH)), 4, 0, 2)
+  end
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  ImGui.BeginDisabled(ctx, not (free and (c.i or 2) > 1))
+  if UI.button("<##songprev", bw) then Notes.song_go(-1) end
+  ImGui.EndDisabled(ctx)
+  UI.tip_disabled(free and "The song before." or why)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  ImGui.BeginDisabled(ctx, not (free and (c.i or 0) < c.n))
+  if UI.button(">##songnext", bw) then Notes.song_go(1) end
+  ImGui.EndDisabled(ctx)
+  UI.tip_disabled(free and "The song after." or why)
+  return ImGui.GetCursorPosY(ctx) - y0
 end
 
 function UI.draw_main()
@@ -4209,7 +4192,7 @@ function UI.draw_main()
     ImGui.Indent(ctx, 10)
     if R.page <= #PAGE_NAMES then -- (Tab and Notes: they fill the panel; Settings and Help scroll)
       local iw = (ImGui.GetContentRegionAvail(ctx)) - 10
-      local ih = ah - CFG.SP_PANEL - 12 - UI.draw_song_head(iw) -- (the song header above both)
+      local ih = ah - CFG.SP_PANEL - 12 - UI.draw_song_row() -- (the Song row above both)
       if ImGui.BeginChild(ctx, "##inner", iw, ih) then
         if R.page == 1 then UI.draw_tracks() else Notes.draw(ih) end
         ImGui.EndChild(ctx)
