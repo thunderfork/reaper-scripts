@@ -4228,19 +4228,20 @@ end
 -- The status bar (as Chart Cue's status line, decided 27 November 2026; Settings > Look > Status bar, on): 1 line under
 -- the panel. First the progress of Find tempo or Find notes (in every tab), then the notice (cut to 1 line; hover: all
 -- of it), then the keys or a hint of the open tab (hover: all the keys).
-local KEYS_TAB = "Click a note: select it (stopped). Playing: the song plays from there.\nDouble-click: the note's box.\n"
-  .. "0-9: the fret. Delete: remove the note.\nArrows: the next note or string. Alt+Up / Down: the same pitch on the "
-  .. "next string.\n+ / -: shorter / longer. \".\": a dot. \"/\": a triplet.\n&: the next bar up into this line. "
-  .. "Ctrl+Enter: a new line after this bar.\nDrag, or Shift+click: select (Loop repeats it). Escape: no loop.\n"
-  .. "Right-click a bar: Time signature...\nSpace: play / stop. Ctrl+Z / Ctrl+Shift+Z: undo / redo. Ctrl+wheel: the "
-  .. "tab size.\n\nThe keys work when the Tab Viewer window is active."
+local KEYS_TAB = "Click a note: select it when stopped, song plays from there when playing.\nDouble-click: edit note.\n"
+  .. "Right-click a bar: Time signature...\nDelete: remove the note.\nArrows: the next note or string.\n"
+  .. "Alt+Up / Down: the same pitch on the next string.\n+ / -: shorter / longer. \".\": a dot. \"/\": a triplet.\n"
+  .. "Shift + 7: the next bar up into this line. Ctrl+Enter: a new line after this bar.\n"
+  .. "Drag, or Shift+click: select (Loop repeats it). Escape: no loop.\n"
+  .. "Space: play / stop. Ctrl+Z / Ctrl+Shift+Z: undo / redo. Ctrl+wheel: the tab size.\n"
+  .. "The keys work when the Tab Viewer window is active."
 local KEYS_NOTES = "Click a line: it plays from there. Loop on: that line again and again.\nUp / Down: the line before "
   .. "or after. N: the next yellow line.\nDouble-click or F2: type other notes.\nDelete: delete the selected line. "
   .. "Right-click a line: more.\nSpace: play / stop. Escape: no loop.\nCtrl+Z / Ctrl+Shift+Z: undo / redo.\n\n"
   .. "The keys work when the Tab Viewer window is active."
 UI.STATUS = { -- { the line, its tooltip } (made once)
-  tab_stop = { "Click select  |  0-9 fret  |  + - length  |  Del delete  |  Drag select  |  Space play  |  Ctrl+wheel size", KEYS_TAB },
-  tab_play = { "Click play from there  |  Drag select  |  Space stop  |  Esc no loop  |  Ctrl+wheel size", KEYS_TAB },
+  tab_stop = { "Double-click edit note  |  Drag select area  |  + - note length  |  \".\" dotted  |  \"/\" triplet  |  Del delete  |  Ctrl+wheel tab size", KEYS_TAB },
+  tab_play = { "Click play from there  |  Drag select  |  Space stop  |  Esc no loop  |  Ctrl+wheel tab size", KEYS_TAB },
   tab_none = { "No tab for this song yet: Open tab... on the Tab row." },
   notes = { "Click play the line  |  Up/Down line  |  N next not sure  |  F2 type notes  |  Del delete  |  Space play  |  Esc no loop", KEYS_NOTES },
   notes_none = { "No lines yet: Find notes in the Song section." },
