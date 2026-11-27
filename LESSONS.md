@@ -38,6 +38,18 @@ YYYY-MM-DD | Script | tag | what the user saw
 ```
 
 ```
+2026-11-27 | Tab Viewer | file-format | repeats with more endings than the :| count: a 3rd ending ("1." x3, "2." x2,
+  "3.") was left out, and "1. 3." / "2. 4." (both :| x2) played 2 passes instead of 4
+  Cause: GP.order took the passes of a repeat only from the count of the :| bar it reached; Guitar Pro plays as many
+  passes as the highest ending number (real files: the :| of an ending bar often keeps the default x2).
+  Why the tests missed it: the test data had only "1." / "2." endings with a matching count; never an ending number
+  above the count. The real files were checked for the ending's length, not for its passes.
+  Test: "repeats as written: ..." (tests\tabviewer.lua): 1. 3. / 2. 4., 1. 2. 3. (as the user's Sun tab), 1.2.3. x4
+  then 4.; failed before the fix. Fix: GP.ending_passes (the highest ending of the repeat) in GP.order. Checked on 3
+  real files of the user (not in git): Sun, The Elder's Code, I Mean You Harm play in Guitar Pro's order.
+  Other scripts: searched; only Tab Viewer reads repeats (Guitar Pro.lua is also used by the .gp5 export: unchanged).
+  Status: fixed, not confirmed
+
 2026-11-26 | Tab Viewer | edge-case | Ctrl+wheel: the bar under the mouse did not stay there (manual test failed)
   Cause: the fix kept the same share of the whole tab height in view; a new size puts fewer or more bars on each
   line, so that share lands on another line.

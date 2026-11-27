@@ -665,6 +665,22 @@ test("repeats as written: each written bar once, |: :|, x3, the endings 1. 2.; a
   ok(m2[4].alt and m2[4].alt[1] and not m2[6].alt, "bar 4 in the 1st ending; bar 6 after the 2nd ending")
   eq(table.concat(GP.order({ { rend = true, count = 2 }, { count = 0 }, { rend = true, count = 2 } }), " "), "1 1 2 3 2 3",
     "2 repeats without |:, the 2nd from after the 1st :|")
+  -- (lessons 27 November 2026: the passes of a repeat = its :| count or its highest ending, the larger. As real files:
+  -- "1. 3." and "2. 4." both with :| x2 play 4 passes; "1." :| x3, "2." :| x2, "3." without :| plays the 3rd ending;
+  -- the bars after "3." up to a :| belong to that ending (GP.endings): no more passes)
+  local function A(...) local a = {}; for _, p in ipairs({ ... }) do a[p] = true end; return a end
+  local m3 = { { rstart = true, count = 0 }, { count = 0 }, { alt = A(1, 3), rend = true, count = 2 },
+    { alt = A(2, 4), rend = true, count = 2 }, { count = 0 } }
+  eq(table.concat(GP.order(m3), " "), "1 2 3 1 2 4 1 2 3 1 2 4 5", "1. 3. / 2. 4.: 4 passes")
+  local m4 = { { rstart = true, count = 0 }, { count = 0 }, { alt = A(1), rend = true, count = 3 },
+    { alt = A(2), rend = true, count = 2 }, { alt = A(3), count = 0 }, { count = 0 }, { rend = true, count = 2 } }
+  eq(table.concat(GP.order(m4), " "), "1 2 3 1 2 4 1 2 5 6 7", "1. 2. 3.: the 3rd ending (with the bars up to its :|)")
+  local m6 = { { rstart = true, count = 0 }, { alt = A(1), rend = true, count = 3 }, { alt = A(2), rend = true, count = 2 },
+    { alt = A(3), count = 0 }, { count = 0 } }
+  eq(table.concat(GP.order(m6), " "), "1 2 1 3 1 4 5", "as the Sun tab: 1. x3, 2. x2, 3.")
+  local m5 = { { rstart = true, count = 0 }, { alt = A(1, 2, 3), rend = true, count = 4 }, { alt = A(4), count = 0 },
+    { count = 0 } }
+  eq(table.concat(GP.order(m5), " "), "1 2 1 2 1 2 1 3 4", "1. 2. 3. :| x4, then 4.")
   mbars[2].count = 3
   t = tab(); Tabs.view(t, mbars, true)
   eq(t.bars[2].times, "x3", "3 times: x3")

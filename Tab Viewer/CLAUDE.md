@@ -93,7 +93,8 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   track; unused parts skipped by size). Strings in the file from the highest. A repeat end: GP5 keeps how often it
   plays, GP3/4 how often it repeats; an ending: GP5 bits, GP3/4 its number. GP 5.1 mix tables end with 2 texts. GP5
   can leave out up to 3 bytes at the end (read as 0); `doc.rest` = the bytes left (0 when read right).
-- `GP.order` (repeats, alternate endings: an ending runs from its marked bar to its :|), `GP.notes(doc, track, dead)`
+- `GP.order` (repeats, alternate endings: an ending runs from its marked bar to its :|; the passes of a repeat: its
+  :| count or its highest ending, the larger, `GP.ending_passes`), `GP.notes(doc, track, dead)`
   (ties, dots, tuplets; grace notes and muted notes left out; "%" repeat bars; dead notes only with `dead`; `w` =
   the written length, `ties` = the held parts), `GP.tab(doc, track)` (the bars as they play, `wb` = the written bar),
   `GP.timeline(doc)` (bar lengths, time signatures, tempos), `GP.fx` (playing marks), `GP.chord_name`,
