@@ -2120,6 +2120,7 @@ local HELP_TOPICS = {
 - Ctrl+Z or the Undo arrow (this session only).
 - Tab dropdown > Undo all fixes: the file's notes again.
 # Good to know
+- Forgot a key? The status bar at the bottom shows them (hover: all of them; Settings > Look > Status bar).
 - Your fixes are green and saved in the project. The file stays as it is.
 - A fix changes every repeat of that bar.
 - Transpose must be 0. Drums: not yet.]] },

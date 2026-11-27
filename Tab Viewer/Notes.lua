@@ -2601,14 +2601,14 @@ N.HELP_TOPICS = {
 # Without a tab
 - Put the separated bass on a track.
 - Tempo: listen to the drums or a click, then Set tempo.
-- Track: pick the bass. Click Find notes.
+- Song > Track: pick the bass track. Click Find notes.
 # Then
 - Check the yellow lines (not sure).
 - Click Write. 1 Ctrl+Z takes it all away.
 - No plugins needed: Tab Viewer reads the audio itself.]] },
   { title = "Several songs in 1 project", text = [[
 - Each song has its own list and tempo. A song is a region, or a bass item outside the regions.
-- Which song is it? The Song row at the top. Pick another song there, or use < and > (stop first).
+- Which song is it? The Region/Item row at the top. Pick another song there, or use < and > (stop first).
 - It follows the edit cursor (playing: the play position); its frame flashes when it changes. Between songs the last song stays.
 - Rather pick it yourself? Turn off Settings > Detection > Follow the song.
 - 1 long bass item for several regions? Find tempo and Find notes listen only to the part in the song.
@@ -2644,7 +2644,7 @@ N.HELP_TOPICS = {
 - The dropdown next to Write: markers, text items on a Notes track, or both.
 - Write again any time: only the Detection tab's markers and items are replaced. The list stays.
 - No region for the song yet? Write makes one: artist, title and key (from the file names). Your own regions keep their names.
-- Done with the bass track's plugins or the metronome track? Settings > Detection: Write can remove them (off by default).
+- Done with the track's plugins or the click track? Settings > Detection > Write removes plugins, Write deletes click track (both off by default).
 - 1 Ctrl+Z takes all of it back.]] },
   { title = "Export (Guitar Pro, MIDI)", text = [[
 - Export... (at the bottom right)

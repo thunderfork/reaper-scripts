@@ -222,11 +222,11 @@ Tab Viewer shows a Guitar Pro tab inside REAPER, on the bars of your song, and f
 - **Practise:** drag over the tab to select a part and loop it; play slower (pitch kept); Metronome and Count-in (a big 1 2 3 4 over the tab); Transpose for a bass tuned lower; Ctrl+wheel for a larger tab.
 - **Fix the tab:** select a note and type a fret, move it, change its length, or add new notes; your fixes are green and saved in the project (the file never changes). Right-click a bar to correct its time signature.
 - **Your layout:** your own line breaks (& and Ctrl+Enter, as in Guitar Pro) and a fixed number of bars per line.
-- **Detection tab:** the bass notes as markers (or text items on a "Notes" track) to learn the part: "Import to list" takes them from the tab, or "Find notes" listens to a separated bass track (no tab needed; the found notes then show as a tab too). Check the list, then Write; the note names fit the key, high notes get their string and fret. Export as a Guitar Pro file (.gp5) or MIDI.
+- **Detection tab:** the bass notes as markers (or text items on a "Notes" track) to learn the part: "Import to list" takes them from the tab, or "Find notes" listens to a separated bass track (no tab needed; the found notes then show as a tab too). Several songs in 1 project: each region (or item) has its own list and tempo. Click a line to hear it, check the list, then Write; the note names fit the key, high notes get their string and fret. Export as a Guitar Pro file (.gp5) or MIDI.
 
 Install with ReaPack (search "Tab Viewer"), then run "Script: Tab Viewer.lua". Needs ReaImGui 0.9.3 or newer.
 
-Tab Viewer saves its tabs, fixes, layout and the Notes list in the project, and a copy of each tab in a "Tabs" folder next to the project file; its settings are saved on this computer.
+Tab Viewer saves its tabs, fixes, layout and the Detection lists in the project, and a copy of each tab in a "Tabs" folder next to the project file; its settings are saved on this computer.
 
 ## Zips
 
