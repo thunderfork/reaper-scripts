@@ -19,5 +19,7 @@ Loaded in every session from `CLAUDE.md`. The entries behind these rules are in 
 - 2026-11-26, `timing` (rejected): no shared pattern (1 Tab Viewer feature with its alignment test, 1 old FX Link
   bug).
 - 2026-11-24, `file-format` (accepted): before the Guitar Pro reader reads a new mark or value, Claude checks it on 1
-  real file on the user's computer (never copied into git) and writes the test data from what that file has, not
+  real file that the user provides (never copied into git) and writes the test data from what that file has, not
   from a guess.
+- 2026-11-27, `file-format` (rejected): run each new reader rule over all of the user's tab files. The user's
+  rule instead: Claude never searches the user's folders for files; it asks the user to provide the files it needs.

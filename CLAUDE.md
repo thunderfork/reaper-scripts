@@ -38,6 +38,7 @@ The rules below apply to all the scripts ("the script" = the script being change
 
 My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or changes these:
 
+- Never search my folders for files (tabs, audio, projects). When you need a file of a kind, ask me to provide it.
 - The mockup rule also covers a new control, view, layout, interaction or visual behaviour that I asked for in a
   few words.
 - Chart Cue is the UI style guide: the other scripts copy its look and behaviour (theme, title bar, docked-tab

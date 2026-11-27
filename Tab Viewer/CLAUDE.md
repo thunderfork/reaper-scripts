@@ -13,7 +13,7 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
 - Each bar and each P.M. row is drawn in a pcall: a bar that fails is an orange "?" and 1 notice, never a script
   error.
 - The test data is made up (`tests\tabviewer_data.lua`), never a real song; a new mark of the file format is first
-  checked on 1 real file on the user's computer (LESSONS-RULES.md, `file-format`).
+  checked on 1 real file that the user provides (LESSONS-RULES.md, `file-format`; never search the user's folders).
 
 ## Files
 
