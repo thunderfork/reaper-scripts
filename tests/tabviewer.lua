@@ -1639,6 +1639,13 @@ test("the status bar (27 November 2026): the progress first, then the notice, th
   R.tempo = { run = { done = 0.5 } }
   UI.draw_status(0, 0, 500)
   R.tempo, R.page = nil, 1
+  -- the switch turned off in Settings in the middle of a frame, no notice (the user, 27 November 2026: a script error)
+  local S, ds = C.S, UI.draw_settings
+  S.status, R.notice, R.page = true, nil, UI.PAGE_SETTINGS
+  UI.draw_settings = function() S.status = false end
+  local okd, err = pcall(UI.draw_main)
+  UI.draw_settings, S.status, R.page = ds, true, 1
+  ok(okd, "Status bar off in Settings: no error (" .. tostring(err) .. ")")
 end)
 
 test("the toolbar (26 November 2026): |<, <, > and >| go to the bars; play in the middle; the rows; it draws in both tabs", function()

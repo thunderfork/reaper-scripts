@@ -613,7 +613,7 @@ test("find: what cannot be read says why", function()
   clear_project()
   R.trk = nil
   local item, why = Find.source()
-  eq(item, nil); ok(why:find("Pick the bass track"), why)
+  eq(item, nil); ok(why:find("Pick the track"), why)
   local tr = add_track("Bass")
   local midi = r.CreateNewMIDIItemInProj(tr, 0, 2, false)
   r.SetMediaItemSelected(midi, true)

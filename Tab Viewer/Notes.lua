@@ -1867,16 +1867,16 @@ end
 
 function Find.source()
   local tr = Find.track(true)
-  if not tr then return nil, "Pick the bass track first (Track)." end
+  if not tr then return nil, "Pick the track first (Track)." end
   local list = Find.audio_items(tr)
   local s = Songs.cur()
   if s then for _, c in ipairs(list) do c.ov = Songs.overlap(s, c.pos, c.pos + c.len) end end
   local i = Find.pick(list)
-  if not i then return nil, "The track " .. Find.track_label(tr) .. " has no audio item. Pick the bass track (Track)." end
+  if not i then return nil, "The track " .. Find.track_label(tr) .. " has no audio item. Pick another track (Track)." end
   local item, take = list[i].item, list[i].take
   local src = r.GetMediaItemTake_Source(take)
   if not src or r.GetMediaSourceSampleRate(src) <= 0 then
-    return nil, "The file of the bass item is missing or offline."
+    return nil, "The file of the item is missing or offline."
   end
   return item, take
 end
@@ -1960,7 +1960,7 @@ function Find.cancel()
 end
 -- The found notes become the list (the Undo button brings the old list back).
 function Find.done(f, notes, tune, t_end)
-  if #notes == 0 then UI.notice("No notes found. Is this the bass track (Track)?", true); return end
+  if #notes == 0 then UI.notice("No notes found. Is this the right track (Track)? Bass only, for now.", true); return end
   List.step()
   P.notes, P.t_end, P.tab = notes, t_end, nil -- (the fixes of the tab were for the notes before)
   P.src = f.guid
@@ -2872,7 +2872,7 @@ function UI.draw_top(v)
   local room = math.max(40, ImGui.GetContentRegionAvail(ctx))
   if not R.src_name then
     local nm = Find.name(Find.item())
-    R.src_name = nm ~= "" and ("Bass: " .. nm) or #P.notes > 0 and "The notes of the tab (Import to list)." or ""
+    R.src_name = nm ~= "" and ("Item: " .. nm) or #P.notes > 0 and "The notes of the tab (Import to list)." or ""
   end
   if R.src_name == "" then return end
   UI.row_text(UI.trunc_c(R.src_name, room), COL.TEXT_DIM)
@@ -2903,10 +2903,10 @@ function N.draw_settings()
   pick = UI.set_combo("Bar numbers", S.bars, BAR_STYLES,
     "The Bar column of the list. From the song (the default): bar 1 is the song's first bar. Project bars: as REAPER's ruler.")
   if pick then S.bars, R.view, R.sdirty = pick, nil, true end
-  ch, S.write_fx = UI.set_toggle("Write removes the bass plugins", S.write_fx,
-    "Off (the default). On: Write also removes all the plugins on the bass track (1 Ctrl+Z brings them back).")
+  ch, S.write_fx = UI.set_toggle("Write removes plugins", S.write_fx,
+    "Off (the default). On: Write also removes all the plugins on the track of the Song section (1 Ctrl+Z brings them back).")
   dirty(ch)
-  ch, S.write_clicks = UI.set_toggle("Write deletes the metronome track", S.write_clicks,
+  ch, S.write_clicks = UI.set_toggle("Write deletes click track", S.write_clicks,
     "Off (the default). On: Write also deletes the tracks named like a metronome or click (1 Ctrl+Z brings them back).")
   dirty(ch)
 end
@@ -2935,7 +2935,7 @@ function UI.draw_export()
   if not UI.begin_modal("Export##export") then R.export = nil; return end
   local x0 = ImGui.GetCursorPosX(ctx)
   e.item = select(2, UI.toggle_line("MIDI item on a \"" .. CFG.MIDI_TRACK .. "\" track", e.item,
-    "Below the bass, to listen to. Replaces an older export."))
+    "Below the track, to listen to. Replaces an older export."))
   ImGui.BeginDisabled(ctx, not e.path)
   e.file = select(2, UI.toggle_line(".mid file", e.file and e.path ~= false,
     "For another program. Replaces a file with the same name."))
@@ -2986,17 +2986,17 @@ function UI.draw_export()
   ImGui.EndPopup(ctx)
 end
 
-local FIND_TIP = "Listens to the bass track and fills the list."
+local FIND_TIP = "Listens to the track and fills the list (bass only, for now)."
 local FIND_AGAIN_TIP = "Listen again: a new list (Undo brings this one back)."
 local IMPORT_TIP = "The notes of the Tab tab become the list."
 local NEED_TEMPO = "Set the tempo first (Tempo, above): the notes go on the song's bars."
--- The buttons of the Bass heading (made once; their state is set each frame): Import from tab (only with a tab),
+-- The buttons of the Song heading (made once; their state is set each frame): Import from tab (only with a tab),
 -- Find notes or Cancel.
 local NB_IMPORT, NB_FIND = { "Import from tab" }, { "Find notes" }
 local NB_CANCEL = { "Cancel", nil, false, "Stop. The list stays as it was." }
 local NB_TWO, NB_TWO_RUN = { NB_IMPORT, NB_FIND }, { NB_IMPORT, NB_CANCEL }
--- The "Bass" section of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work; folding:
--- 26 November 2026; "Bass", the buttons in the heading: 26 November 2026): Import from tab and Find notes at the
+-- The "Song" section of the Detection tab (the UI/UX review of 25 November 2026, in the order of the work; folding:
+-- 26 November 2026; the buttons in the heading: 26 November 2026; "Song": 27 November 2026): Import from tab and Find notes at the
 -- right of the heading (both wait for the Tempo section; the blue one is the next step: Import from tab with a tab,
 -- else Find notes, only without a list; while it listens: Cancel), then Track, Key and Tuning on 1 row (2 rows when
 -- narrow), Lines. The Tempo section: Tab Viewer's UI.draw_tempo_step.
@@ -3009,7 +3009,7 @@ function UI.draw_song()
   NB_FIND[2], NB_FIND[3] = ok and not has and not tab and "primary" or nil, busy or not ok
   NB_FIND[4] = not ok and NEED_TEMPO or busy and "Wait for Find tempo." or has and FIND_AGAIN_TIP or FIND_TIP
   local btns = R.find and (tab and NB_TWO_RUN or NB_CANCEL) or (tab and NB_TWO or NB_FIND)
-  local hit, open = UI.heading("Bass", false, btns, UI.FOLD_SONG,
+  local hit, open = UI.heading("Song", false, btns, UI.FOLD_SONG,
     R.find and "Listening..." or has and "Notes found" or "No notes yet", has and not R.find and COL.GREEN or COL.TEXT_DIM)
   if hit then
     local b = type(hit) == "number" and btns[hit] or btns
@@ -3019,11 +3019,11 @@ function UI.draw_song()
   end
   if not open then return end
   local fw = UI.field_w()
-  -- Track: the bass track that Find notes listens to
+  -- Track: the track that Find notes listens to
   UI.field("Track")
   local tr = Find.track()
   if R.trk_for ~= tr then R.trk_for, R.trk_lbl = tr, nil end
-  R.trk_lbl = R.trk_lbl or (tr and Find.track_label(tr) or "Pick the bass track")
+  R.trk_lbl = R.trk_lbl or (tr and Find.track_label(tr) or "Pick the track")
   ImGui.BeginDisabled(ctx, R.find ~= nil)
   ImGui.SetNextItemWidth(ctx, fw)
   if ImGui.BeginCombo(ctx, "##ndtrack", R.trk_lbl) then
@@ -3035,7 +3035,7 @@ function UI.draw_song()
     ImGui.EndCombo(ctx)
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled("The separated bass (bass only, for now).")
+  UI.tip_disabled("The track to listen to (bass only, for now).")
   if not ok then -- (why they are grey: on the screen, not only in the tooltip)
     ImGui.SetCursorPosX(ctx, ImGui.GetCursorPosX(ctx) + host.CFG.LABEL_W)
     ImGui.TextColored(ctx, COL.TEXT_DIM, NEED_TEMPO)
@@ -3077,7 +3077,7 @@ function UI.draw_song()
     ImGui.EndCombo(ctx)
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled("The bass tuning of this song.")
+  UI.tip_disabled("The tuning of this song.")
   UI.field("Lines")
   local cur = MODES[1][2]
   for _, m in ipairs(MODES) do if m[1] == P.mode then cur = m[2] end end
@@ -3106,7 +3106,7 @@ function UI.draw_list(v, h)
   if #P.rows == 0 then -- (Find notes is in the Bass heading above, blue)
     ImGui.Dummy(ctx, 0, 4)
     ImGui.PushTextWrapPos(ctx, 0)
-    ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the bass..." or "No notes yet. Pick the bass track above, then click Find notes (bass only, for now). Have a Guitar Pro tab? Open it in the Tab tab, then click Import from tab.")
+    ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the track..." or "No notes yet. Pick the track above, then click Find notes (bass only, for now). Have a Guitar Pro tab? Open it in the Tab tab, then click Import from tab.")
     ImGui.PopTextWrapPos(ctx)
     return
   end
@@ -3213,7 +3213,7 @@ function UI.foot_btn(label, on, tip, kind)
   return hit
 end
 local WRITE_TIP = "Writes the list into the project, and a region over the song when it has none yet (a region keeps "
-  .. "its name). The list stays. Settings > Detection: also remove the bass plugins or the metronome track."
+  .. "its name). The list stays. Settings > Detection: also remove the track's plugins or the click track."
 local CLEAR_ASK = "Start again? This removes the list and what this tab wrote: its markers, the Notes track items and "
   .. "the Bass MIDI item. Your own markers, the tempo and the audio stay.\n\nUndo (or Ctrl+Z) brings it all back."
 function UI.draw_foot()
@@ -3253,7 +3253,7 @@ function UI.draw_foot()
     end
     ImGui.EndCombo(ctx)
   end
-  UI.tip("What Write makes: markers, text items on a \"Notes\" track above the bass, or both.")
+  UI.tip("What Write makes: markers, text items on a \"Notes\" track above the track, or both.")
   if R.written_lbl then
     local room = aw - ww - cw2 - mw - 4 * CFG.CTRL_GAP
     if room > 40 then

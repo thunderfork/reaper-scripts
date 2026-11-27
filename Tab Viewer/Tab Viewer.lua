@@ -4181,7 +4181,7 @@ end
 -- the Tab and Track rows: "Song", a dropdown of the songs with their line counts (Notes.song_list), [<] [>]. A choice
 -- or an arrow goes to that song (stopped only, Notes.song_go). The dropdown's frame flashes when the list followed the
 -- cursor into another song. Returns its height (0: the project has no songs).
-local SONG_TIP = "Each song has its own list and tempo. A song is a region, or a bass item outside the regions.\n"
+local SONG_TIP = "Each song has its own list and tempo. A song is a region, or an item outside the regions.\n"
   .. "Settings > Detection > Follow the song: it follows the edit cursor."
 function UI.draw_song_row()
   local c = Notes.song_head()
@@ -4190,7 +4190,7 @@ function UI.draw_song_row()
   local free = not R.playing and not Notes.busy() -- (true or false: BeginDisabled takes nil as true)
   local why = R.playing and "Stop first to go to another song." or "Wait for Find notes."
   local bw = UI.btn_w("<")
-  UI.field("Song")
+  UI.field("Region/Item")
   ImGui.SetNextItemWidth(ctx, math.max(80, math.min(UI.field_w(), (ImGui.GetContentRegionAvail(ctx)) - 2 * (bw + CFG.CTRL_GAP))))
   local lb = Notes.song_list()
   ImGui.BeginDisabled(ctx, not free)
@@ -4243,7 +4243,7 @@ UI.STATUS = { -- { the line, its tooltip } (made once)
   tab_play = { "Click play from there  |  Drag select  |  Space stop  |  Esc no loop  |  Ctrl+wheel size", KEYS_TAB },
   tab_none = { "No tab for this song yet: Open tab... on the Tab row." },
   notes = { "Click play the line  |  Up/Down line  |  N next not sure  |  F2 type notes  |  Del delete  |  Space play  |  Esc no loop", KEYS_NOTES },
-  notes_none = { "No lines yet: Find notes in the Bass section." },
+  notes_none = { "No lines yet: Find notes in the Song section." },
   settings = { "Hover a setting: what it does and its default." },
   help = { "Hover any button or field in Tab Viewer: what it does." },
 }
@@ -4291,7 +4291,8 @@ function UI.draw_main()
   UI.draw_toolbar()
   UI.draw_tabs()
   local aw, ah = ImGui.GetContentRegionAvail(ctx)
-  local nh = S.status and UI.status_h() or UI.notice_h(aw - 16)
+  local sb = S.status -- (read once: Settings can switch it off while the panel draws)
+  local nh = sb and UI.status_h() or UI.notice_h(aw - 16)
   ah = ah - CFG.SP_EDGE - nh
   local px, py = ImGui.GetCursorScreenPos(ctx)
   ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), px, py, px + aw, py + ah, COL.PANEL_BG, 8,
@@ -4314,8 +4315,8 @@ function UI.draw_main()
       and not ImGui.IsAnyItemHovered(ctx) then R.pmenu = true end
     ImGui.EndChild(ctx)
   end
-  if S.status then UI.draw_status(px, py + ah, aw)
-  elseif nh > 0 then -- the notice, below the panel (after it: a cursor move is always followed by the text)
+  if sb then UI.draw_status(px, py + ah, aw)
+  elseif nh > 0 and R.notice then -- the notice, below the panel (after it: a cursor move is always followed by the text)
     local n = R.notice
     ImGui.SetCursorScreenPos(ctx, px + 8, py + ah + 4)
     ImGui.PushTextWrapPos(ctx, ImGui.GetCursorPosX(ctx) + aw - 16)
