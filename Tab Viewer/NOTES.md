@@ -88,8 +88,10 @@ The history of every decision: git.
   moves, `CFG.FINGER` costs; a line of `CFG.RUN_MIN` notes or more shows every place); `List.places` = 1 fingering
   for the list, the found tab and the export.
 - Editing: type the notes (double-click, F2; then "the same notes in other lines too?"), Join, Split, + Add, Delete,
-  Move to the edit cursor, Sure / OK, Next not sure (N). A click on a line loops it (`UI.play_row`: REAPER's time
-  selection and repeat; `UI.loop_off` gives back the old ones; 1 loop at a time with the Tab tab's bar loop).
+  Move to the edit cursor, Sure / OK, Next not sure (N). A click on a line plays from it (`UI.play_row`); with the
+  toolbar's Loop on (`N.loop_toggle`, `R.loop_on`; decided 27 November 2026) it loops that line (`UI.loop_row`:
+  REAPER's time selection and repeat; `UI.loop_off` gives back the old ones; it stays while stopped, until Loop is
+  off, Escape, another song or project; 1 loop at a time with the Tab tab's bar loop).
   Undo / Redo: the toolbar arrows and Ctrl+Z / Ctrl+Shift+Z (`List.undo(redo)`).
 - A changed Key, Tuning or Lines makes the lines again; a line you corrected keeps your text (`List.remake`).
 

@@ -2741,7 +2741,8 @@ local TB_W, TB_POS = {}, {} -- (the toolbar's widths and places: filled every fr
 local LOOP_TIPS = {
   on = "Loop on. Click: off.",
   off = "Loop the selection (none: the bar at the edit cursor). Select: drag over the tab.",
-  notes = "In the Detection tab, click a line to loop it.", none = "No tab here.",
+  notes_off = "Loop the selected line (none: the line at the edit cursor). A click on another line loops that one.",
+  notes_none = "No lines yet.", none = "No tab here.",
 }
 -- The count-in (a plain function). pos: REAPER's play position; pos2: its 2nd play position, which waits at the start
 -- of the song while a count-in or pre-roll plays (the trial of 26 November 2026); bl: the length of 1 beat; num: the
@@ -2843,11 +2844,14 @@ function UI.draw_speed_group(IW, H)
     if UI.tb_icon(s[1], s[2], IW, H, true, st and s[6] or s[5], st) then s[4]() end
   end
   ImGui.SameLine(ctx, 0, 2)
-  local tab_page = R.page ~= UI.PAGE_NOTES
-  local on = tab_page and R.tab ~= nil
-  local active = on and Tabs.looping()
-  local tip = not tab_page and LOOP_TIPS.notes or not on and LOOP_TIPS.none or active and LOOP_TIPS.on or LOOP_TIPS.off
-  if UI.tb_icon("##loop", "loop", IW, H, on, tip, active) then Tabs.loop_toggle() end
+  local tab_page = R.page ~= UI.PAGE_NOTES -- (the Detection tab: its lines; decided 27 November 2026)
+  local on = tab_page and R.tab ~= nil or not tab_page and Notes.has_rows()
+  local active = on and (tab_page and Tabs.looping() or not tab_page and Notes.looping())
+  local tip = not on and (tab_page and LOOP_TIPS.none or LOOP_TIPS.notes_none) or active and LOOP_TIPS.on
+    or tab_page and LOOP_TIPS.off or LOOP_TIPS.notes_off
+  if UI.tb_icon("##loop", "loop", IW, H, on, tip, active) then
+    if tab_page then Tabs.loop_toggle() else Notes.loop_toggle() end
+  end
 end
 -- The toolbar (decided 26 November 2026, inspired by Guitar Pro's): in the middle the tab size, Transpose, then |<, <,
 -- play / stop, >, >| (play in the middle of the window), then the speed, Metronome, Count-in, Loop; at the right Undo /

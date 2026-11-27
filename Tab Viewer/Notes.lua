@@ -1714,6 +1714,7 @@ function Lists.switch(id)
   R.song, R.undo, R.redo, R.hist[id] = id, h and h[1] or {}, h and h[2] or {}, nil
   P = List.parse(R.lists and R.lists.txt[id] or "")
   R.sel, R.edit, R.view, R.places, R.written, R.written_lbl, R.src_name, R.st = nil, nil, nil, nil, nil, nil, nil, nil
+  UI.loop_off() -- (the loop was a line of the song before)
   host.notes_changed()
   host.song_changed() -- (Tab Viewer: a Find tempo result was for the song before)
 end
@@ -2575,7 +2576,8 @@ function N.written() R.view = nil end -- (the bar numbers of the list)
 N.test = { CFG = CFG, S = S, R = R, Util = Util, Key = Key, Det = Det, Group = Group, List = List, Project = Project,
   Find = Find, Out = Out, Export = Export, Imp = Imp, GP = GP, TP = TP, UI = UI, Songs = Songs, Lists = Lists,
   get_P = function() return P end, set_P = function(p) P = p end, draw = function(h) N.draw(h) end,
-  song_head = function() return N.song_head() end, song_go = function(dir, k) return N.song_go(dir, k) end }
+  song_head = function() return N.song_head() end, song_go = function(dir, k) return N.song_go(dir, k) end,
+  loop_toggle = function() N.loop_toggle() end }
 
 ---------------------------------------------------------------------------
 -- UI (the Detection tab of Tab Viewer's window)
@@ -2606,7 +2608,7 @@ N.HELP_TOPICS = {
 - 1 long bass item for several regions? Find tempo and Find notes listen only to the part in the song.
 - Write, Clear and Export change only that song.]] },
   { title = "Checking the list", text = [[
-- Click a line: it plays in a loop. Space or Escape: stop.
+- Click a line: it plays from there. Loop (the toolbar) on: that line plays again and again. Space: stop. Escape: no loop.
 - Up / Down: the line before or after. N: the next yellow line.
 - Double-click (or F2): type other notes, for example F (D 3).
 - After a fix, Tab Viewer offers the same fix for the same notes (the Repeats column).
@@ -2731,22 +2733,44 @@ function List.row_span(i)
   local t1 = nx and nx.t or math.min(P.t_end or math.huge, row.t + CFG.LOOP_LAST)
   return row.t, math.max(t1, row.t + 0.2)
 end
--- Plays a row in a loop (the musician review, decided 24 November 2026: hear a note again and again): REAPER's time
--- selection over the row, repeat on, from its start. Space, Escape, a stop or another project end it (Loop.off).
+-- A click on line i (and Up / Down / N): it plays from its start; with the toolbar's Loop on, it loops that line
+-- (decided 27 November 2026: a click no longer loops by itself).
 function UI.play_row(i)
-  local t0, t1 = List.row_span(i)
+  local t0 = List.row_span(i)
   if not t0 then return end
   R.sel = i
+  if R.loop_on then UI.loop_row(i, true)
+  else
+    UI.loop_off()
+    UI.play_at(t0)
+  end
+end
+-- Line i becomes the loop: REAPER's time selection and repeat (what was before comes back at UI.loop_off). play:
+-- plays from its start.
+function UI.loop_row(i, play)
+  local t0, t1 = List.row_span(i)
+  if not t0 then return end
   host.loop_off() -- (the bar loop of the Tab tab ends first: 1 loop at a time, so both give back what was before)
   local old = R.loop or { rep = r.GetSetRepeatEx(R.proj, -1), ts = { r.GetSet_LoopTimeRange2(R.proj, false, true, 0, 0, false) } }
-  R.loop = { proj = R.proj, rep = old.rep, ts = old.ts, t0 = t0, t1 = t1, since = r.time_precise() }
+  R.loop = { proj = R.proj, rep = old.rep, ts = old.ts, t0 = t0, t1 = t1 }
   r.GetSet_LoopTimeRange2(R.proj, true, true, t0, t1, false)
   r.GetSetRepeatEx(R.proj, 1)
-  UI.play_at(t0)
+  if play then UI.play_at(t0) end
 end
+-- The toolbar's Loop in the Detection tab: on loops the selected line (else the line at the edit cursor); off gives
+-- back REAPER's repeat and time selection.
+function N.loop_toggle()
+  if R.loop_on then UI.loop_off(); return end
+  local i = R.sel or List.at(Util.cursor()) or 1
+  if not P.rows[i] then return end
+  R.sel, R.loop_on = i, true
+  UI.loop_row(i, false)
+end
+function N.looping() return R.loop_on == true end
 -- Ends the loop of a row: repeat and the time selection as before (the time selection only when it is still the
 -- loop's: one that you made meanwhile stays).
 function UI.loop_off()
+  R.loop_on = false
   local l = R.loop
   if not l then return end
   R.loop = nil
@@ -3198,7 +3222,7 @@ function UI.draw_list(v, h)
       else
         UI.row_text(UI.trunc_c(row.text, cw), col)
         if ImGui.IsItemHovered(ctx) then -- (the text only when it shows)
-          ImGui.SetTooltip(ctx, row.text .. (row.doubt and "\n" .. List.why(i) or "") .. "\nClick: hear it in a loop. Double-click: type the notes.")
+          ImGui.SetTooltip(ctx, row.text .. (row.doubt and "\n" .. List.why(i) or "") .. "\nClick: play from here (Loop on: this line again and again). Double-click: type the notes.")
         end
       end
       ImGui.TableNextColumn(ctx)
@@ -3335,7 +3359,7 @@ function N.keys()
   elseif ImGui.IsKeyChordPressed(ctx, C | SH | ImGui.Key_Z()) or ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Y()) then
     if #R.redo > 0 then List.undo(true) else r.Main_OnCommand(40030, 0) end -- Edit: Redo
   elseif ImGui.GetKeyMods(ctx) ~= ImGui.Mod_None() then return
-  elseif key(ImGui.Key_Space()) then r.Main_OnCommand(40044, 0) -- Transport: Play/stop (a stop ends the loop: N.step)
+  elseif key(ImGui.Key_Space()) then r.Main_OnCommand(40044, 0) -- Transport: Play/stop (the loop stays until Loop is off)
   elseif key(ImGui.Key_Escape()) and R.loop then UI.loop_off()
   elseif key(ImGui.Key_N()) then UI.select(List.next_doubtful(R.sel), true)
   elseif key(ImGui.Key_UpArrow(), true) then UI.select(math.max(1, (R.sel or 2) - 1), true)
@@ -3353,8 +3377,8 @@ function N.step()
   Project.update()
   Find.step()
   Lists.follow()
-  local l = R.loop -- (stopped: the loop ends; not in its first 0.5 s, while REAPER starts to play)
-  if l and (l.proj ~= R.proj or r.GetPlayStateEx(R.proj) & 1 == 0 and r.time_precise() - l.since > 0.5) then UI.loop_off() end
+  local l = R.loop -- (another project: the loop ends; it stays while stopped, until Loop is off: as the Tab tab)
+  if l and l.proj ~= R.proj then UI.loop_off() end
 end
 -- The end of each frame: the list and the settings are saved when they changed (the settings not while a mouse button
 -- is down: a toggle is clicked).
