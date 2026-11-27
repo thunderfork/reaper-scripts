@@ -83,6 +83,8 @@ CFG.FLASH_W = 6     -- the blue outline at each count beat (as Chart Cue's page-
 CFG.TRANSPOSE_MAX = 12        -- half steps up or down (the toolbar's Transpose)
 CFG.TP_NO_FIX = "Fixes need Transpose at 0 (the toolbar): a fret you type would not be the one in the file."
 CFG.STEP_W = 18               -- the vertical half buttons + / - (the size, Transpose; as in Guitar Pro)
+CFG.METER_NUM_W, CFG.METER_DEN_W, CFG.METER_WHICH_W = 44, 64, 250 -- the Time signature window: beats, beat, Bars
+CFG.METER_MAX = 32            -- the most beats in a bar (the Time signature window)
 CFG.FIELD_ICON = 24           -- the icon at the left inside a toolbar field (the size, Transpose, the speed)
 CFG.TIME_EPS = 1e-6         -- s (or quarter notes): a time this close before a start (rounding) still counts as in it
 CFG.DRAG_PX = 4              -- px the mouse moves with the button held: a drag (a selection), not a click
@@ -2452,6 +2454,15 @@ function ICON.next(dl, cx, cy, col) -- >>
   ImGui.DrawList_AddTriangleFilled(dl, cx, cy - 5, cx, cy + 5, cx + 7, cy, col)
   ImGui.DrawList_AddTriangleFilled(dl, cx - 7, cy - 5, cx - 7, cy + 5, cx, cy, col)
 end
+function ICON.left(dl, cx, cy, col) ImGui.DrawList_AddTriangleFilled(dl, cx + 3, cy - 5, cx + 3, cy + 5, cx - 4, cy, col) end -- <
+function ICON.right(dl, cx, cy, col) ImGui.DrawList_AddTriangleFilled(dl, cx - 3, cy - 5, cx - 3, cy + 5, cx + 4, cy, col) end -- >
+-- An icon in the middle of the last item (a grey button whose label is only its "##id"; the < > of the rows).
+function UI.item_icon(kind, on)
+  local x0, y0 = ImGui.GetItemRectMin(ctx)
+  local x1, y1 = ImGui.GetItemRectMax(ctx)
+  ICON[kind](ImGui.GetWindowDrawList(ctx), math.floor((x0 + x1) / 2) + 0.5, math.floor((y0 + y1) / 2) + 0.5,
+    on and COL.TEXT_MAIN or COL.TEXT_DIM)
+end
 function ICON.play(dl, cx, cy, col) ImGui.DrawList_AddTriangleFilled(dl, cx - 4, cy - 6, cx - 4, cy + 6, cx + 6, cy, col) end
 function ICON.stop(dl, cx, cy, col) ImGui.DrawList_AddRectFilled(dl, cx - 5, cy - 5, cx + 5, cy + 5, col, 1) end
 function ICON.loop(dl, cx, cy, col) -- 2 arrows in a loop, as REAPER's Repeat (top: to the right; bottom: to the left)
@@ -2978,6 +2989,7 @@ end
 -- (Tabs.set_meter, 1 Undo step) or Cancel. The notes fit into the bar (same time).
 local DENS = { 2, 4, 8, 16 }
 local WHICH = { "This bar only", "This bar and the following bars" }
+local METER_TIPS = { "1 beat more.", "1 beat less." } -- (the + / - of the Time signature window)
 function UI.draw_meter()
   local m, tab = R.meter, R.tab
   if not m then return end
@@ -2991,32 +3003,40 @@ function UI.draw_meter()
   local mb = R.doc.mbars[b.wb]
   ImGui.TextColored(ctx, COL.TEXT_DIM, string.format("Bar %s: %d/%d (in the file: %d/%d)", b.label or b.wb, mb.num, mb.den,
     mb.num0 or mb.num, mb.den0 or mb.den))
+  UI.vgap(10)
   local lx = ImGui.GetCursorPosX(ctx) + (ImGui.CalcTextSize(ctx, "Time signature")) + 16 -- (the label column)
+  local H = ImGui.GetFrameHeight(ctx)
+  -- Time signature: the number of beats with the vertical half buttons + / - (as the size and Transpose), / the beat
   UI.label("Time signature")
   ImGui.SetCursorPosX(ctx, lx)
-  ImGui.SetNextItemWidth(ctx, 90)
-  local _, num = ImGui.InputInt(ctx, "##num", m.num, 1, 1)
-  m.num = math.max(1, math.min(32, num))
-  ImGui.SameLine(ctx)
-  ImGui.Text(ctx, "/")
-  ImGui.SameLine(ctx)
-  ImGui.SetNextItemWidth(ctx, 60)
+  ImGui.SetNextItemWidth(ctx, CFG.METER_NUM_W)
+  local _, num = ImGui.InputInt(ctx, "##num", m.num, 0, 0) -- (0: no +/- buttons of its own)
+  ImGui.SameLine(ctx, 0, 1)
+  local d = UI.stepper("##numstep", H, m.num < CFG.METER_MAX, m.num > 1, METER_TIPS)
+  if d == 1 or d == -1 then num = m.num + d end
+  m.num = math.max(1, math.min(CFG.METER_MAX, num))
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  UI.row_text("/")
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
+  ImGui.SetNextItemWidth(ctx, CFG.METER_DEN_W)
   if ImGui.BeginCombo(ctx, "##den", tostring(m.den)) then
-    for _, d in ipairs(DENS) do if ImGui.Selectable(ctx, tostring(d), m.den == d) then m.den = d end end
+    for _, dv in ipairs(DENS) do if ImGui.Selectable(ctx, tostring(dv), m.den == dv) then m.den = dv end end
     ImGui.EndCombo(ctx)
   end
+  UI.tip("The note value of 1 beat.")
   UI.label("Bars")
   ImGui.SetCursorPosX(ctx, lx)
-  ImGui.SetNextItemWidth(ctx, 250)
+  ImGui.SetNextItemWidth(ctx, CFG.METER_WHICH_W)
   if ImGui.BeginCombo(ctx, "##which", WHICH[m.following and 2 or 1]) then
     for k, txt in ipairs(WHICH) do if ImGui.Selectable(ctx, txt, (k == 2) == m.following) then m.following = k == 2 end end
     ImGui.EndCombo(ctx)
   end
   UI.tip("The following bars: up to the next time signature change of the file.")
+  UI.vgap(10)
   local new_bpm = m.bpm * (m.num / m.den) / ((mb.num0 or mb.num) / (mb.den0 or mb.den))
-  ImGui.TextColored(ctx, COL.TEXT_DIM, string.format("Tempo: %s -> %s BPM. The notes fit into the bar; the bar keeps its time.",
-    Tabs.bpm_txt(m.bpm), Tabs.bpm_txt(new_bpm)))
-  UI.vgap(8)
+  ImGui.TextColored(ctx, COL.TEXT_DIM, string.format("Tempo: %s -> %s BPM.", Tabs.bpm_txt(m.bpm), Tabs.bpm_txt(new_bpm)))
+  ImGui.TextColored(ctx, COL.TEXT_DIM, "The notes fit into the bar; the bar keeps its time.")
+  UI.vgap(14)
   if UI.button("OK", 80, nil, "primary") then
     local done, why = Tabs.set_meter(m.bi, m.num, m.den, m.following)
     if done then UI.notice("The new time signature. Changed your mind? Ctrl+Z (or the Undo arrow) brings the old one back.")
@@ -3024,7 +3044,7 @@ function UI.draw_meter()
     R.meter = nil
     ImGui.CloseCurrentPopup(ctx)
   end
-  ImGui.SameLine(ctx)
+  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   if UI.button("Cancel", 80) then R.meter = nil; ImGui.CloseCurrentPopup(ctx) end
   ImGui.EndPopup(ctx)
 end
@@ -3243,12 +3263,15 @@ function UI.draw_tracks()
     UI.row_text(R.bar_txt)
     UI.tip("The bar of the song where bar 1 of the tab plays. < >: move it (hold: faster).")
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-    ImGui.BeginDisabled(ctx, Tabs.bar() <= 1)
-    if UI.repeat_button("<", BW) then Tabs.set_bar(Tabs.bar() - 1) end
+    local first = Tabs.bar() <= 1
+    ImGui.BeginDisabled(ctx, first)
+    if UI.repeat_button("##startprev", BW) then Tabs.set_bar(Tabs.bar() - 1) end
     ImGui.EndDisabled(ctx)
+    UI.item_icon("left", not first)
     UI.tip("The tab starts 1 bar earlier.")
     ImGui.SameLine(ctx, 0, 4)
-    if UI.repeat_button(">", BW) then Tabs.set_bar(Tabs.bar() + 1) end
+    if UI.repeat_button("##startnext", BW) then Tabs.set_bar(Tabs.bar() + 1) end
+    UI.item_icon("right", true)
     UI.tip("The tab starts 1 bar later.")
     ImGui.SameLine(ctx, 0, CFG.CTRL_GAP * 2) -- (where the tempo is set now: decided 26 November 2026)
     UI.row_text("Bars not on the song? Detection > Tempo.", COL.TEXT_DIM)
@@ -3314,10 +3337,12 @@ local function tempo_rows(tm, x, fw)
   UI.row_text(tm.lbl_bar1)
   UI.tip("The first beat of the song. < >: move it 1 beat.")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  if UI.button("<##bar1", BW) then Tempo.nudge(-1) end
+  if UI.button("##bar1prev", BW) then Tempo.nudge(-1) end
+  UI.item_icon("left", true)
   UI.tip("Bar 1 starts 1 beat earlier.")
   ImGui.SameLine(ctx, 0, 4)
-  if UI.button(">##bar1", BW) then Tempo.nudge(1) end
+  if UI.button("##bar1next", BW) then Tempo.nudge(1) end
+  UI.item_icon("right", true)
   UI.tip("Bar 1 starts 1 beat later.")
 end
 -- Listen to: From the tab (tab true) or a track (tr). Another choice drops a result (the button is Find tempo again).
@@ -4166,14 +4191,17 @@ function UI.draw_song_row()
       (COL.ACCENT & 0xFFFFFF00) | math.floor(0xFF * (1 - ft / CFG.SONG_FLASH)), 4, 0, 2)
   end
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  ImGui.BeginDisabled(ctx, not (free and (c.i or 2) > 1))
-  if UI.button("<##songprev", bw) then Notes.song_go(-1) end
+  local can_prev, can_next = free and (c.i or 2) > 1, free and (c.i or 0) < c.n
+  ImGui.BeginDisabled(ctx, not can_prev)
+  if UI.button("##songprev", bw) then Notes.song_go(-1) end
   ImGui.EndDisabled(ctx)
+  UI.item_icon("left", can_prev)
   UI.tip_disabled(free and "The song before." or why)
-  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  ImGui.BeginDisabled(ctx, not (free and (c.i or 0) < c.n))
-  if UI.button(">##songnext", bw) then Notes.song_go(1) end
+  ImGui.SameLine(ctx, 0, 4)
+  ImGui.BeginDisabled(ctx, not can_next)
+  if UI.button("##songnext", bw) then Notes.song_go(1) end
   ImGui.EndDisabled(ctx)
+  UI.item_icon("right", can_next)
   UI.tip_disabled(free and "The song after." or why)
   return ImGui.GetCursorPosY(ctx) - y0
 end
