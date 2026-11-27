@@ -1,5 +1,5 @@
 -- @description Tab Viewer: Guitar Pro tabs next to the song
--- @version 1.2
+-- @version 1.3
 -- @author Nick Gkogkomitros
 -- @license MIT
 -- @about
@@ -13,9 +13,9 @@
 --   [nomain] Tempo.lua
 --   [nomain] Notes.lua
 -- @changelog
---   New toolbar as in Guitar Pro: play buttons, tab size (also Ctrl+wheel), Transpose, speed, Metronome,
---   Count-in (a big 1 2 3 4 over the tab) and Loop. Select a part by dragging over the tab, then loop it.
---   Detection: Find tempo at the top, Import from tab, Guitar Pro (.gp5) export, more bass tunings; shorter Help.
+--   Several songs in 1 project: each region (or item) has its own Detection list and tempo (Region/Item row).
+--   A status bar with the keys and messages; click a Detection line to hear it, Loop loops it; Write makes the
+--   song region. The tab: + / - as in Guitar Pro, clearer dots and rests, repeats with 3 or more endings.
 
 -- MIT License
 --
@@ -57,7 +57,7 @@ end
 ---------------------------------------------------------------------------
 local CFG = {}
 CFG.TITLE = "Tab Viewer"       -- keep stable: REAPER uses it to restore docking (ASCII only)
-CFG.VERSION = "1.2"            -- keep equal to @version in the header
+CFG.VERSION = "1.3"            -- keep equal to @version in the header
 CFG.EXT = "Tab Viewer"         -- ExtState section (this computer) and the project data section
 CFG.PEXT_KEY = "cfg"           -- the project data key
 CFG.TABS_DIR = "Tabs"          -- the folder next to the project file that keeps the copies of the tabs

@@ -43,7 +43,7 @@
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
   what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
 - Versions: Chart Cue 1.7.1, Segue 1.3.1, MIDI Pilot 1.4.1, FX Link 1.1.2, Session Prep 1.0.2, Mono Merge 1.0, Tab
-  Viewer 1.2; SFX Drop 1.0 committed, not released (more work first). The findings of the checkup of 21 November 2026:
+  Viewer 1.3; SFX Drop 1.0 committed, not released (more work first). The findings of the checkup of 21 November 2026:
   "Open findings" in each folder CLAUDE.md (moved by the user's choice, 26 November 2026).
 - Last checkup: 24 November 2026, Tab Viewer only. The other scripts: none as 1 full run yet.
 
