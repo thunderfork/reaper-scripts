@@ -16,15 +16,15 @@
 - After the release, committed, not released (tested by the user, 26 November 2026): Tab Viewer's "+" makes a note
   shorter and "-" longer (as Guitar Pro); the dots right of the stem (over the beams, right of flags); bolder rests,
   beams and flags; the Loop icon as REAPER's 2 arrows.
-- Committed, not released, not tested by the user yet (Open now 20): Tab Viewer's songs (decided 26 November 2026:
-  a song = a region, else a bass item; 1 Detection list and 1 tempo per song; between songs the last stays; older
-  Detection lists are lost, no migration). After a UI/UX review the user chose "A" (26 November 2026): a song header
-  at the top of the Tab and Detection tabs (< name >, the song list, a flash when it follows the cursor), each
-  section's button at the right of its heading, "Song" section renamed "Bass", Settings > Detection > Follow the
-  song (on); the bottom bar was removed. Claude's choice: Write stays in the bottom row of the list (with its
-  dropdown and More...). Not built (the user's choice): a mark over the active song in REAPER, a warning before a
-  list is replaced; later maybe the songs overview ("B"). Next: the user's manual test. All of it goes into the next
-  Tab Viewer release (1.3: a new feature).
+- Committed, not released: Tab Viewer's songs (decided 26 November 2026: a song = a region, else a bass item; 1
+  Detection list and 1 tempo per song; between songs the last stays; older Detection lists are lost, no migration;
+  manual test passed 27 November 2026). After a UI/UX review the user chose "A" (26 November 2026): each section's
+  button at the right of its heading, "Song" section renamed "Bass", Settings > Detection > Follow the song (on);
+  the bottom bar was removed. The song header band of "A" was not liked; replaced by a plain Song row (option 2,
+  decided 27 November 2026: "Song" [dropdown] [<] [>], its frame flashes when it follows the cursor; Open now 20).
+  Claude's choice: Write stays in the bottom row of the list. Not built (the user's choice): a mark over the active
+  song in REAPER, a warning before a list is replaced; later maybe the songs overview ("B"). All of it goes into the
+  next Tab Viewer release (1.3: a new feature).
 - Open decisions (the user's): the detection (a measuring tool on 5-8 stems with tabs, "Use a MIDI item", or stop;
   NOTES.md); chord and guitar detection (asked 25 November 2026: chords medium, guitar notes hard; 3 questions open:
   what guitar detection means, what audio, where the chord names go). Not wanted: a real tab editor.
@@ -61,6 +61,9 @@ skipped or failed test stays here; remove it when it passed.
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
+20. Manual test (Tab Viewer, the Song row, 27 November 2026): the row at the top of the Tab and Detection tabs looks
+    like the Tab and Track rows; the dropdown and < > go to a song (grey while playing); its frame flashes blue when
+    the edit cursor moves into another song.
 
 ## Later
 
