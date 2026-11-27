@@ -1765,6 +1765,16 @@ test("songs: 1 long bass item for 2 regions; Find notes fills each song's list f
   go_to(1)
   eq(texts(), "C", "on again: it follows")
   ok(R.flash, "the header flashes")
+  -- while Find tempo listens the list does not follow (another song would stop it); after it, it follows again
+  C.song_head() -- (the next frame draws the Song row)
+  ok(C.song_go(0, 2), "song 2")
+  local saved = TR.tempo
+  TR.tempo = { run = {} } -- (after the song change: it drops a Find tempo run)
+  go_to(1)
+  eq(texts(), "F (D 3)", "Find tempo listens: the list stays")
+  TR.tempo = saved
+  go_to(1)
+  eq(texts(), "C", "Find tempo done: it follows")
 end)
 
 test("songs: the Tempo section checks the tempo of the song in the header", function()

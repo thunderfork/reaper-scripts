@@ -1736,9 +1736,10 @@ function Lists.switch(id)
   host.song_changed() -- (Tab Viewer: a Find tempo result was for the song before)
 end
 -- Every frame: the list follows the song at the cursor (only when that song changes; not while Find notes listens or
--- a window of the list is open).
+-- a window of the list is open, nor while Find tempo listens: another song would stop it).
 function Lists.follow()
   if not S.song_follow or R.find or R.edit or R.ask or R.export or not R.lists then return end
+  if host.R.tempo and host.R.tempo.run then return end
   local songs = Songs.get()
   local i = Songs.at(songs, Util.cursor())
   local id = i and songs[i].id
@@ -2612,7 +2613,7 @@ N.HELP_TOPICS = {
 - It follows the edit cursor (playing: the play position); its frame flashes when it changes. Between songs the last song stays.
 - Rather pick it yourself? Turn off Settings > Detection > Follow the song.
 - 1 long bass item for several regions? Find tempo and Find notes listen only to the part in the song.
-- Write, Clear and Export change only that song.
+- Write, Clear and Export change only that song (not the 2 Write settings that remove plugins and the click track).
 - The Bar column counts from the song's first bar. REAPER's bars instead? Settings > Detection > Bar numbers.]] },
   { title = "Checking the list", text = [[
 - Click a line: it plays from there. Loop (the toolbar) on: that line plays again and again. Space: stop. Escape: no loop.
@@ -2644,7 +2645,7 @@ N.HELP_TOPICS = {
 - The dropdown next to Write: markers, text items on a Notes track, or both.
 - Write again any time: only the Detection tab's markers and items are replaced. The list stays.
 - No region for the song yet? Write makes one: artist, title and key (from the file names). Your own regions keep their names.
-- Done with the track's plugins or the click track? Settings > Detection > Write removes plugins, Write deletes click track (both off by default).
+- Done with the track's plugins or the click track? Settings > Detection > Write removes plugins, Write deletes click track (both off by default; they change the whole track, so all songs).
 - 1 Ctrl+Z takes all of it back.]] },
   { title = "Export (Guitar Pro, MIDI)", text = [[
 - Export... (at the bottom right)
@@ -2904,10 +2905,10 @@ function N.draw_settings()
     "The Bar column of the list. From the song (the default): bar 1 is the song's first bar. Project bars: as REAPER's ruler.")
   if pick then S.bars, R.view, R.sdirty = pick, nil, true end
   ch, S.write_fx = UI.set_toggle("Write removes plugins", S.write_fx,
-    "Off (the default). On: Write also removes all the plugins on the track of the Song section (1 Ctrl+Z brings them back).")
+    "Off (the default). On: Write also removes all the plugins on the track of the Song section, for all its songs (1 Ctrl+Z brings them back).")
   dirty(ch)
   ch, S.write_clicks = UI.set_toggle("Write deletes click track", S.write_clicks,
-    "Off (the default). On: Write also deletes the tracks named like a metronome or click (1 Ctrl+Z brings them back).")
+    "Off (the default). On: Write also deletes the tracks named like a metronome or click, for all songs (1 Ctrl+Z brings them back).")
   dirty(ch)
 end
 
@@ -3103,7 +3104,7 @@ function UI.draw_song()
 end
 
 function UI.draw_list(v, h)
-  if #P.rows == 0 then -- (Find notes is in the Bass heading above, blue)
+  if #P.rows == 0 then -- (Find notes is in the Song heading above, blue)
     ImGui.Dummy(ctx, 0, 4)
     ImGui.PushTextWrapPos(ctx, 0)
     ImGui.TextColored(ctx, COL.TEXT_DIM, R.find and "Listening to the track..." or "No notes yet. Pick the track above, then click Find notes (bass only, for now). Have a Guitar Pro tab? Open it in the Tab tab, then click Import from tab.")
