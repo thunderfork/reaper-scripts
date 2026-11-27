@@ -681,6 +681,10 @@ test("repeats as written: each written bar once, |: :|, x3, the endings 1. 2.; a
   local m5 = { { rstart = true, count = 0 }, { alt = A(1, 2, 3), rend = true, count = 4 }, { alt = A(4), count = 0 },
     { count = 0 } }
   eq(table.concat(GP.order(m5), " "), "1 2 1 2 1 2 1 3 4", "1. 2. 3. :| x4, then 4.")
+  -- (a repeat without endings ends at its own :|: the endings of a later repeat without |: are not its passes)
+  local m7 = { { count = 0 }, { rend = true, count = 2 }, { count = 0 }, { alt = A(1, 3), rend = true, count = 2 },
+    { alt = A(2, 4), rend = true, count = 2 }, { count = 0 } }
+  eq(table.concat(GP.order(m7), " "), "1 2 1 2 3 4 3 5 3 4 3 5 6", "x2 without endings, then 1. 3. / 2. 4. without |:")
   mbars[2].count = 3
   t = tab(); Tabs.view(t, mbars, true)
   eq(t.bars[2].times, "x3", "3 times: x3")

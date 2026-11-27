@@ -726,8 +726,8 @@ function GP.endings(mbars)
   end
 end
 -- The passes of the repeat from bar s: the highest number of its endings (the alternate endings after s, up to the
--- next |:), at least 1. Guitar Pro plays "1. 3." and "2. 4." 4 times, also when their :| say x2 (lessons 27 November
--- 2026: real files).
+-- next |:, or its own :| when it has no endings), at least 1. Guitar Pro plays "1. 3." and "2. 4." 4 times, also when
+-- their :| say x2 (lessons 27 November 2026: real files).
 function GP.ending_passes(mbars, s)
   local n, seen = 1, false
   for j = s, #mbars do
@@ -736,7 +736,7 @@ function GP.ending_passes(mbars, s)
     if mb.alt then
       seen = true
       for p in pairs(mb.alt) do if p > n then n = p end end
-    elseif seen then break end -- (the bars after the endings)
+    elseif seen or mb.rend then break end -- (the bars after the endings; a :| without endings ends the repeat)
   end
   return n
 end
