@@ -2238,6 +2238,15 @@ function UI.trunc(text, max_w)
   end
   return "..."
 end
+-- A window over Tab Viewer (the question, Export, Layout, Time signature): in the middle of Tab Viewer's window and
+-- fixed in place (decided 27 November 2026). closable: its X button. True while it is open (then EndPopup).
+function UI.begin_modal(title, closable)
+  local wx, wy = ImGui.GetWindowPos(ctx)
+  local ww, wh = ImGui.GetWindowSize(ctx)
+  ImGui.SetNextWindowPos(ctx, wx + ww / 2, wy + wh / 2, ImGui.Cond_Always(), 0.5, 0.5)
+  return (ImGui.BeginPopupModal(ctx, title, closable and true or nil,
+    ImGui.WindowFlags_AlwaysAutoResize() | ImGui.WindowFlags_NoMove()))
+end
 -- Button kinds: "primary" (blue: an action), "ghost" (text only, as in Chart Cue), "danger" (a red ghost: it removes
 -- something; decided 27 November 2026), nil (grey).
 function UI.button(label, w, h, kind)
@@ -2952,7 +2961,7 @@ function UI.draw_layout()
   if not lay then return end
   if not e then R.lay = nil; return end
   if lay.open then ImGui.OpenPopup(ctx, "Layout##layout"); lay.open = nil end
-  if not ImGui.BeginPopupModal(ctx, "Layout##layout", true, ImGui.WindowFlags_AlwaysAutoResize()) then
+  if not UI.begin_modal("Layout##layout", true) then
     R.lay = nil
     return
   end
@@ -3001,7 +3010,7 @@ function UI.draw_meter()
   local b = tab and tab.bars[m.bi]
   if not b then R.meter = nil; return end
   if m.open then ImGui.OpenPopup(ctx, "Time signature##meter"); m.open = nil end
-  if not ImGui.BeginPopupModal(ctx, "Time signature##meter", true, ImGui.WindowFlags_AlwaysAutoResize()) then
+  if not UI.begin_modal("Time signature##meter", true) then
     R.meter = nil
     return
   end

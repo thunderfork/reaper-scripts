@@ -79,6 +79,8 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   item (`Notes.song_go`, stopped only). The dropdown's frame flashes (`CFG.SONG_FLASH`) when the Detection list
   followed the cursor into another song. The songs and
   their lists: NOTES.md. Headings (`UI.heading`): the status after the title, the section's button(s) at the right.
+- The windows over Tab Viewer (the question, Export, Layout, Time signature) open with `UI.begin_modal`: in the
+  middle of the window, fixed in place (decided 27 November 2026).
 - The panel rows Tab (the dropdown: the tabs, Region, Undo all fixes, Layout..., Remove; Open tab...), Track (and
   Import to list), the file line, Start (< >) share the label column (`CFG.LABEL_W`, `UI.field`).
 

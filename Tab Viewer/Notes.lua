@@ -2667,10 +2667,7 @@ function UI.draw_ask()
   local a = R.ask
   if not a then return end
   if a.open then ImGui.OpenPopup(ctx, "Tab Viewer##ask"); a.open = false end
-  local wx, wy = ImGui.GetWindowPos(ctx)
-  local ww, wh = ImGui.GetWindowSize(ctx)
-  ImGui.SetNextWindowPos(ctx, wx + ww / 2, wy + wh / 2, ImGui.Cond_Appearing(), 0.5, 0.5)
-  if ImGui.BeginPopupModal(ctx, "Tab Viewer##ask", nil, ImGui.WindowFlags_AlwaysAutoResize()) then
+  if UI.begin_modal("Tab Viewer##ask") then
     ImGui.PushTextWrapPos(ctx, 360)
     ImGui.Text(ctx, a.text)
     ImGui.PopTextWrapPos(ctx)
@@ -2916,10 +2913,7 @@ function UI.draw_export()
     e.files_txt = which == 3 and ("Files: " .. mid .. ", " .. gp) or which == 1 and ("File: " .. mid)
       or which == 2 and ("File: " .. gp) or ""
   end
-  local wx, wy = ImGui.GetWindowPos(ctx)
-  local ww, wh = ImGui.GetWindowSize(ctx)
-  ImGui.SetNextWindowPos(ctx, wx + ww / 2, wy + wh / 2, ImGui.Cond_Appearing(), 0.5, 0.5)
-  if not ImGui.BeginPopupModal(ctx, "Export##export", nil, ImGui.WindowFlags_AlwaysAutoResize()) then R.export = nil; return end
+  if not UI.begin_modal("Export##export") then R.export = nil; return end
   local x0 = ImGui.GetCursorPosX(ctx)
   e.item = select(2, UI.toggle_line("MIDI item on a \"" .. CFG.MIDI_TRACK .. "\" track", e.item,
     "Below the bass, to listen to. Replaces an older export."))
