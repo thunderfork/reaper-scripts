@@ -46,12 +46,17 @@ My global rules (`%USERPROFILE%\.claude\CLAUDE.md`) apply. This project adds or 
   list the same change for each other script and ask me before you make it.
 - Saved data: see "Saved data" below for what counts.
 - Deploy is automatic (instead of waiting for "build"): after each finished change to a script (not after each
-  edit), run the code checker and the tests of that script 1 time, then `.\tools\deploy.ps1`.
+  edit), run the code checker and the tests of that script 1 time, then `.\tools\deploy.ps1`. A test run is slow:
+  write all the code of the change first, then 1 run; after a failure, fix all you can see, then 1 run again.
 - Commit and back up automatically; push to the public repository and release only when I ask ("Git and
   releases").
 - Ask first, in one line, before screenshots (`.\tools\shots.ps1`) or the UI test (it takes the focus).
 - Prefer 1 session per topic (a feature or a release).
-- A change with many parts or many tests: build it in segments and ask me before each segment.
+- A change with many parts or many tests: build it in segments and ask me before each segment. A request with more
+  than 3 changes: build about 3, report them, then go on with the next ones.
+- The notes for later sessions (`NOTES.md`, the folder and project `CLAUDE.md`): update them 1 time at the end of
+  the topic, with the handoff, not after each change. Help texts, tooltips and code comments stay part of each
+  change (`help-sync`).
 - The limit of open manual tests (more than 3: no new feature) counts only the tests of the script being developed.
 - The checks of the global rules, in this project: `debug-time` is the `debug-round` (bugs); "before a build" means
   before a deploy that I will test in REAPER; the checks before a push are in the `release` skill (they replace
