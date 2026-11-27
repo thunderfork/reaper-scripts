@@ -62,8 +62,11 @@ skipped or failed test stays here; remove it when it passed.
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
 20. Manual test (Tab Viewer, the Song row, 27 November 2026): the row at the top of the Tab and Detection tabs looks
-    like the Tab and Track rows; the dropdown and < > go to a song (grey while playing); its frame flashes blue when
-    the edit cursor moves into another song.
+    like the Tab and Track rows; the dropdown and < > (now drawn icons, also on Start and Bar 1) go to a song (grey
+    while playing); its frame flashes blue when the edit cursor moves into another song. The Time signature window
+    (right-click a bar): tidier, + / - half buttons next to the beats.
+21. Manual test (Tab Viewer, repeats, 27 November 2026): Sun plays and shows the 3rd ending (bar 106); a "1. 3." /
+    "2. 4." repeat plays 4 times (LESSONS.md, fixed, not confirmed).
 
 ## Later
 
