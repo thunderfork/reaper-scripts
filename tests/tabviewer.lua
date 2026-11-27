@@ -1612,6 +1612,35 @@ test("the tab size (UI review 25 November 2026): 10% steps from 70% to 200%; a l
   near(R.tab.lh, lh1, 1e-6, "100% again")
 end)
 
+test("the status bar (27 November 2026): the progress first, then the notice, then the keys of the open tab", function()
+  local UI = C.UI
+  local kind, txt, tip, frac = UI.status_pick(1, false, true, false, 0.454, 0.2, { text = "x" })
+  eq(kind, "progress"); eq(txt, "Find tempo: listening... 45%"); eq(frac, 0.454); eq(tip, nil)
+  kind, txt = UI.status_pick(UI.PAGE_SETTINGS, false, true, false, nil, 1, { text = "x" })
+  eq(kind, "progress", "Find notes in another tab"); eq(txt, "Find notes: listening... 100%")
+  kind, txt, tip = UI.status_pick(1, false, true, false, nil, nil, { text = "Opened.", warn = true })
+  eq(kind, "notice"); eq(txt, "Opened."); eq(tip, "Opened.", "hover: the full text")
+  kind, txt, tip = UI.status_pick(1, false, true, false, nil, nil, nil)
+  eq(kind, "keys"); eq(txt, UI.STATUS.tab_stop[1], "the Tab tab, stopped"); ok(tip:find("Alt+Up", 1, true), "hover: all the keys")
+  eq(select(2, UI.status_pick(1, true, true, false)), UI.STATUS.tab_play[1], "playing")
+  eq(select(2, UI.status_pick(1, false, false, false)), UI.STATUS.tab_none[1], "no tab: a hint")
+  eq(select(3, UI.status_pick(1, false, false, false)), nil, "a hint has no tooltip")
+  eq(select(2, UI.status_pick(UI.PAGE_NOTES, false, true, true)), UI.STATUS.notes[1], "the Detection tab")
+  eq(select(2, UI.status_pick(UI.PAGE_NOTES, false, true, false)), UI.STATUS.notes_none[1], "no lines")
+  eq(select(2, UI.status_pick(UI.PAGE_SETTINGS, false, true, false)), UI.STATUS.settings[1])
+  eq(select(2, UI.status_pick(UI.PAGE_HELP, false, true, false)), UI.STATUS.help[1])
+  -- drawn (the stand-in: no error): each tab, a notice, a running Find tempo
+  for _, page in ipairs({ 1, UI.PAGE_NOTES, UI.PAGE_SETTINGS, UI.PAGE_HELP }) do R.page = page; UI.draw_status(0, 0, 500) end
+  R.notice = { text = "A long notice that does not fit into a narrow bar.", warn = true, t = C.Util.now() + 5 }
+  UI.draw_status(0, 0, 60)
+  eq(UI.notice_live(), R.notice, "the notice while its time runs")
+  R.notice.t = C.Util.now() - 1
+  eq(UI.notice_live(), nil, "its time is over: gone")
+  R.tempo = { run = { done = 0.5 } }
+  UI.draw_status(0, 0, 500)
+  R.tempo, R.page = nil, 1
+end)
+
 test("the toolbar (26 November 2026): |<, <, > and >| go to the bars; play in the middle; the rows; it draws in both tabs", function()
   eq(Tabs.go(10, 0, 5), 1, "|<: bar 1"); eq(Tabs.go(10, -1, 5), 4, "<"); eq(Tabs.go(10, 1, 5), 6, ">")
   eq(Tabs.go(10, -1, 1), nil, "< on bar 1: none"); eq(Tabs.go(10, 1, 10), nil, "> on the last bar: none")

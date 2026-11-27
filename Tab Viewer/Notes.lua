@@ -2858,7 +2858,8 @@ end
 -- progress under it), then the bass item.
 local HEAD_NEXT = { "Next not sure", "ghost", false, "Go to the next yellow line and play it (N)." } -- (made once)
 function UI.draw_top(v)
-  if R.find then
+  if R.find then -- (the progress: in Tab Viewer's status bar; without it, here)
+    if UI.status_on() then UI.heading("Notes", false, nil, nil, "Listening...", COL.TEXT_DIM); return end
     UI.heading("Notes")
     ImGui.ProgressBar(ctx, R.find.done or 0, ImGui.GetContentRegionAvail(ctx), ImGui.GetFrameHeight(ctx), "Listening...")
     return
@@ -3371,6 +3372,7 @@ function N.exit()
   if R.sdirty then Util.save_settings() end
 end
 function N.busy() return R.find ~= nil end -- (Find notes listens)
+function N.find_done() return R.find and (R.find.done or 0) end -- (how far Find notes is, 0 .. 1; nil: it does not run)
 -- The Song row at the top of Tab Viewer's Tab and Detection tabs (decided 27 November 2026): { i (the shown song;
 -- nil: none of them), n, flash (the time the list last followed the cursor to this song) }; nil: the project has no
 -- songs. Made again only when the song or the songs change.

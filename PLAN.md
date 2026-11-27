@@ -64,24 +64,13 @@ skipped or failed test stays here; remove it when it passed.
 13. SFX Drop, before its release: the flaky test "find spots on real tracks" failed once ("a rise at bar 5") in a
     full `test.ps1 -Coverage` run, then passed 3 times (17 November 2026). Find the cause (the WAV peaks not ready
     yet?).
-14. Manual test (Tab Viewer, 6/8 and Set tempo, 24 November 2026): in the tab with your 6/8 bars, Find tempo > From
-    tab, then Set tempo: REAPER's tempo changes to 93.75 at the first 6/8 bar and back to 125 after the last one; the
-    tab stays on the music while it plays. (REAPER counts the tempo in quarter notes: not checked with a 6/8 tab.)
 19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
     file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
     computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-20. Manual test (Tab Viewer, the Song row, 27 November 2026): the row at the top of the Tab and Detection tabs looks
-    like the Tab and Track rows; the dropdown and < > (now drawn icons, also on Start and Bar 1) go to a song (grey
-    while playing); its frame flashes blue when the edit cursor moves into another song. The Time signature window
-    (right-click a bar): tidier, + / - half buttons next to the beats.
-21. Manual test (Tab Viewer, repeats, 27 November 2026): Sun plays and shows the 3rd ending (bar 106); a "1. 3." /
-    "2. 4." repeat plays 4 times (LESSONS.md, fixed, not confirmed).
-22. Manual test (Tab Viewer, Detection, 27 November 2026): a click on a line plays from it; Loop (toolbar) on: the
-    clicked line loops, Loop off: REAPER's repeat as before; Delete and Clear... red next to Join, Clear asks;
-    Export... at the bottom right; Write makes the song region (a bass item song; your region names stay) and the
-    list stays; Settings > Detection: the 2 Write switches and Bar numbers; the windows stay in the middle.
-23. Paused (the user's choice, 27 November 2026): the Find tempo / Find notes progress bars in a bottom bar. The
-    user explains what they mean by the bottom toolbar first.
+23. Manual test (Tab Viewer, the status bar, 27 November 2026; decided 27 November 2026: the progress only in the bar,
+    a long message cut to 1 line): the line at the bottom shows the keys of the open tab (hover: all of them), a
+    message in its place for a while (orange: a warning), and the progress of Find tempo / Find notes in every tab;
+    Settings > Look > Status bar off: the old notices and the progress in the sections.
 24. Make this rule global? "Never search my folders for files. When you need a file of a kind, ask me to provide
     it." (asked 27 November 2026; project rule already): Yes / Project only / No.
 25. After a few sessions with them (decided 27 November 2026): propose the 3 speed rules (1 test run per change,

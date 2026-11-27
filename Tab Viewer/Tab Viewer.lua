@@ -213,7 +213,8 @@ local S = {
   tremnotes = true,  -- Settings > Tab > Tremolo as notes (each picked note written out; off: slashes above the note)
   written = true,    -- Settings > Tab > Repeats as written (|: :|, 1. 2. as in Guitar Pro; off: played out)
   countshow = true,  -- Settings > Tab > Count-in display (the count 1 2 3 4 and the blue outline at each beat)
-  zoom = 1,          -- the size of the tab (the toolbar's - / +; CFG.ZOOM_MIN .. CFG.ZOOM_MAX)
+  status = true,     -- Settings > Look > Status bar (the keys, the messages and the progress at the bottom)
+  zoom = 1,         -- the size of the tab (the toolbar's - / +; CFG.ZOOM_MIN .. CFG.ZOOM_MAX)
   tab_hide = {},     -- Settings > Look > Tabs: the hidden text tabs ({ [1] Tab, [2] Detection = true }; Settings and Help always show)
   closed = {},       -- the folded sections ({ [i] = true }: i in SETTINGS_SECTIONS, then UI.FOLD_TEMPO, UI.FOLD_SONG)
 }
@@ -288,7 +289,7 @@ function Util.grid(x)
   return math.abs(g - x) < 1e-4 and g or x
 end
 
-local ON_OFF = { "light", "follow", "chords", "marks", "pmarks", "lengths", "tremnotes", "written", "countshow" } -- (the switches of S: "1" / "0")
+local ON_OFF = { "light", "follow", "chords", "marks", "pmarks", "lengths", "tremnotes", "written", "countshow", "status" } -- (the switches of S: "1" / "0")
 function Util.load_settings()
   for _, k in ipairs(ON_OFF) do
     local v = r.GetExtState(CFG.EXT, k)
@@ -2931,6 +2932,8 @@ function UI.draw_settings()
   if head(3) then
     ch, S.light = UI.set_toggle("Light theme", S.light, "Off (the default): dark.")
     if ch then apply_theme(S.light) end
+    ch, S.status = UI.set_toggle("Status bar", S.status,
+      "On (the default): a line at the bottom with the keys, the messages and the progress of Find tempo and Find notes.")
     UI.set_label("Tabs")
     for i, nm in ipairs(PAGE_NAMES) do
       if i > 1 then ImGui.SameLine(ctx, 0, 2 * CFG.CTRL_GAP) end
@@ -3417,9 +3420,11 @@ function UI.draw_tempo_step()
   end
   ImGui.EndDisabled(ctx)
   UI.tip_disabled(from_tab and FROM_TAB_TIP or TRACK_TIP)
-  if run then
-    ImGui.SetCursorPosX(ctx, x)
-    ImGui.ProgressBar(ctx, run.done, fw, 0, "Listening...")
+  if run then -- (the progress: in the status bar; without it, here)
+    if not S.status then
+      ImGui.SetCursorPosX(ctx, x)
+      ImGui.ProgressBar(ctx, run.done, fw, 0, "Listening...")
+    end
     return
   end
   if found then -- (the rows of the result)
@@ -4220,11 +4225,73 @@ function UI.draw_song_row()
   return ImGui.GetCursorPosY(ctx) - y0
 end
 
+-- The status bar (as Chart Cue's status line, decided 27 November 2026; Settings > Look > Status bar, on): 1 line under
+-- the panel. First the progress of Find tempo or Find notes (in every tab), then the notice (cut to 1 line; hover: all
+-- of it), then the keys or a hint of the open tab (hover: all the keys).
+local KEYS_TAB = "Click a note: select it (stopped). Playing: the song plays from there.\nDouble-click: the note's box.\n"
+  .. "0-9: the fret. Delete: remove the note.\nArrows: the next note or string. Alt+Up / Down: the same pitch on the "
+  .. "next string.\n+ / -: shorter / longer. \".\": a dot. \"/\": a triplet.\n&: the next bar up into this line. "
+  .. "Ctrl+Enter: a new line after this bar.\nDrag, or Shift+click: select (Loop repeats it). Escape: no loop.\n"
+  .. "Right-click a bar: Time signature...\nSpace: play / stop. Ctrl+Z / Ctrl+Shift+Z: undo / redo. Ctrl+wheel: the "
+  .. "tab size.\n\nThe keys work when the Tab Viewer window is active."
+local KEYS_NOTES = "Click a line: it plays from there. Loop on: that line again and again.\nUp / Down: the line before "
+  .. "or after. N: the next yellow line.\nDouble-click or F2: type other notes.\nDelete: delete the selected line. "
+  .. "Right-click a line: more.\nSpace: play / stop. Escape: no loop.\nCtrl+Z / Ctrl+Shift+Z: undo / redo.\n\n"
+  .. "The keys work when the Tab Viewer window is active."
+UI.STATUS = { -- { the line, its tooltip } (made once)
+  tab_stop = { "Click select  |  0-9 fret  |  + - length  |  Del delete  |  Drag select  |  Space play  |  Ctrl+wheel size", KEYS_TAB },
+  tab_play = { "Click play from there  |  Drag select  |  Space stop  |  Esc no loop  |  Ctrl+wheel size", KEYS_TAB },
+  tab_none = { "No tab for this song yet: Open tab... on the Tab row." },
+  notes = { "Click play the line  |  Up/Down line  |  N next not sure  |  F2 type notes  |  Del delete  |  Space play  |  Esc no loop", KEYS_NOTES },
+  notes_none = { "No lines yet: Find notes in the Bass section." },
+  settings = { "Hover a setting: what it does and its default." },
+  help = { "Hover any button or field in Tab Viewer: what it does." },
+}
+function UI.status_on() return S.status end
+function UI.notice_live() -- the notice while it shows (nil: none, or its time is over; as UI.notice_h)
+  local n = R.notice
+  if n and Util.now() > n.t then R.notice = nil; n = nil end
+  return n
+end
+-- What the status bar shows (a plain function). page: R.page; tempo, notes: how far Find tempo / Find notes are
+-- (0 .. 1; nil: not running); n: the notice (nil: none). Returns the kind ("progress", "notice", "keys"), the text, the
+-- tooltip (nil: none), and for "progress" how far (0 .. 1); for "notice" the tooltip is the full text.
+function UI.status_pick(page, playing, has_tab, has_rows, tempo, notes, n)
+  if tempo then return "progress", string.format("Find tempo: listening... %d%%", math.floor(tempo * 100 + 0.5)), nil, tempo end
+  if notes then return "progress", string.format("Find notes: listening... %d%%", math.floor(notes * 100 + 0.5)), nil, notes end
+  if n then return "notice", n.text, n.text end
+  local e
+  if page == 1 then e = not has_tab and UI.STATUS.tab_none or playing and UI.STATUS.tab_play or UI.STATUS.tab_stop
+  elseif page == UI.PAGE_NOTES then e = has_rows and UI.STATUS.notes or UI.STATUS.notes_none
+  elseif page == UI.PAGE_SETTINGS then e = UI.STATUS.settings
+  else e = UI.STATUS.help end
+  return "keys", e[1], e[2]
+end
+function UI.status_h() return ImGui.GetFrameHeight(ctx) + 4 end
+local SB_CUT = {} -- (the line cut to the width: made again only when the text or the width changes)
+function UI.draw_status(x, y, w)
+  local tm = R.tempo
+  local run = tm and tm.run
+  local n = UI.notice_live()
+  local kind, txt, tip, frac = UI.status_pick(R.page, R.playing, R.tab ~= nil, Notes.has_rows(), run and (run.done or 0),
+    Notes.find_done(), n)
+  local h = ImGui.GetFrameHeight(ctx)
+  ImGui.SetCursorScreenPos(ctx, x + 8, y + 4)
+  if kind == "progress" then
+    ImGui.ProgressBar(ctx, frac, w - 16, h, txt)
+    return
+  end
+  if SB_CUT.src ~= txt or SB_CUT.w ~= w then SB_CUT.src, SB_CUT.w, SB_CUT.txt = txt, w, UI.trunc(txt, w - 16) end
+  local col = kind == "notice" and (n and n.warn and COL.ORANGE or COL.TEXT_MAIN) or COL.TEXT_DIM
+  UI.row_text(SB_CUT.txt, col)
+  if tip and (kind ~= "notice" or SB_CUT.txt ~= txt) then UI.tip(tip) end
+end
+
 function UI.draw_main()
   UI.draw_toolbar()
   UI.draw_tabs()
   local aw, ah = ImGui.GetContentRegionAvail(ctx)
-  local nh = UI.notice_h(aw - 16)
+  local nh = S.status and UI.status_h() or UI.notice_h(aw - 16)
   ah = ah - CFG.SP_EDGE - nh
   local px, py = ImGui.GetCursorScreenPos(ctx)
   ImGui.DrawList_AddRectFilled(ImGui.GetWindowDrawList(ctx), px, py, px + aw, py + ah, COL.PANEL_BG, 8,
@@ -4247,7 +4314,8 @@ function UI.draw_main()
       and not ImGui.IsAnyItemHovered(ctx) then R.pmenu = true end
     ImGui.EndChild(ctx)
   end
-  if nh > 0 then -- the notice, below the panel (after it: a cursor move is always followed by the text)
+  if S.status then UI.draw_status(px, py + ah, aw)
+  elseif nh > 0 then -- the notice, below the panel (after it: a cursor move is always followed by the text)
     local n = R.notice
     ImGui.SetCursorScreenPos(ctx, px + 8, py + ah + 4)
     ImGui.PushTextWrapPos(ctx, ImGui.GetCursorPosX(ctx) + aw - 16)
