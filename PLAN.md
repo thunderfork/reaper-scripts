@@ -2,14 +2,18 @@
 
 ## Handoff (27 November 2026)
 
-- Session 27 November 2026, Tab Viewer, all committed and backed up, not released: the repeat fix (passes = the
-  highest ending; LESSONS.md, Open now 21); < > as icons and the Time signature window tidied; the user's Detection
-  feedback (decided 27 November 2026): a click on a line plays from it, the toolbar's Loop loops the line; Clear and
-  Delete red next to Join...; Export in place of More...; Done: clean up merged into Write (the list stays; region
-  only for a bass item song, region songs keep their names; Settings: Write removes the bass plugins / deletes the
-  metronome track, both off); all windows in the middle, fixed; the Bar column from the song (Settings: Bar
-  numbers). Open Tab Viewer tests: 3 (20, 21, 22): no new Tab Viewer feature until they are tested. Paused: the
-  progress bars (23). Unanswered: making "never search my folders" global (24).
+- Session 27 November 2026 (2nd), Tab Viewer, all committed and backed up, not released: the status bar at the
+  bottom (the keys of the open tab with the user's texts, the messages, the Find tempo / Find notes progress;
+  Settings > Look > Status bar; manual test passed; its crash when turned off fixed and confirmed, LESSONS.md); the
+  "Bass" section is "Song", the Song row label "Region/Item", Settings "Write removes plugins" / "Write deletes
+  click track", the texts say "track" (the bass-only warnings stay). The Detection, Settings and Help texts of the
+  status bar stay (the user, 27 November 2026). Before the Tab Viewer 1.3 release: the Help topics (they still say
+  "bass" and "Bass section"). "Never search my folders" is a global rule now. No open Tab Viewer tests.
+- Session 27 November 2026 (1st), Tab Viewer: the repeat fix (passes = the highest ending; confirmed); < > as
+  icons and the Time signature window tidied; the user's Detection feedback: a click on a line plays from it, the
+  toolbar's Loop loops the line; Clear and Delete red next to Join...; Export in place of More...; clean up merged
+  into Write (the list stays; region only for an item song, region songs keep their names); all windows in the
+  middle, fixed; the Bar column from the song (Settings: Bar numbers). All tested by the user.
 
 - New workflow (decided 26 November 2026): an automatic commit after each finished change (its checker, tests and
   deploy passed); at each handoff a push to the private `reaper-scripts-backup` (remote `backup`, no checks, GitHub
@@ -20,7 +24,7 @@
 - Release (26 November 2026): Tab Viewer 1.2 (the toolbar as in Guitar Pro: size, Transpose | transport | speed,
   Metronome, REAPER's Count-in with the count over the tab, Loop; Ctrl+wheel size; short Help and tooltips; the
   Detection changes), and the clean-ups of Chart Cue 1.7.1, FX Link 1.1.2, MIDI Pilot 1.4.1 (the File > Open fix;
-  its manual test still Open now 10) and Session Prep 1.0.2. The Ctrl+wheel "keep the line under the mouse" failed
+  tested by the user) and Session Prep 1.0.2. The Ctrl+wheel "keep the line under the mouse" failed
   twice and was removed (the user's choice; LESSONS.md).
 - After the release, committed, not released (tested by the user, 26 November 2026): Tab Viewer's "+" makes a note
   shorter and "-" longer (as Guitar Pro); the dots right of the stem (over the beams, right of flags); bolder rests,
@@ -30,7 +34,8 @@
   manual test passed 27 November 2026). After a UI/UX review the user chose "A" (26 November 2026): each section's
   button at the right of its heading, "Song" section renamed "Bass", Settings > Detection > Follow the song (on);
   the bottom bar was removed. The song header band of "A" was not liked; replaced by a plain Song row (option 2,
-  decided 27 November 2026: "Song" [dropdown] [<] [>], its frame flashes when it follows the cursor; Open now 20).
+  decided 27 November 2026: "Song" [dropdown] [<] [>], its frame flashes when it follows the cursor; its label
+  "Region/Item" since 27 November 2026; tested).
   Claude's choice: Write stays in the bottom row of the list. Not built (the user's choice): a mark over the active
   song in REAPER, a warning before a list is replaced; later maybe the songs overview ("B"). All of it goes into the
   next Tab Viewer release (1.3: a new feature).

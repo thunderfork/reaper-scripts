@@ -74,11 +74,17 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   audio; then the tab starts on the new bar 1. The song (`Tabs.song_item`): in the song of the Song row (else the
   tab's region), the selected audio item, else the longest, cut to the song's range (1 tempo per song).
 - The Song row (`UI.draw_song_row`, at the top of the Tab and Detection tabs; the UI/UX review, option 2, decided
-  27 November 2026; a header band was tried first and not liked): "Song", the dropdown of the songs with their line
-  counts, [<] [>]; a choice or an arrow shows that song, moves the edit cursor to its start and selects its bass
-  item (`Notes.song_go`, stopped only). The dropdown's frame flashes (`CFG.SONG_FLASH`) when the Detection list
+  27 November 2026; a header band was tried first and not liked): "Region/Item", the dropdown of the songs with
+  their line counts, [<] [>]; a choice or an arrow shows that song, moves the edit cursor to its start and selects
+  its item (`Notes.song_go`, stopped only). The dropdown's frame flashes (`CFG.SONG_FLASH`) when the Detection list
   followed the cursor into another song. The songs and
   their lists: NOTES.md. Headings (`UI.heading`): the status after the title, the section's button(s) at the right.
+- The status bar (`UI.draw_status`, as Chart Cue's status line; `S.status`, Settings > Look > Status bar, on): 1 line
+  under the panel. `UI.status_pick` (a plain function, tested) chooses: the progress of Find tempo / Find notes
+  (`Notes.find_done`; then the sections show only "Listening..."), else the notice (`UI.notice_live`; cut to 1 line,
+  hover: all), else the keys of the open tab (`UI.STATUS`, the user's texts; hover: all the keys) or a hint. Off:
+  the old notice under the panel and the progress in the sections. `S.status` is read once per frame in
+  `UI.draw_main` (LESSONS.md, timing).
 - The windows over Tab Viewer (the question, Export, Layout, Time signature) open with `UI.begin_modal`: in the
   middle of the window, fixed in place (decided 27 November 2026).
 - The panel rows Tab (the dropdown: the tabs, Region, Undo all fixes, Layout..., Remove; Open tab...), Track (and

@@ -130,7 +130,8 @@ The history of every decision: git.
   `N.song_go`, `N.song_list`; decided 26 November 2026, the UI/UX review "A"). Settings > Detection > Follow the
   song (`S.song_follow`, on) switches `Lists.follow` off; the arrows and the list still change the song.
 - The sections in the order of the work (decided 26 November 2026; no numbers in the headings): "Tempo" (Tab
-  Viewer's `UI.draw_tempo_step`), "Bass", "Notes"; Tempo and Bass fold (`UI.FOLD_TEMPO`, `UI.FOLD_SONG` in
+  Viewer's `UI.draw_tempo_step`), "Song" (the track, key, tuning, lines; the texts say "track", only the warnings
+  say "bass only, for now"), "Notes"; Tempo and Song fold (`UI.FOLD_TEMPO`, `UI.FOLD_SONG` in
   `S.closed`). Each heading: its status after the title, its step's button at the right end (also when folded;
   `UI.heading` with 1 button or a list). Blue is the 1 next step: Find tempo (no tempo yet), Set tempo (a result, in
   Find tempo's place), Import from tab (with a tab) or Find notes (no list), Write. The Tempo section is done when
