@@ -102,8 +102,9 @@ the part; read `Tab Viewer/NOTES.md` before work on it.
   `GP.timeline(doc)` (bar lengths, time signatures, tempos), `GP.fx` (playing marks), `GP.chord_name`,
   `GP.tuning_text` ("Standard", "Drop D", "Eb Standard", else the notes; ", capo 2").
 - Checked on real files (the user's, never in git; the `file-format` rule): .gp (3 tabs; a 2 MB score in 0.29 s),
-  1 real .gp5 (5.10), tremolo `1/4` = 16ths. Only made-up files: .gpx, .gp3, .gp4, chord names in the file, section
-  markers of the old formats, the .gp tempo unit, the playing marks. The first real file of each is the check.
+  1 real .gp5 (5.10), 1 real .gpx (opened by the user), tremolo `1/4` = 16ths. Only made-up files: .gp3, .gp4 (no
+  real file needed: the user's choice), chord names in the file, section markers of the old formats, the .gp tempo
+  unit, the playing marks. The first real file of each is the check.
 - `GP.write_gp5(song)`: Guitar Pro 5.10 in the layout `GP.read_old` reads, with real values (track
   visible, tab and notation shown, channel volume); `GP.values` splits a length into tied note values. A trial file
   opened right in the user's Guitar Pro.

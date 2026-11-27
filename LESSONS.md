@@ -47,7 +47,7 @@ YYYY-MM-DD | Script | tag | what the user saw
   Test: "the status bar ..." (tests\tabviewer.lua): UI.draw_main with a Settings stand-in that turns the switch off;
   failed before the fix. Fix: the switch read once per frame (sb), and the old notice code only with a notice.
   Other scripts: searched; the other scripts with a status bar (Chart Cue) have no switch for it.
-  Status: fixed, not confirmed
+  Status: confirmed (the user, 27 November 2026)
 
 2026-11-27 | Tab Viewer | file-format | repeats with more endings than the :| count: a 3rd ending ("1." x3, "2." x2,
   "3.") was left out, and "1. 3." / "2. 4." (both :| x2) played 2 passes instead of 4

@@ -45,7 +45,8 @@
 ## Open now
 
 Answer by number. Manual tests: in question windows, 1 question per test (Passed / Failed / Skip for now); a
-skipped or failed test stays here; remove it when it passed.
+skipped or failed test stays here; remove it when it passed. Items 1, 6, 8 and 11: at the next Session Prep work
+(decided 27 November 2026).
 
 1. Manual test (Session Prep, 12 November 2026): Mono button on a fake stereo track (grey -> orange on click; Apply
    plays one side; Ctrl+Z undoes it). Skipped twice.
@@ -53,9 +54,6 @@ skipped or failed test stays here; remove it when it passed.
    comes back each time.
 8. Manual test (Session Prep, 17 November 2026): Scan speed with Gain staging on (a large session; the 1st Scan of
    new files builds peaks).
-10. Manual test (MIDI Pilot, 26 November 2026): with MIDI Pilot open in a project with devices, File > Open another
-    project in the same tab: MIDI Pilot shows that project's own devices and tracks (none for a new one); back in
-    the first project, its devices are still there. File > Save as keeps them.
 11. Session Prep feedback, not decided yet (17 November 2026): deleting a return does not ask (a bus does); the Prep
     table does not show a row's bus, sends or Track FX (the Help promises "you see everything first").
 12. SFX Drop, before its release: Find spots reads at 2000 Hz and Soundcheck at 500 Hz, so cymbal parts count too
@@ -64,15 +62,6 @@ skipped or failed test stays here; remove it when it passed.
 13. SFX Drop, before its release: the flaky test "find spots on real tracks" failed once ("a rise at bar 5") in a
     full `test.ps1 -Coverage` run, then passed 3 times (17 November 2026). Find the cause (the WAV peaks not ready
     yet?).
-19. Real files for the reader (Dev 5 of the developer review, decided 24 November 2026): 1 real .gpx, .gp3 and .gp4
-    file each (none found in Documents, Downloads, Desktop, Music). Tell me where they are; Claude checks them on your
-    computer only (never in git), as the `file-format` rule says. Skipped by the user 25 November 2026 (for later).
-23. Manual test (Tab Viewer, the status bar, 27 November 2026; decided 27 November 2026: the progress only in the bar,
-    a long message cut to 1 line): the line at the bottom shows the keys of the open tab (hover: all of them), a
-    message in its place for a while (orange: a warning), and the progress of Find tempo / Find notes in every tab;
-    Settings > Look > Status bar off: the old notices and the progress in the sections.
-24. Make this rule global? "Never search my folders for files. When you need a file of a kind, ask me to provide
-    it." (asked 27 November 2026; project rule already): Yes / Project only / No.
 25. After a few sessions with them (decided 27 November 2026): propose the 3 speed rules (1 test run per change,
     batches of about 3, the notes at the end of a topic) for the global CLAUDE.md.
 
