@@ -149,7 +149,6 @@ local R = {
   trk_lbl = nil,     -- the text of the Track row (of the track trk_for; cached until the project changes)
   trk_for = nil,
   trk_def = nil,     -- the default track (false: none; nil: not looked for yet)
-  finish = nil,      -- the open Done: clean up window (More...)
   export = nil,      -- the open Export window: { item, file, step (Rhythm), open }
   lists = nil,       -- the saved lists of the songs: { ids = { the song ids in order }, txt = { [id] = the list text } }
   song = nil,        -- the song of the shown list P (its id; "": a project without songs)
@@ -169,6 +168,8 @@ local S = {
   export_dir = "",   -- the folder of the .mid files ("": the project folder)
   splits = false,    -- Settings > Detection > Split repeated notes (after Set tempo; off by default, decided 25 November 2026)
   song_follow = true, -- Settings > Detection > Follow the song (the list follows the edit cursor; 26 November 2026)
+  write_fx = false,  -- Settings > Detection > Write removes the bass plugins (the old Done: clean up; 27 November 2026)
+  write_clicks = false, -- Settings > Detection > Write deletes the metronome track (the same)
 }
 
 ---------------------------------------------------------------------------
@@ -215,10 +216,13 @@ end
 function Util.settings_lines()
   return { "out=" .. S.out, "frets=" .. (S.frets and "1" or "0"), "finger=" .. (S.finger and "1" or "0"),
     "strings=" .. S.strings, "export_dir=" .. S.export_dir, "splits=" .. (S.splits and "1" or "0"),
-    "song_follow=" .. (S.song_follow and "1" or "0") }
+    "song_follow=" .. (S.song_follow and "1" or "0"), "write_fx=" .. (S.write_fx and "1" or "0"),
+    "write_clicks=" .. (S.write_clicks and "1" or "0") }
 end
 function Util.apply_setting(k, v)
   if k == "splits" then S.splits = (v ~= "0")
+  elseif k == "write_fx" then S.write_fx = (v == "1")
+  elseif k == "write_clicks" then S.write_clicks = (v == "1")
   elseif k == "song_follow" then S.song_follow = (v ~= "0")
   elseif k == "export_dir" then S.export_dir = Util.clean(v)
   elseif k == "strings" then S.strings = v == "numbers" and v or "letters"
@@ -1202,7 +1206,7 @@ function List.undo(redo)
   end
   local mk = P.mk
   P = List.parse(txt)
-  if #mk > 0 then P.mk = mk end -- (the newest IDs of the written markers; none after Done: clean up)
+  if #mk > 0 then P.mk = mk end -- (the newest IDs of the written markers)
   R.edit = nil
   if R.sel and not P.rows[R.sel] then R.sel = #P.rows > 0 and #P.rows or nil end
   Util.mark_pdirty()
@@ -1475,7 +1479,7 @@ function Project.load(txt)
   R.lists, R.hist, R.song, R.follow_last, R.songs, R.st = Lists.split(txt), {}, nil, nil, nil, nil
   P = List.default() -- (never the list of the project before: Songs.get stores the shown list)
   R.plast_txt, R.pdirty = txt, false
-  R.sel, R.edit, R.undo, R.redo, R.view, R.finish, R.ask, R.places = nil, nil, {}, {}, nil, nil, nil, nil
+  R.sel, R.edit, R.undo, R.redo, R.view, R.ask, R.places = nil, nil, {}, {}, nil, nil, nil
   R.written, R.written_lbl = nil, nil
   Find.cancel()
   local songs = Songs.get() -- (a list whose song is gone goes to the song at its first line)
@@ -1690,6 +1694,7 @@ function Lists.adopt(songs)
   local ids, lost = {}, false
   for _, s in ipairs(songs) do ids[s.id] = true end
   for _, id in ipairs(l.ids) do if not ids[id] then lost = true end end
+  if R.song and R.song ~= "" and not ids[R.song] then lost = true end -- (the shown list, also before it is saved)
   if not lost then return end
   Lists.store()
   for _, id in ipairs({ table.unpack(l.ids) }) do
@@ -1721,7 +1726,7 @@ end
 -- Every frame: the list follows the song at the cursor (only when that song changes; not while Find notes listens or
 -- a window of the list is open).
 function Lists.follow()
-  if not S.song_follow or R.find or R.edit or R.ask or R.finish or R.export or not R.lists then return end
+  if not S.song_follow or R.find or R.edit or R.ask or R.export or not R.lists then return end
   local songs = Songs.get()
   local i = Songs.at(songs, Util.cursor())
   local id = i and songs[i].id
@@ -1961,7 +1966,7 @@ function Find.done(f, notes, tune, t_end)
 end
 
 ---------------------------------------------------------------------------
--- OUT (writes the markers and the Notes track; Done: clean up)
+-- OUT (Write: the markers, the Notes track and the song region; Clear)
 ---------------------------------------------------------------------------
 -- Every marker and region: fn(index, is_region, pos, end, name, number, guid).
 function Out.each_marker(fn)
@@ -2096,6 +2101,9 @@ function Out.clear()
 end
 
 -- Writes the list: "markers", "track" or "both". Only the own markers and text items of the Detection tab are replaced.
+-- It also makes the song region and, when switched on, removes the bass plugins and the metronome track (Done: clean
+-- up merged into Write, decided 27 November 2026; the list stays). 1 undo step. Returns the name of a new or moved
+-- region, or nil.
 function Out.write(what)
   if #P.rows == 0 then return end
   r.Undo_BeginBlock2(R.proj)
@@ -2104,6 +2112,8 @@ function Out.write(what)
   if what ~= "track" then Out.add_markers() end
   Out.delete_items(what ~= "markers")
   if what ~= "markers" then Out.add_items(what == "both") end
+  local rg = Out.region()
+  Out.tidy()
   r.PreventUIRefresh(-1)
   r.Undo_EndBlock2(R.proj, CFG.UNDO_NAME .. ": write notes", -1)
   List.step(CFG.UNDO_NAME .. ": write notes", true)
@@ -2112,6 +2122,7 @@ function Out.write(what)
   R.written = List.serialize(P)
   R.written_lbl = Out.written_text(what, #P.rows)
   R.pdirty = true
+  return rg
 end
 -- The line next to Write after a Write (until the list changes: Util.mark_pdirty, List.undo, another project).
 function Out.written_text(what, n)
@@ -2157,53 +2168,36 @@ function Out.click_tracks()
   return out
 end
 
-function Out.finish_begin()
+-- The song region at Write: a song that is a region keeps its name (decided 27 November 2026); else a region
+-- "Artist - Title - Key" (from the names of the bass file and the project) over the bars of the bass item (a region
+-- with that name at this place: moved; one of another song with the same name stays). No name of the bass file (no
+-- item, a list from a tab): none. Returns the name, or nil.
+function Out.region()
+  local s = Songs.cur()
+  if s and not s.item then return nil end
   local item = Find.item()
-  local track = item and r.GetMediaItemTrack(item)
-  local title = Out.title(Find.name(item))
-  local fx = track and r.TrackFX_GetCount(track) or 0
-  local clicks = Out.click_tracks()
-  local f = { title = title, artist = Out.artist(R.projfn:match("([^/\\]*)$") or "", title), track = track, fx = fx,
-    clicks = clicks, del_fx = fx > 0, del_clicks = #clicks > 0, open = true }
-  f.track_name = track and select(2, r.GetTrackName(track)) or ""
-  f.fresh = R.written ~= nil and R.written == List.serialize(P)
-  R.finish = f
-end
--- Makes (or updates) the song region, removes what is ticked, and removes the list from the project. 1 undo step.
--- A song that is a region: that region gets the name (its place stays).
-function Out.finish(f)
-  local name = Out.region_name(f.artist, f.title, P.key)
-  local item, s = Find.item(), Songs.cur()
-  local t0 = item and r.GetMediaItemInfo_Value(item, "D_POSITION") or (P.rows[1] and P.rows[1].t or 0)
-  local _, m0 = r.TimeMap2_timeToBeats(R.proj, t0)
-  t0 = r.TimeMap2_beatsToTime(R.proj, 0, m0)
-  local stop = Out.song_end()
-  local _, m1 = r.TimeMap2_timeToBeats(R.proj, stop)
-  stop = r.TimeMap2_beatsToTime(R.proj, 0, m1 + 1)
+  local title = item and Out.title(Find.name(item)) or ""
+  if title == "" then return nil end
+  local name = Out.region_name(Out.artist(R.projfn:match("([^/\\]*)$") or "", title), title, P.key)
+  local _, m0 = r.TimeMap2_timeToBeats(R.proj, r.GetMediaItemInfo_Value(item, "D_POSITION"))
+  local t0 = r.TimeMap2_beatsToTime(R.proj, 0, m0)
+  local _, m1 = r.TimeMap2_timeToBeats(R.proj, Out.song_end())
+  local stop = r.TimeMap2_beatsToTime(R.proj, 0, m1 + 1)
   local num
-  if s and not s.item then t0, stop, num = s.t0, s.t1, s.num end
-  r.Undo_BeginBlock2(R.proj)
-  r.PreventUIRefresh(1)
-  if name ~= "" then
-    if not num then Out.each_marker(function(_, rgn, _, _, nm, n) if rgn and nm == name then num = num or n end end) end
-    if num then r.SetProjectMarker2(R.proj, num, true, t0, stop, name)
-    else r.AddProjectMarker2(R.proj, true, t0, stop, name, -1, 0) end
-  end
-  if f.del_fx and f.track and r.ValidatePtr2(R.proj, f.track, "MediaTrack*") then
-    for i = r.TrackFX_GetCount(f.track) - 1, 0, -1 do r.TrackFX_Delete(f.track, i) end
-  end
-  if f.del_clicks then
-    for _, c in ipairs(f.clicks) do if r.ValidatePtr2(R.proj, c.tr, "MediaTrack*") then Out.delete_track(c.tr) end end
-  end
-  r.PreventUIRefresh(-1)
-  r.Undo_EndBlock2(R.proj, CFG.UNDO_NAME .. ": clean up the song", -1)
-  r.TrackList_AdjustWindows(false)
-  r.UpdateArrange()
-  List.step() -- (the Undo button brings the list back while the window is open)
-  P = List.default()
-  R.sel, R.edit, R.written, R.finish, R.src_name = nil, nil, nil, nil, nil
-  Util.mark_pdirty()
+  Out.each_marker(function(_, rgn, pos, e, nm, n) if rgn and nm == name and pos < stop and e > t0 then num = num or n end end)
+  if num then r.SetProjectMarker2(R.proj, num, true, t0, stop, name)
+  else r.AddProjectMarker2(R.proj, true, t0, stop, name, -1, 0) end
   return name
+end
+-- At Write, when switched on (Settings > Detection, both off by default): the plugins of the bass track go, and the
+-- tracks that look like a metronome.
+function Out.tidy()
+  local item = Find.item()
+  local track = S.write_fx and item and r.GetMediaItemTrack(item)
+  if track then for i = r.TrackFX_GetCount(track) - 1, 0, -1 do r.TrackFX_Delete(track, i) end end
+  if S.write_clicks then
+    for _, c in ipairs(Out.click_tracks()) do Out.delete_track(c.tr) end
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -2615,7 +2609,7 @@ N.HELP_TOPICS = {
 - Yellow but right? Click OK, or right-click > Sure.
 - Join, Split (at the edit cursor), + Add, Delete. Right-click a line: more.
 - Undo / Redo arrows: Ctrl+Z / Ctrl+Shift+Z.
-- Start again? More... > Clear... (Undo brings it back).]] },
+- Start again? Clear... (Undo brings it back).]] },
   { title = "The found notes as a tab", text = [[
 - After Find notes, the Tab tab shows them as a bass tab.
 - Fix them there, then click Import to list.
@@ -2633,20 +2627,18 @@ N.HELP_TOPICS = {
 - Numbers as in tab books ("E (3 7)")? Settings > Detection > String names.
 - Only names? Turn off Settings > Detection > String for high notes and Fingering for runs.
 - Tuning: pick the bass tuning of the song. The list follows.]] },
-  { title = "Markers or a Notes track", text = [[
+  { title = "Write: markers, a Notes track, the song region", text = [[
 - The dropdown next to Write: markers, text items on a Notes track, or both.
-- Write again any time: only the Detection tab's markers and items are replaced.]] },
+- Write again any time: only the Detection tab's markers and items are replaced. The list stays.
+- No region for the song yet? Write makes one: artist, title and key (from the file names). Your own regions keep their names.
+- Done with the bass track's plugins or the metronome track? Settings > Detection: Write can remove them (off by default).
+- 1 Ctrl+Z takes all of it back.]] },
   { title = "Export (Guitar Pro, MIDI)", text = [[
-- More... > Export...
+- Export... (at the bottom right)
 - Guitar Pro (.gp5): the notes as the Tab tab shows them. Guitar Pro 5 to 8 open it.
 - MIDI: an item on a "Bass MIDI" track, and a .mid file. Rhythm: to 16ths, 8ths, or not.
 - The files go to the project folder, or Folder > Change...
 - Your typed corrections are not in the export.]] },
-  { title = "Done: clean up", text = [[
-- More... > Done: clean up: a region over the song (artist, title, key). Is the song a region? That region gets the name.
-- If you like: it removes the bass track's plugins and the metronome track.
-- The list leaves the project. The markers and the Notes track stay.
-- Ctrl+Z brings the plugins and tracks back.]] },
   { title = "Why are some notes wrong?", text = [[
 - Fast fills, slides, or other instruments left in the bass file.
 - 2 methods listen. Where they disagree, the line is yellow. Listen once anyway.
@@ -2895,63 +2887,12 @@ function N.draw_settings()
   pick = UI.set_combo("String names", S.strings, STRING_STYLES,
     "\"E (A 7)\" or, as in tab books, \"E (3 7)\". For the next Find notes.")
   if pick then S.strings = pick; R.sdirty = true end
-end
-
--- The Done: clean up window (More...; a popup in the window).
-function UI.draw_finish()
-  local f = R.finish
-  if not f then return end
-  if f.open then ImGui.OpenPopup(ctx, "Done: clean up##finish"); f.open = false end
-  local wx, wy = ImGui.GetWindowPos(ctx)
-  local ww, wh = ImGui.GetWindowSize(ctx)
-  ImGui.SetNextWindowPos(ctx, wx + ww / 2, wy + wh / 2, ImGui.Cond_Appearing(), 0.5, 0.5)
-  if not ImGui.BeginPopupModal(ctx, "Done: clean up##finish", nil, ImGui.WindowFlags_AlwaysAutoResize()) then R.finish = nil; return end
-  local x0 = ImGui.GetCursorPosX(ctx)
-  local function field(label, v)
-    UI.label(label)
-    ImGui.SetCursorPosX(ctx, x0 + 60)
-    ImGui.SetNextItemWidth(ctx, 240)
-    local _, nv = ImGui.InputText(ctx, "##fin_" .. label, v)
-    return nv
-  end
-  f.artist = field("Artist", f.artist)
-  f.title = field("Title", f.title)
-  UI.label("Region")
-  ImGui.SetCursorPosX(ctx, x0 + 60)
-  UI.row_text(UI.trunc(Out.region_name(f.artist, f.title, P.key), 240), COL.TEXT_DIM)
-  local ch
-  if f.fx > 0 then
-    if f.fx_label == nil then
-      f.fx_label = string.format("Remove the plugins from %s (%d)", UI.trunc(f.track_name, 120), f.fx)
-    end
-    ch, f.del_fx = UI.toggle_line(f.fx_label, f.del_fx, "All the plugins on the track of the bass item.")
-  end
-  if #f.clicks > 0 then
-    if f.click_label == nil then
-      local t = {}
-      for i, c in ipairs(f.clicks) do t[i] = c.name end
-      f.click_tip = table.concat(t, ", ")
-      f.click_label = UI.trunc("Delete the metronome track: " .. f.click_tip, 280)
-    end
-    ch, f.del_clicks = UI.toggle_line(f.click_label, f.del_clicks, "Deletes: " .. f.click_tip)
-  end
-  if not f.fresh then
-    ImGui.PushTextWrapPos(ctx, x0 + 300)
-    ImGui.TextColored(ctx, COL.YELLOW, "The list is not written since your last change. Cancel and click Write first?")
-    ImGui.PopTextWrapPos(ctx)
-  end
-  ImGui.PushTextWrapPos(ctx, x0 + 300)
-  ImGui.TextColored(ctx, COL.TEXT_DIM, "The list leaves the project. The markers and the Notes track stay.")
-  ImGui.PopTextWrapPos(ctx)
-  UI.vgap(8)
-  if UI.button("Clean up", 100, nil, "primary") then
-    ImGui.CloseCurrentPopup(ctx)
-    local name = Out.finish(f)
-    UI.notice(name ~= "" and ("Done. Region: " .. name) or "Done. No region (no artist, title or key).")
-  end
-  ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
-  if UI.button("Cancel", 90) then ImGui.CloseCurrentPopup(ctx); R.finish = nil end
-  ImGui.EndPopup(ctx)
+  ch, S.write_fx = UI.set_toggle("Write removes the bass plugins", S.write_fx,
+    "Off (the default). On: Write also removes all the plugins on the bass track (1 Ctrl+Z brings them back).")
+  dirty(ch)
+  ch, S.write_clicks = UI.set_toggle("Write deletes the metronome track", S.write_clicks,
+    "Off (the default). On: Write also deletes the tracks named like a metronome or click (1 Ctrl+Z brings them back).")
+  dirty(ch)
 end
 
 -- The Export window (a popup in the window).
@@ -3247,16 +3188,21 @@ function UI.draw_list(v, h)
   end
 end
 
--- Join, Split, + Add, Delete; then Write, its dropdown and More... (Export, Done: clean up, Clear...). Only with a list.
--- A ghost button of the foot (off: grey, its tip still shows); true when clicked.
-function UI.foot_btn(label, on, tip)
+-- Join, Split, + Add, Delete, Clear... (the 2 that remove in red); then Write, its dropdown and Export... (decided 27
+-- November 2026: no More... menu). Only with a list.
+-- A ghost button of the foot (off: grey, its tip still shows; kind "danger": red); true when clicked.
+function UI.foot_btn(label, on, tip, kind)
   ImGui.BeginDisabled(ctx, not on)
-  local hit = UI.button(label, UI.btn_w(label), nil, "ghost")
+  local hit = UI.button(label, UI.btn_w(label), nil, kind or "ghost")
   ImGui.EndDisabled(ctx)
   UI.tip_disabled(tip)
   ImGui.SameLine(ctx, 0, 2)
   return hit
 end
+local WRITE_TIP = "Writes the list into the project, and a region over the song when it has none yet (a region keeps "
+  .. "its name). The list stays. Settings > Detection: also remove the bass plugins or the metronome track."
+local CLEAR_ASK = "Start again? This removes the list and what this tab wrote: its markers, the Notes track items and "
+  .. "the Bass MIDI item. Your own markers, the tempo and the audio stay.\n\nUndo (or Ctrl+Z) brings it all back."
 function UI.draw_foot()
   local aw = ImGui.GetContentRegionAvail(ctx)
   local sel = R.sel and P.rows[R.sel] and R.sel or nil
@@ -3267,21 +3213,24 @@ function UI.draw_foot()
     UI.select(i)
     UI.edit_row(i)
   end
-  if UI.foot_btn("Delete", sel ~= nil, "Deletes the selected line (Delete key).") then List.delete(sel) end
+  if UI.foot_btn("Delete", sel ~= nil, "Deletes the selected line (Delete key).", "danger") then List.delete(sel) end
+  local has = #P.rows > 0 and not R.find
+  if UI.foot_btn("Clear...", has, "Removes the list and what this tab wrote (it asks first).", "danger") then
+    UI.ask(CLEAR_ASK, "Clear", Out.clear)
+  end
   ImGui.NewLine(ctx)
-  -- Write (the main button; the musician review, 24 November 2026), what it makes, "Written (n markers)" until the
-  -- list changes; Export and Done: clean up in More...
+  -- Write (the main button; the musician review, 24 November 2026; with the song region: 27 November 2026), what it
+  -- makes, "Written (n markers)" until the list changes; Export... at the right
   local cur = OUTS[1][2]
   for _, o in ipairs(OUTS) do if o[1] == S.out then cur = o[2] end end
-  local ww, mw = UI.btn_w("Write", 80), UI.btn_w("More...")
-  local has = #P.rows > 0 and not R.find
+  local ww, mw = UI.btn_w("Write", 80), UI.btn_w("Export...")
   ImGui.BeginDisabled(ctx, not has)
   if UI.button("Write", ww, nil, "primary") then
-    Out.write(S.out)
-    UI.notice("Written. Changed your mind? Ctrl+Z (or the Undo arrow) takes it away again.")
+    local rg = Out.write(S.out)
+    UI.notice("Written" .. (rg and (". Region: " .. rg) or "") .. ". Changed your mind? Ctrl+Z (or the Undo arrow) takes it away again.")
   end
   ImGui.EndDisabled(ctx)
-  UI.tip_disabled(has and "Writes the list into the project." or "Find the notes first.")
+  UI.tip_disabled(has and WRITE_TIP or "Find the notes first.")
   ImGui.SameLine(ctx, 0, CFG.CTRL_GAP)
   local cw2 = math.max(60, math.min(CFG.OUT_W, aw - ww - mw - 2 * CFG.CTRL_GAP))
   ImGui.SetNextItemWidth(ctx, cw2)
@@ -3301,38 +3250,22 @@ function UI.draw_foot()
     end
   end
   ImGui.SameLine(ctx, math.max(0, aw - mw))
-  if UI.button("More...", mw) then ImGui.OpenPopup(ctx, "##ndmore") end
-  UI.tip("Export, Done: clean up, Clear.")
-  if ImGui.BeginPopup(ctx, "##ndmore") then
-    do
-      local can_export = #P.notes > 0 and not R.find
-      if ImGui.MenuItem(ctx, "Export...", nil, false, can_export) then
-        R.export = { item = true, file = true, gp = true, step = CFG.GRIDS[1][1], open = true }
-      end
-      UI.tip_disabled(can_export and "A Guitar Pro file, a MIDI item or a .mid file."
-        or "Find notes first.")
-    end
-    if ImGui.MenuItem(ctx, "Done: clean up...", nil, false, has) then Out.finish_begin() end
-    UI.tip_disabled(has and "Finished? A song region, and the list leaves the project." or "Find the notes first.")
-    ImGui.Separator(ctx)
-    if ImGui.MenuItem(ctx, "Clear...", nil, false, has) then
-      UI.ask("Start again? This removes the list and what this tab wrote: its markers, the Notes track items and "
-        .. "the Bass MIDI item. Your own markers, the tempo and the audio stay.\n\nUndo (or Ctrl+Z) brings it all back.", "Clear", Out.clear)
-    end
-    UI.tip_disabled("Removes the list and what this tab wrote.")
-    ImGui.EndPopup(ctx)
-  end
+  local can_export = #P.notes > 0 and not R.find
+  ImGui.BeginDisabled(ctx, not can_export)
+  if UI.button("Export...", mw) then R.export = { item = true, file = true, gp = true, step = CFG.GRIDS[1][1], open = true } end
+  ImGui.EndDisabled(ctx)
+  UI.tip_disabled(can_export and "A Guitar Pro file, a MIDI item or a .mid file." or "Find notes first.")
 end
 
 -- The Detection tab (in Tab Viewer's panel; h: the height it has): Tempo (Tab Viewer's), Song (Track with Find
--- notes, Key, Tuning, Lines), Notes (the count), the list, then the foot (Join ... Undo, Write, More...).
+-- notes, Key, Tuning, Lines), Notes (the count), the list, then the foot (Join ... Clear, Write, Export).
 function N.draw(h)
   local v = UI.view()
   local y0 = ImGui.GetCursorPosY(ctx)
   UI.draw_tempo_step() -- (Tab Viewer's: Find tempo and Set tempo)
   UI.draw_song()
   UI.draw_top(v)
-  local has = P.rows[1] ~= nil -- (the edit row, Write and More...: only with a list)
+  local has = P.rows[1] ~= nil -- (the edit row, Write and Export: only with a list)
   local foot = has and 2 * ImGui.GetFrameHeight(ctx) + 2 * CFG.SP_ROW or 0
   local lh = math.max(60, h - (ImGui.GetCursorPosY(ctx) - y0) - foot)
   local y = ImGui.GetCursorPosY(ctx)
@@ -3341,17 +3274,16 @@ function N.draw(h)
   ImGui.SetCursorPosY(ctx, y + lh + CFG.SP_ROW)
   UI.draw_foot()
 end
--- The windows of the Detection tab (the question, Done: clean up, Export): every frame, inside Tab Viewer's window.
+-- The windows of the Detection tab (the question, Export): every frame, inside Tab Viewer's window.
 function N.draw_popups()
   UI.draw_ask()
-  UI.draw_finish()
   UI.draw_export()
 end
 
 -- The keys of the Detection tab (while it is open, the window has the focus and no field is typed in).
 function N.keys()
   if not ImGui.IsWindowFocused(ctx, ImGui.FocusedFlags_RootAndChildWindows()) or ImGui.IsAnyItemActive(ctx)
-    or R.edit or R.ask or R.finish or R.export or ImGui.IsPopupOpen(ctx, "", ImGui.PopupFlags_AnyPopup()) then return end
+    or R.edit or R.ask or R.export or ImGui.IsPopupOpen(ctx, "", ImGui.PopupFlags_AnyPopup()) then return end
   local C, SH = ImGui.Mod_Ctrl(), ImGui.Mod_Shift()
   local function key(k, rep) return ImGui.IsKeyPressed(ctx, k, rep or false) end
   if ImGui.IsKeyChordPressed(ctx, C | ImGui.Key_Z()) then -- (the tab's steps first: the list, Write, Clear, Export)

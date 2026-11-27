@@ -16,8 +16,8 @@ The history of every decision: git.
   (`N.undo`, `N.has_undo`, `N.go`, `N.has_rows`, `N.loop_off`) and the Find tempo hooks (`N.first_note`, `N.shift`,
   `N.set_extra`, `N.written`). `N.test` hands the modules to the tests.
 - Modules: `Util`, `Key` (keys and note names, places, fingering), `Det` (the detection), `Group` (notes -> bars ->
-  rows), `List` (the rows, corrections, Undo), `Project`, `Find` (reads the item in steps), `Out` (Write, Clear, Done:
-  clean up), `Export` (MIDI, .mid, .gp5), `Imp` (the tab and the list), `UI`. Tempo and bars: the shared `Tempo.lua`.
+  rows), `List` (the rows, corrections, Undo), `Project`, `Find` (reads the item in steps), `Out` (Write with the song
+  region, Clear), `Export` (MIDI, .mid, .gp5), `Imp` (the tab and the list), `UI`. Tempo and bars: the shared `Tempo.lua`.
 
 ## Data
 
@@ -31,17 +31,18 @@ The history of every decision: git.
   the song at its first line, when that song has none (a lost list stays saved). Find notes (`UI.find`) fills the
   song of the item (`Songs.for_item`; another song: its list shows first); a region song reads only its part of the
   item (`Find.part`). Write, Clear and Export delete only the marked items whose middle is in the song
-  (`Out.delete_marked`). Done: clean up of a region song renames that region. `N.shift` moves the lists of other
-  songs on the same item too.
+  (`Out.delete_marked`). Write makes a region only for a song that is a bass item; a region song keeps its name
+  (`Out.region`). `N.shift` moves the lists of other songs on the same item too.
 - `P` (the list of 1 song; nothing saved when empty): `key=`, `mode=` (only when not "bar"), `tuning=`
   (only when not "std"), `src=` (the GUID of the bass item), `row=` (time, doubtful 0 / 1, the time of each note, the
   text), `keyat=` (a key change from the line at that time), `note=` (t, t1, pc, midi, doubt, slide, s (a string you
   chose), man (from a tab: Export.delay leaves it)), `tend=`, `mk=` (the GUIDs of the written markers, also of older
   writes: Ctrl+Z brings those back), `tab.<key>=` (the tab of the found notes, an entry as Tab Viewer's tabs: `P.tab`).
-  Done: clean up removes the list of its song. `P_EXT:TabViewer` = 1 on the Notes track and its items ("midi": the Bass MIDI track).
+  Clear removes the list of its song. `P_EXT:TabViewer` = 1 on the Notes track and its items ("midi": the Bass MIDI track).
 - `S` (ExtState "Tab Viewer"; keys that do not meet Tab Viewer's): `out` ("markers", "track", "both"), `frets`
   (String for high notes, on), `finger` (Fingering for runs, on), `strings` ("letters" / "numbers"), `splits` (Split
-  repeated notes, OFF by default), `export_dir` ("" = the project folder), `song_follow` (Follow the song, on).
+  repeated notes, OFF by default), `export_dir` ("" = the project folder), `song_follow` (Follow the song, on),
+  `write_fx` and `write_clicks` (Write removes the bass plugins / deletes the metronome track, both off).
 - 1 mode: no Simple mode, no beat count, no slide mark.
 - `R` (runtime): the selection, the edit box, `undo` / `redo` (`List.step`: the list text, or `{ reaper = the undo
   name, list }` for Write, Clear and Export: their undo is REAPER's undo too, when that step is REAPER's next one), the
@@ -98,10 +99,11 @@ The history of every decision: git.
 ## Output (`Out`, `Export`)
 
 - Write (`Out.write`): markers, text items on a "Notes" track above the bass, or both; only what this tab wrote is
-  replaced; 1 undo step; "Written (n markers)" in green until the list changes. More... > Clear... (`Out.clear`, asks;
-  1 undo step) and Done: clean up... (`Out.finish`: the song region "Artist - Title (Key)", removes plugins and
-  metronome tracks you tick; the list leaves the project).
-- More... > Export...: a MIDI item on a "Bass MIDI" track, a .mid file (`Export.smf`, written by hand; the tempo and
+  replaced; in the same undo step the song region (`Out.region`: "Artist - Title - Key" from the file names, only for
+  a song that is a bass item and has a file name) and, when switched on, `Out.tidy` (`S.write_fx`: the bass track's
+  plugins, `S.write_clicks`: the metronome tracks); the list stays (Done: clean up merged into Write, decided 27
+  November 2026). "Written (n markers)" in green until the list changes. Clear... (`Out.clear`, asks; 1 undo step).
+- Export... (bottom right): a MIDI item on a "Bass MIDI" track, a .mid file (`Export.smf`, written by hand; the tempo and
   time signatures of `Export.tempos`), and a Guitar Pro file (.gp5: `GP.write_gp5` with
   `Tabs.found_song`: the found tab as the Tab tab shows it, your time signatures and fixes, notes over a bar line
   tied, the tempo of the project at each bar; an edited bar has no ties into the next bar). The MIDI: `Export.notes`
@@ -136,9 +138,10 @@ The history of every decision: git.
 - Bass: Import from tab (with a tab) and Find notes in the heading (while it listens: Cancel, the progress under
   the Notes heading), Track, Key and Tuning on 1 row (`CFG.KEY_W`, `CFG.TUNE_LABEL_W`; narrower than `CFG.TUNE_MIN_W`: 2 rows), Lines
   with an example. Notes: the count and Next not sure at its right. Without a list: the grey hint, no bottom
-  rows. With a list: Join, Split, + Add, Delete; then the blue Write, its dropdown, More... (Export, Done, Clear).
+  rows. With a list: Join, Split, + Add, Delete, Clear... (Delete and Clear red: `UI.button` kind "danger"); then the
+  blue Write, its dropdown, Export... at the right (no More... menu: decided 27 November 2026).
 - Settings > Detection: Follow the song, String for high notes, Fingering for runs, Split repeated notes, String
-  names.
+  names, Write removes the bass plugins, Write deletes the metronome track.
 
 ## REAPER facts
 

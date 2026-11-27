@@ -46,6 +46,9 @@ local function clear_project()
     r.DeleteProjectMarkerByIndex(0, 0)
   end
   set_rows({})
+  -- (no lists or songs of a test before: a new track can get the handle of a deleted one, and the project's change
+  -- count does not move without a frame)
+  R.lists, R.hist, R.songs, R.song, R.trk_def = C.Lists.split(""), {}, nil, "", nil
 end
 local function markers()
   local t, i = {}, 0
@@ -770,7 +773,8 @@ test("write: the Notes track, above the bass; other items stay", function()
   clear_project()
   add_track("Music", 1)
   local bass = add_track("Bass", -1)
-  local it = add_item(bass, tmp .. "\\steps.wav", 0)
+  local it, tk = add_item(bass, tmp .. "\\steps.wav", 0)
+  r.GetSetMediaItemTakeInfo_String(tk, "P_NAME", "", true) -- (no file name: no song region here; its own test)
   local p = set_rows({ { 0.5, "Ab" }, { 2, "Bb" } })
   p.src = select(2, r.GetSetMediaItemInfo_String(it, "GUID", "", false))
   Out.write("both")
@@ -807,7 +811,13 @@ test("finish: names", function()
   eq(Out.region_name(" ", "", ""), "")
 end)
 
-test("finish: the region, the plugins, the metronome track, the list", function()
+-- (Done: clean up merged into Write, decided 27 November 2026: the region, the 2 switches, the list stays)
+local function named_item(tr, name, pos)
+  local it, tk = add_item(tr, tmp .. "\\steps.wav", pos)
+  r.GetSetMediaItemTakeInfo_String(tk, "P_NAME", name, true)
+  return it, select(2, r.GetSetMediaItemInfo_String(it, "GUID", "", false))
+end
+test("write: the song region; on: the bass plugins and the metronome track go; the list stays; 1 undo", function()
   clear_project()
   add_track("Music", 1)
   local bass = add_track("Bass")
@@ -815,55 +825,63 @@ test("finish: the region, the plugins, the metronome track, the list", function(
   add_track("Clicky")
   r.TrackFX_AddByName(bass, "ReaEQ", false, -1)
   r.TrackFX_AddByName(bass, "ReaTune", false, -1)
-  local it = add_item(bass, tmp .. "\\steps.wav", 2.5)
+  local _, g = named_item(bass, "Far Away-Bass-C minor.wav", 2.5)
   local p = set_rows({ { 3, "C" } }, "C minor")
-  p.src = select(2, r.GetSetMediaItemInfo_String(it, "GUID", "", false))
-  Out.write("markers")
-  Out.finish_begin()
-  local f = R.finish
-  eq(f.fresh, true); eq(f.fx, 2); eq(#f.clicks, 1); eq(f.clicks[1].name, "Metronome")
-  List.set_text(1, "D")
-  Out.finish_begin()
-  eq(R.finish.fresh, false, "changed since Write")
-  List.undo()
-  f = R.finish
-  f.artist, f.title = "The Band", "Far Away"
-  Out.finish(f)
-  eq(markers(), "[The Band - Far Away - C Minor 2.0-8.0] C@3.0")
-  eq(track_names(), "Music:1 Bass:-1 Clicky:0", "the folder still ends")
-  eq(r.TrackFX_GetCount(bass), 0)
-  eq(#C.get_P().rows, 0); eq(List.serialize(C.get_P()), "", "the list leaves the project")
+  p.src = g
+  C.S.write_fx, C.S.write_clicks = true, true
+  eq(Out.write("markers"), "Far Away - C Minor", "the new region")
+  C.S.write_fx, C.S.write_clicks = false, false
+  eq(markers(), "[Far Away - C Minor 2.0-8.0] C@3.0")
+  eq(track_names(), "Music:1 Bass:-1 Clicky:0", "the metronome track went; the folder still ends")
+  eq(r.TrackFX_GetCount(bass), 0, "the bass plugins went")
+  eq(texts(), "C", "the list stays")
   r.Undo_DoUndo2(0)
-  eq(track_names(), "Music:1 Bass:0 Metronome:-1 Clicky:0", "1 undo")
+  eq(track_names(), "Music:1 Bass:0 Metronome:-1 Clicky:0", "1 undo: all of it back")
   eq(r.TrackFX_GetCount(r.GetTrack(0, 1)), 2)
-  eq(markers(), "C@3.0")
-  List.undo()
-  eq(texts(), "C", "Undo brings the list back")
-  Out.write("markers")
-  eq(markers(), "C@3.0", "and it knows its markers")
+  eq(markers(), "")
 end)
 
-test("finish: everything off, and the same region again", function()
+test("write: switches off; Write again: still 1 region; a region song keeps its name; no file name: no region", function()
   clear_project()
   local bass = add_track("Bass")
   r.TrackFX_AddByName(bass, "ReaEQ", false, -1)
   add_track("Click")
-  local it = add_item(bass, tmp .. "\\steps.wav", 0)
-  for _ = 1, 2 do
-    local p = set_rows({ { 1, "C" } }, "")
-    p.src = select(2, r.GetSetMediaItemInfo_String(it, "GUID", "", false))
-    Out.finish_begin()
-    local f = R.finish
-    f.del_fx, f.del_clicks, f.artist, f.title = false, false, "", "Far Away"
-    Out.finish(f)
-  end
-  eq(markers(), "[Far Away 0.0-6.0]", "1 region")
-  eq(track_names(), "Bass:0 Click:0"); eq(r.TrackFX_GetCount(bass), 1)
-  set_rows({ { 1, "C" } })
-  Out.finish_begin()
-  R.finish.artist, R.finish.title = "", ""
-  eq(Out.finish(R.finish), "", "no name, no bass item: no region")
-  eq(markers(), "[Far Away 0.0-6.0]")
+  local _, g = named_item(bass, "Far Away.wav", 0)
+  local p = set_rows({ { 1, "C" } }, "")
+  p.src = g
+  Out.write("markers")
+  Out.write("markers")
+  eq(markers(), "[Far Away 0.0-6.0] C@1.0", "1 region")
+  local _, g2 = named_item(bass, "Far Away.wav", 20) -- (another song, the same file name: its own region)
+  R.trk = bass
+  Project.update()
+  C.Lists.switch(g2) -- (its list shows, as when the edit cursor is in it)
+  p = set_rows({ { 21, "D" } }, "")
+  p.src = g2
+  Out.write("markers")
+  eq(markers(), "[Far Away 0.0-6.0] C@1.0 [Far Away 20.0-26.0] D@21.0", "the 1st song's region stays")
+  eq(track_names(), "Bass:0 Click:0", "off: the metronome track stays"); eq(r.TrackFX_GetCount(bass), 1, "and the plugins")
+  clear_project()
+  bass = add_track("Bass")
+  _, g = named_item(bass, "Far Away.wav", 0)
+  r.AddProjectMarker2(0, true, 0, 6, "My Song", -1, 0)
+  R.trk = bass
+  Project.update()
+  local songs = C.Songs.get()
+  eq(songs[1].name, "My Song")
+  C.Lists.switch(songs[1].id)
+  p = set_rows({ { 1, "C" } }, "C minor")
+  p.src = g
+  eq(Out.write("markers"), nil, "a region song: no new region")
+  eq(markers(), "[My Song 0.0-6.0] C@1.0", "it keeps its name")
+  clear_project()
+  bass = add_track("Bass")
+  _, g = named_item(bass, "", 0)
+  p = set_rows({ { 1, "C" } }, "C minor")
+  p.src = g
+  eq(Out.write("markers"), nil, "no file name: no region")
+  eq(markers(), "C@1.0")
+  R.trk = nil
 end)
 
 test("settings: defaults and bad values", function()
@@ -875,7 +893,7 @@ test("settings: defaults and bad values", function()
   C.Util.apply_setting("finger", "1")
   C.Util.apply_setting("strings", "x"); eq(C.S.strings, "letters")
   C.Util.apply_setting("simple", "1"); eq(C.S.simple, nil, "a removed setting (Simple mode) is not read")
-  eq(table.concat(C.Util.settings_lines(), " "), "out=markers frets=1 finger=1 strings=letters export_dir= splits=0 song_follow=1")
+  eq(table.concat(C.Util.settings_lines(), " "), "out=markers frets=1 finger=1 strings=letters export_dir= splits=0 song_follow=1 write_fx=0 write_clicks=0")
   C.Util.apply_setting("export_dir", " D:\\Songs ")
   eq(C.S.export_dir, "D:\\Songs")
   C.Util.apply_setting("export_dir", "")
@@ -1678,7 +1696,11 @@ test("songs: each song keeps its list and its Undo; between songs the last stays
 end)
 
 test("songs: Write and Clear change only the markers and Notes items of the shown song", function()
-  -- (the project of the test before: song 1 "C | F" at 1 and 2 s, song 2 "G" at 11 s)
+  -- (the project of the test before: song 1 "C | F" at 1 and 2 s, song 2 "G" at 11 s; their items without a file
+  -- name: no song region, it has its own test)
+  for i = 0, r.CountMediaItems(0) - 1 do
+    r.GetSetMediaItemTakeInfo_String(r.GetActiveTake(r.GetMediaItem(0, i)), "P_NAME", "", true)
+  end
   go_to(1)
   Out.write("both")
   go_to(11)

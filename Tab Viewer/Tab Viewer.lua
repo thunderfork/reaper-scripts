@@ -2126,7 +2126,7 @@ local HELP_TOPICS = {
 # In the project
 - The tabs (copied into a "Tabs" folder next to the project file when you save), their regions, tracks and Start.
 - Your fixes, line breaks, bars per line, time signatures and Transpose.
-- The Detection lists (1 for each song), until More... > Done: clean up.
+- The Detection lists (1 for each song), until you Clear them.
 # On this computer
 - The Settings, the tab size, the window's place and the export folder.
 # Not saved
@@ -2238,7 +2238,8 @@ function UI.trunc(text, max_w)
   end
   return "..."
 end
--- Button kinds: "primary" (blue: an action), "ghost" (text only, as in Chart Cue), nil (grey).
+-- Button kinds: "primary" (blue: an action), "ghost" (text only, as in Chart Cue), "danger" (a red ghost: it removes
+-- something; decided 27 November 2026), nil (grey).
 function UI.button(label, w, h, kind)
   local n = 0
   if kind == "primary" then
@@ -2246,11 +2247,11 @@ function UI.button(label, w, h, kind)
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered(), COL.ACCENT_HOVER)
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive(), COL.ACCENT_ACTIVE)
     ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.WHITE); n = 4
-  elseif kind == "ghost" then
+  elseif kind == "ghost" or kind == "danger" then -- (danger: a ghost button in red, it removes something)
     ImGui.PushStyleColor(ctx, ImGui.Col_Button(), COL.TRANSPARENT)
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonHovered(), COL.ROW_HOVER)
     ImGui.PushStyleColor(ctx, ImGui.Col_ButtonActive(), COL.ACTIVE_BG)
-    ImGui.PushStyleColor(ctx, ImGui.Col_Text(), COL.ACCENT_HOVER); n = 4
+    ImGui.PushStyleColor(ctx, ImGui.Col_Text(), kind == "danger" and COL.RED or COL.ACCENT_HOVER); n = 4
   end
   local hit = ImGui.Button(ctx, label, w or 0, h or ImGui.GetFrameHeight(ctx))
   if n > 0 then ImGui.PopStyleColor(ctx, n) end
